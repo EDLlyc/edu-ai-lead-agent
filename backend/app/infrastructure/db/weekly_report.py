@@ -53,6 +53,7 @@ JOIN image_artifact_references ref ON ref.image_artifact_id = a.id
 JOIN copy_generation_runs r ON r.id = a.run_id
 WHERE r.business_date BETWEEN :start AND :end AND r.timezone = :timezone
   AND ref.reference_role = 'action_reference' AND a.status = 'succeeded'
+  AND ref.selector_version LIKE '%v3%'
 """
 
 _IMAGE_FAILURES = """

@@ -37,9 +37,11 @@ def test_log_readers_count_only_the_window(tmp_path: Path) -> None:
     _write(
         watchdog / "watchdog-2026-10-03.jsonl",
         [
-            {"business_date": "2026-10-03", "ok": True, "proposals": []},
-            {
+            {"business_date": "2026-10-03", "slot": "noon", "ok": True, "proposals": []},
+            {"business_date": "2026-10-03", "slot": "evening", "ok": True, "proposals": []},
+            {  # a manual re-run of the same slot counts once
                 "business_date": "2026-10-03",
+                "slot": "evening",
                 "ok": False,
                 "diagnosis": {"stopped": "reported", "stage": "image", "prompt_tokens": 15_020},
                 "proposals": [],

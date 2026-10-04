@@ -108,21 +108,30 @@ def _jsonl(paths: Iterable[Path]) -> list[dict[str, Any]]:
 
 
 def watchdog_stats(directory: Path, start: date, end: date) -> WatchdogStats:
+    """One entry per business date and slot (manual re-runs of a slot count once)."""
+
     stats = WatchdogStats()
     if not directory.is_dir():
         return stats
+    slots: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for record in _jsonl(sorted(directory.glob("watchdog-*.jsonl"))):
-        if not _in_window(record.get("business_date"), start, end):
-            continue
+        if _in_window(record.get("business_date"), start, end):
+            key = (str(record.get("business_date")), str(record.get("slot")))
+            slots.setdefault(key, []).append(record)
+    for records in slots.values():
         stats.checks += 1
-        if not record.get("ok", True):
-            stats.flagged += 1
-        diagnosis = record.get("diagnosis")
-        if isinstance(diagnosis, Mapping) and diagnosis.get("stopped") == "reported":
+        stats.flagged += any(not record.get("ok", True) for record in records)
+        diagnoses = [
+            record["diagnosis"]
+            for record in records
+            if isinstance(record.get("diagnosis"), Mapping)
+            and record["diagnosis"].get("stopped") == "reported"
+        ]
+        if diagnoses:
             stats.diagnosed += 1
-            stats.stages[str(diagnosis.get("stage"))] += 1
-            stats.diagnosis_tokens += int(diagnosis.get("prompt_tokens") or 0)
-        stats.proposals += len(record.get("proposals") or [])
+            stats.stages[str(diagnoses[-1].get("stage"))] += 1
+        stats.diagnosis_tokens += sum(int(d.get("prompt_tokens") or 0) for d in diagnoses)
+        stats.proposals += sum(len(record.get("proposals") or []) for record in records)
     return stats
 
 
@@ -231,10 +240,12 @@ def render(current: WeekStats, previous: WeekStats) -> str:
             lambda s: f"{s.actions.proposed} / {s.actions.approved} / {s.actions.executed}",
         ),
         (
-            "动作图：次数 / 重复冷却期 / 不同图",
+            "动作图（选图 v3）：次数 / 重复冷却期 / 不同图",
             lambda s: (
                 f"{s.action_refs} / {s.cooled_reuse}"
                 f"（{_pct(s.cooled_reuse, s.action_refs)}） / {s.distinct_action_images}"
+                if s.action_refs
+                else "-（选图 v3 前没有冷却期）"
             ),
         ),
         ("配图失败", lambda s: str(s.image_failures)),
