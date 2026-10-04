@@ -1,0 +1,17 @@
+#!/bin/sh
+# Weekly summary of the online agent work (backend/app/weekly_report_main.py): the week that ended
+# yesterday next to the week before. Reads the database in a READ ONLY transaction and the
+# watchdog / action / shadow logs read-only; writes Markdown, JSON and trend.csv to
+# /opt/edu-ai-lead-agent/reports/weekly. One-off container of the pinned image; nothing restarts.
+set -eu
+IMAGE="__IMAGE__"
+END="${1:-$(TZ=Asia/Shanghai date -d yesterday +%F)}"
+OUT=/opt/edu-ai-lead-agent/reports/weekly
+mkdir -p "$OUT"
+chown 999:999 "$OUT"
+chmod 700 "$OUT"
+cd /opt/edu-ai-lead-agent
+APP_IMAGE="$IMAGE" timeout 300 docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env \
+  run --rm --no-deps -T -v /opt/edu-ai-lead-agent/reports:/reports:ro -v "$OUT:/out" \
+  --entrypoint python acquisition-api -m app.weekly_report_main --end "$END" --reports-dir /reports --output-dir /out > /dev/null
+echo "weekly summary written: $OUT/week-$END.md"

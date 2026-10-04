@@ -1,0 +1,2 @@
+# Weekly summary: Mondays 09:20 Asia/Shanghai (after the morning slot), for Monday..Sunday before.
+20 9 * * 1 root /usr/local/sbin/edu-ai-weekly-report >> /var/log/edu-ai-weekly-report.log 2>&1
