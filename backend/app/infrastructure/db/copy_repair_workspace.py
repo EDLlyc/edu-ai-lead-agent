@@ -53,6 +53,7 @@ class ProductionRepair:
     run_status: str
     method: str = "regenerate"
     agent_fallback: str | None = None
+    agent_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,21 +208,27 @@ async def load_blocked_case(
         await _read_only(session)
         first_meta = await _generation_metadata(session, first.id)
         second_meta = await _generation_metadata(session, second.id) if second else {}
-        fallback = await session.scalar(
-            select(CopyGenerationAttemptModel.error_code)
-            .join(
-                CopyGenerationJobModel,
-                CopyGenerationJobModel.id == CopyGenerationAttemptModel.job_id,
+        fallback_row = (
+            await session.execute(
+                select(
+                    CopyGenerationAttemptModel.error_code, CopyGenerationAttemptModel.safe_metadata
+                )
+                .join(
+                    CopyGenerationJobModel,
+                    CopyGenerationJobModel.id == CopyGenerationAttemptModel.job_id,
+                )
+                .where(
+                    CopyGenerationJobModel.run_id == run_id,
+                    CopyGenerationAttemptModel.capability == "workflow",
+                    CopyGenerationAttemptModel.error_code.like("repair\\_agent\\_%"),
+                )
+                .order_by(CopyGenerationAttemptModel.created_at.desc())
+                .limit(1)
             )
-            .where(
-                CopyGenerationJobModel.run_id == run_id,
-                CopyGenerationAttemptModel.capability == "workflow",
-                CopyGenerationAttemptModel.error_code.like("repair\\_agent\\_%"),
-            )
-            .order_by(CopyGenerationAttemptModel.created_at.desc())
-            .limit(1)
-        )
+        ).first()
         await session.rollback()
+    fallback = fallback_row[0] if fallback_row else None
+    fallback_meta = fallback_row[1] if fallback_row and isinstance(fallback_row[1], dict) else {}
     raw_ids = first_meta.get("brand_chunk_ids")
     context_ids = tuple(UUID(str(item)) for item in raw_ids) if isinstance(raw_ids, list) else ()
     return BlockedCase(
@@ -238,8 +245,15 @@ async def load_blocked_case(
             run_status=run_status,
             method="agent" if second_meta.get("repair_method") == "agent" else "regenerate",
             agent_fallback=fallback,
+            agent_version=_text(
+                second_meta.get("repair_agent_version") or fallback_meta.get("repair_agent_version")
+            ),
         ),
     )
+
+
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 async def _generation_metadata(session: AsyncSession, draft_id: UUID) -> dict[str, object]:

@@ -73,6 +73,7 @@ class WeekStats:
     image_failures: int = 0
     copy_prompt_tokens: int = 0
     copy_completion_tokens: int = 0
+    missed_reasons: Counter[str] = field(default_factory=Counter)
     repair: RepairStats | None = None
     watchdog: WatchdogStats = field(default_factory=WatchdogStats)
     actions: ActionStats = field(default_factory=ActionStats)
@@ -85,6 +86,45 @@ class WeekStats:
 
 def week_bounds(end: date) -> tuple[date, date]:
     return end - timedelta(days=6), end
+
+
+MISSED_LABELS = {
+    "operator_hold": "运营暂停",
+    "copy": "文案未通过",
+    "image": "配图失败",
+    "delivery": "发送失败",
+    "other": "其他",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class PostOutcome:
+    """One scheduled post: its newest copy run, image and delivery job states."""
+
+    copy_status: str | None
+    image_status: str | None
+    delivery_status: str | None
+    delivery_error: str | None
+
+
+def missed_reason(post: PostOutcome) -> str | None:
+    """Why a scheduled post was not delivered (None when it was)."""
+
+    if post.delivery_status == "delivered":
+        return None
+    if post.delivery_status == "cancelled" and (post.delivery_error or "").startswith("operator_"):
+        return "operator_hold"
+    if post.copy_status != "accepted":
+        return "copy"
+    if post.delivery_status is None and post.image_status not in (None, "succeeded"):
+        return "image"
+    if post.delivery_status is not None:
+        return "delivery"
+    return "other"
+
+
+def missed_reasons(posts: Iterable[PostOutcome]) -> Counter[str]:
+    return Counter(reason for post in posts if (reason := missed_reason(post)) is not None)
 
 
 def _in_window(value: object, start: date, end: date) -> bool:
@@ -156,12 +196,20 @@ def action_stats(path: Path, start: date, end: date) -> ActionStats:
     return stats
 
 
-def shadow_stats(directory: Path, start: date, end: date) -> ShadowStats:
+def shadow_stats(
+    directory: Path, start: date, end: date, *, agent_version: str | None = None
+) -> ShadowStats:
+    """Shadow pairs in the window; with `agent_version`, only that agent version's pairs."""
+
     stats = ShadowStats()
     if not directory.is_dir():
         return stats
     for record in _jsonl(sorted(directory.glob("copy-repair-shadow-*.jsonl"))):
         if not _in_window(record.get("business_date"), start, end):
+            continue
+        arm = record.get("agent") or {}
+        version = arm.get("agent_version") or record.get("agent_version")
+        if agent_version is not None and version != agent_version:
             continue
         agent = bool((record.get("agent") or {}).get("passed"))
         regeneration_arm = record.get("regeneration") or {
@@ -210,6 +258,16 @@ def render(current: WeekStats, previous: WeekStats) -> str:
             lambda s: f"{s.posts_selected} / {s.posts_delivered} / {s.missed}",
         ),
         (
+            "少发原因",
+            lambda s: (
+                "、".join(
+                    f"{MISSED_LABELS.get(reason, reason)} {count}"
+                    for reason, count in s.missed_reasons.most_common()
+                )
+                or "-"
+            ),
+        ),
+        (
             "长图覆盖",
             lambda s: (
                 f"{s.long_images_ready}/{s.posts_delivered}"
@@ -224,7 +282,7 @@ def render(current: WeekStats, previous: WeekStats) -> str:
         ("Agent 修好率", agent_rate),
         ("Agent 每条输入 token", agent_tokens),
         (
-            "影子对照：Agent / 重写 修好",
+            "影子对照（当前 Agent 版本）：Agent / 重写 修好",
             lambda s: (
                 f"{s.shadow.agent_passed} / {s.shadow.regeneration_passed}（共 {s.shadow.cases}）"
                 if s.shadow.cases
@@ -280,7 +338,11 @@ def render(current: WeekStats, previous: WeekStats) -> str:
         )
         notes.append(f"- 本周诊断出的出问题环节：{stages}。")
     if current.missed:
-        notes.append(f"- 本周少发 {current.missed} 条，请对照漏发检查日志。")
+        reasons = "、".join(
+            f"{MISSED_LABELS.get(reason, reason)} {count}"
+            for reason, count in current.missed_reasons.most_common()
+        )
+        notes.append(f"- 本周少发 {current.missed} 条：{reasons or '原因未分类'}。")
     if notes:
         lines += ["", "**说明**", *notes]
     return "\n".join(lines) + "\n"
@@ -294,6 +356,7 @@ def jsonable(stats: WeekStats) -> dict[str, Any]:
         "posts_selected": stats.posts_selected,
         "posts_delivered": stats.posts_delivered,
         "missed": stats.missed,
+        "missed_reasons": dict(stats.missed_reasons),
         "long_images_ready": stats.long_images_ready,
         "copy": {
             "runs": stats.copy_runs,

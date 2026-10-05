@@ -137,3 +137,63 @@ def test_render_compares_with_the_previous_week_and_explains() -> None:
 def test_missed_is_never_negative(missing: int) -> None:
     stats = _week(posts_selected=5, posts_delivered=5 - missing)
     assert stats.missed == missing
+
+
+def test_missed_posts_are_classified_by_where_they_stopped() -> None:
+    from app.domain.weekly_report import PostOutcome, missed_reasons
+
+    posts = [
+        PostOutcome("accepted", "succeeded", "delivered", None),
+        PostOutcome("accepted", "succeeded", "cancelled", "operator_noon_maintenance_hold"),
+        PostOutcome("review_required", None, None, None),
+        PostOutcome(None, None, None, None),
+        PostOutcome("accepted", "review_required", None, None),
+        PostOutcome("accepted", "succeeded", "failed", "wecom_rate_limited"),
+        PostOutcome("accepted", "succeeded", None, None),
+    ]
+
+    assert missed_reasons(posts) == {
+        "operator_hold": 1,
+        "copy": 2,
+        "image": 1,
+        "delivery": 1,
+        "other": 1,
+    }
+
+
+def test_shadow_stats_can_keep_only_the_current_agent_version(tmp_path: Path) -> None:
+    shadow = tmp_path / "copy-repair-shadow"
+    _write(
+        shadow / "copy-repair-shadow-2026-10-03.jsonl",
+        [
+            {
+                "business_date": "2026-10-01",
+                "agent_version": "v3",
+                "agent": {"passed": False},
+                "production": {"passed": True},
+            },
+            {
+                "business_date": "2026-10-04",
+                "agent": {"agent_version": "v4", "passed": True},
+                "regeneration": {"passed": False},
+            },
+        ],
+    )
+
+    every = shadow_stats(shadow, START, END)
+    current = shadow_stats(shadow, START, END, agent_version="v4")
+
+    assert (every.cases, every.agent_passed) == (2, 1)
+    assert (current.cases, current.agent_passed, current.regeneration_passed) == (1, 1, 0)
+
+
+def test_render_lists_missed_reasons() -> None:
+    from collections import Counter
+
+    current = _week(posts_selected=21, posts_delivered=18)
+    current.missed_reasons = Counter({"image": 2, "operator_hold": 1})
+
+    text = render(current, _week())
+
+    assert "| 少发原因 | 配图失败 2、运营暂停 1 | - |" in text
+    assert "本周少发 3 条：配图失败 2、运营暂停 1。" in text

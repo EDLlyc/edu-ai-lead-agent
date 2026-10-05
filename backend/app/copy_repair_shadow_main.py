@@ -163,6 +163,7 @@ async def agent_arm(
     )
     return {
         "source": "shadow",
+        "agent_version": REPAIR_AGENT_VERSION,
         "passed": ok,
         "left_codes": left,
         "stopped": outcome.stopped,
@@ -254,10 +255,11 @@ async def shadow_case(
     from_production: dict[str, object] = {"source": "production", "passed": production.passed}
     agent: dict[str, object]
     regeneration: dict[str, object]
+    production_agent = production.agent_version or "unknown"
     if production.method == "agent":
         if generator is None:
             raise RuntimeError("a generator is needed to replay the regeneration")
-        agent = from_production
+        agent = {**from_production, "agent_version": production_agent}
         regeneration = await regeneration_arm(
             case,
             generator=generator,
@@ -268,7 +270,12 @@ async def shadow_case(
         )
     elif production.agent_fallback is not None:
         # Production already tried the agent and dropped its draft, then regenerated.
-        agent = {"source": "production", "passed": False, "fallback": production.agent_fallback}
+        agent = {
+            "source": "production",
+            "agent_version": production_agent,
+            "passed": False,
+            "fallback": production.agent_fallback,
+        }
         regeneration = from_production
     else:
         agent = await agent_arm(
@@ -332,6 +339,13 @@ def _shadow_average(records: Sequence[Mapping[str, Any]], arm: str, key: str) ->
     return f"{sum(values) / len(values):,.0f}（{len(values)} 份）" if values else "-"
 
 
+def agent_version_of(record: Mapping[str, Any]) -> str:
+    """The agent version of the record's agent arm (v1 records carry it at the top level)."""
+
+    arm = record.get("agent") or {}
+    return str(arm.get("agent_version") or record.get("agent_version") or "unknown")
+
+
 def summarize(records: Sequence[Mapping[str, Any]]) -> str:
     total = len(records)
     if not total:
@@ -364,8 +378,30 @@ def summarize(records: Sequence[Mapping[str, Any]]) -> str:
             f"- 后台补跑的 Agent 平均输入 token：{agent_tokens}；"
             f"后台补跑的整篇重写：{regen_tokens}。",
             "",
+            "## 按 Agent 版本",
+            "",
+            "旧版本的结果不代表当前 Agent；比较当前效果只看当前版本这一行。",
+            "",
+            "| Agent 版本 | 份数 | Agent 修好 | 整篇重写修好 |",
+            "|---|---|---|---|",
+            *_version_rows(records),
+            "",
         ]
     )
+
+
+def _version_rows(records: Sequence[Mapping[str, Any]]) -> list[str]:
+    groups: dict[str, list[tuple[bool, bool]]] = {}
+    for record in records:
+        groups.setdefault(agent_version_of(record), []).append(_arms(record))
+    rows = []
+    for version in sorted(groups):
+        arms = groups[version]
+        label = f"{version}（当前）" if version == REPAIR_AGENT_VERSION else version
+        agent = sum(a for a, _ in arms)
+        regeneration = sum(g for _, g in arms)
+        rows.append(f"| {label} | {len(arms)} | {agent} | {regeneration} |")
+    return rows
 
 
 def _default_dates(now: datetime) -> tuple[date, date]:

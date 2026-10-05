@@ -209,7 +209,7 @@ async def test_when_production_used_the_agent_the_shadow_runs_the_regeneration()
         generator=generator,
     )
 
-    assert record["agent"] == {"source": "production", "passed": True}
+    assert record["agent"] == {"source": "production", "passed": True, "agent_version": "unknown"}
     regeneration = record["regeneration"]
     assert isinstance(regeneration, dict)
     assert regeneration["source"] == "shadow" and regeneration["passed"] is True
@@ -245,6 +245,7 @@ async def test_a_production_agent_fallback_needs_no_shadow_call() -> None:
     assert cap.used == 0
     assert record["agent"] == {
         "source": "production",
+        "agent_version": "unknown",
         "passed": False,
         "fallback": "repair_agent_no_fix",
     }
@@ -269,3 +270,25 @@ def test_summary_reads_both_directions() -> None:
     assert "| Agent 修好 | 2（100%） |" in text and "| 整篇重写修好 | 1（50%） |" in text
     assert "线上用 Agent 修的 1 份" in text
     assert "6,000（1 份）" in text and "7,000（1 份）" in text
+
+
+def test_summary_breaks_results_down_by_agent_version() -> None:
+    from app.application.services.copy_repair_agent import REPAIR_AGENT_VERSION
+
+    old = {
+        "business_date": "2026-09-30",
+        "agent_version": "copy-repair-agent-v3-checked-hook",
+        "agent": {"passed": False, "prompt_tokens": 9000},
+        "production": {"passed": True},
+    }
+    new = {
+        "business_date": "2026-10-04",
+        "agent": {"source": "production", "agent_version": REPAIR_AGENT_VERSION, "passed": True},
+        "regeneration": {"source": "shadow", "passed": False, "prompt_tokens": 5600},
+        "production": {"method": "agent", "passed": True},
+    }
+
+    text = summarize([old, new])
+
+    assert "| copy-repair-agent-v3-checked-hook | 1 | 0 | 1 |" in text
+    assert f"| {REPAIR_AGENT_VERSION}（当前） | 1 | 1 | 0 |" in text

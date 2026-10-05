@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
+from app.application.services.copy_repair_agent import REPAIR_AGENT_VERSION
 from app.domain.weekly_report import (
     WeekStats,
     action_stats,
@@ -67,7 +68,9 @@ async def _load(end: date, reports: Path) -> tuple[WeekStats, WeekStats]:
             stats.actions = action_stats(
                 reports / "delivery-watchdog" / "action-proposals.jsonl", start, stop
             )
-            stats.shadow = shadow_stats(reports / "copy-repair-shadow", start, stop)
+            stats.shadow = shadow_stats(
+                reports / "copy-repair-shadow", start, stop, agent_version=REPAIR_AGENT_VERSION
+            )
             weeks.append(stats)
     finally:
         await engine.dispose()

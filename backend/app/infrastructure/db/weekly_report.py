@@ -7,7 +7,7 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.weekly_report import WeekStats
+from app.domain.weekly_report import PostOutcome, WeekStats, missed_reasons
 from app.infrastructure.db.repair_metrics import load_repair_stats
 
 _POSTS = """
@@ -23,6 +23,23 @@ SELECT
      JOIN wecom_delivery_windows w ON w.id = j.delivery_window_id
     WHERE w.business_date BETWEEN :start AND :end AND w.lane_key = 'slot'
       AND j.status = 'delivered' AND i.status = 'ready')
+"""
+
+_POST_OUTCOMES = """
+SELECT
+  (SELECT r.status FROM copy_generation_runs r
+    WHERE r.content_slot_selection_id = cs.id ORDER BY r.created_at DESC LIMIT 1),
+  (SELECT a.status FROM image_artifacts a
+     JOIN copy_generation_runs r ON r.id = a.run_id
+    WHERE r.content_slot_selection_id = cs.id ORDER BY a.created_at DESC LIMIT 1),
+  (SELECT j.status FROM wecom_delivery_jobs j
+    WHERE j.content_slot_selection_id = cs.id ORDER BY j.created_at DESC LIMIT 1),
+  (SELECT j.last_error_code FROM wecom_delivery_jobs j
+    WHERE j.content_slot_selection_id = cs.id ORDER BY j.created_at DESC LIMIT 1)
+FROM content_slot_selections cs
+JOIN content_slot_runs sr ON sr.id = cs.run_id
+WHERE cs.business_date BETWEEN :start AND :end AND cs.timezone = :timezone
+  AND sr.trigger <> 'human'
 """
 
 _COPY = """
@@ -91,5 +108,15 @@ async def load_week(session: AsyncSession, *, start: date, end: date, timezone: 
         int(visual[2]),
     )
     stats.image_failures = int((await session.execute(text(_IMAGE_FAILURES), params)).scalar_one())
+    outcomes = [
+        PostOutcome(
+            copy_status=row[0], image_status=row[1], delivery_status=row[2], delivery_error=row[3]
+        )
+        for row in (await session.execute(text(_POST_OUTCOMES), params)).all()
+    ]
+    stats.missed_reasons = missed_reasons(outcomes)
+    gap = stats.missed - sum(stats.missed_reasons.values())
+    if gap > 0:  # selections the per-post query could not see
+        stats.missed_reasons["other"] += gap
     stats.repair = await load_repair_stats(session, start=start, end=end, timezone=timezone)
     return stats
