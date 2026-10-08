@@ -77,7 +77,22 @@ const adminApiProxy = {
   },
 };
 
-export default defineConfig({
+// `vite build --mode admin` builds the 运营后台 alone into dist-admin/ (page at /admin/, files at /assets/).
+export default defineConfig(({ mode }) => ({
+  ...(mode === "admin"
+    ? {
+        base: "/",
+        build: {
+          outDir: "dist-admin",
+          emptyOutDir: true,
+          rollupOptions: {
+            input: fileURLToPath(
+              new URL("./admin/index.html", import.meta.url),
+            ),
+          },
+        },
+      }
+    : {}),
   envDir: "..",
   plugins: [react(), servePreviewAssets()],
   resolve: {
@@ -102,4 +117,4 @@ export default defineConfig({
       reporter: ["text", "html"],
     },
   },
-});
+}));

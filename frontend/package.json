@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:admin": "tsc -b && vite build --mode admin",
     "preview": "vite preview",
     "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/generated/schema.d.ts",
     "generate:api:check": "openapi-typescript ../backend/openapi.json | cmp -s - src/lib/api/generated/schema.d.ts",
