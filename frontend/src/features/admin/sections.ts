@@ -38,12 +38,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "关键词",
     group: "内容来源",
     role: "editor",
-    plan: {
-      item: 2,
-      dates: "10/14 – 10/19",
-      summary:
-        "维护选题用的关注词和屏蔽词，改动会留版本，能看出哪天的选题用了哪一版。",
-    },
+    plan: null,
   },
   {
     key: "wechat-publish",

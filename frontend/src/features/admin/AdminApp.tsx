@@ -3,6 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import { adminApi, type AdminApi, type AdminMe } from "./api";
 import { AuditLogPage } from "./AuditLogPage";
+import { KeywordsPage } from "./keywords/KeywordsPage";
+import {
+  keywordsApi as defaultKeywordsApi,
+  type KeywordsApi,
+} from "./keywords/api";
 import { SourcesPage } from "./sources/SourcesPage";
 import {
   sourcesApi as defaultSourcesApi,
@@ -28,9 +33,11 @@ const ROLE_LABELS = { owner: "管理员", editor: "编辑" } as const;
 export function AdminApp({
   api = adminApi,
   sourcesApi = defaultSourcesApi,
+  keywordsApi = defaultKeywordsApi,
 }: {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
+  readonly keywordsApi?: KeywordsApi;
 }) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
   const [path, setPath] = useState(() => window.location.pathname);
@@ -177,6 +184,8 @@ export function AdminApp({
           <AuditLogPage api={api} onSessionExpired={expire} />
         ) : current.key === "sources" ? (
           <SourcesPage api={sourcesApi} onSessionExpired={expire} />
+        ) : current.key === "keywords" ? (
+          <KeywordsPage api={keywordsApi} onSessionExpired={expire} />
         ) : (
           <PlannedSection section={current} />
         )}

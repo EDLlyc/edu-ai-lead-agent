@@ -117,6 +117,19 @@
   cursor: pointer;
 }
 
+.shell button.primary {
+  color: #fff;
+  background: #0f766e;
+  border-color: #0f766e;
+  font-weight: 700;
+}
+
+.shell button.primary:disabled {
+  background: #9dbfba;
+  border-color: #9dbfba;
+  cursor: not-allowed;
+}
+
 .topbar {
   display: flex;
   grid-area: top;
@@ -410,6 +423,107 @@
   margin-top: 0.75rem;
   color: #5b6b70;
   font-size: 0.85rem;
+}
+
+/* 关键词 */
+.keywordLists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.termList {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #dfe5e2;
+  border-radius: 0.75rem;
+}
+
+.termList legend {
+  padding: 0 0.3rem;
+  font-weight: 700;
+}
+
+.termList ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.termList li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.6rem;
+  background: #eef2ef;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.termList li[data-new="true"] {
+  background: #e3f3f0;
+  outline: 1px solid #0f766e;
+}
+
+.termList li button {
+  padding: 0 0.35rem;
+  color: #5b6b70;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.addTerm {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.addTerm input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #c4cfcb;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.trial {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.trial textarea,
+.actions .field input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #c4cfcb;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-weight: 400;
+}
+
+.trial ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+
+.actions .field {
+  flex: 1;
+  min-width: 16rem;
+}
+
+.subheading {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1.05rem;
 }
 
 @media (max-width: 720px) {

@@ -21,6 +21,13 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "source.enabled": "打开新闻源",
   "source.disabled": "关闭新闻源",
   "source.archived": "删除新闻源",
+  "keywords.saved": "保存关键词",
+};
+
+const LIST_LABELS: Readonly<Record<string, string>> = {
+  focus: "关注词",
+  block: "屏蔽词",
+  copy_banned: "文案禁用词",
 };
 
 const FIELD_LABELS: Readonly<Record<string, string>> = {
@@ -70,6 +77,22 @@ function describe(event: AdminAuditEvent): string {
     parts.push(`改了：${fields.join("、")}`);
   }
   if (typeof detail.version === "number") parts.push(`第 ${detail.version} 版`);
+  if (detail.changes !== null && typeof detail.changes === "object") {
+    for (const [list, change] of Object.entries(
+      detail.changes as Record<string, { added?: unknown; removed?: unknown }>,
+    )) {
+      const label = LIST_LABELS[list] ?? list;
+      const added = Array.isArray(change.added) ? change.added.map(String) : [];
+      const removed = Array.isArray(change.removed)
+        ? change.removed.map(String)
+        : [];
+      if (added.length > 0) parts.push(`${label}加：${added.join("、")}`);
+      if (removed.length > 0) parts.push(`${label}减：${removed.join("、")}`);
+    }
+  }
+  if (typeof detail.note === "string" && detail.note !== "") {
+    parts.push(`备注：${detail.note}`);
+  }
   if (typeof detail.ok === "boolean") {
     parts.push(detail.ok ? "能抓到文章" : "抓不到文章");
   }

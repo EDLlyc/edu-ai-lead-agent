@@ -132,6 +132,8 @@ class TopicVetoCode(StrEnum):
     REPEATED_WITHIN_WINDOW = "repeated_within_window"
     STALE_EVENT = "stale_event"
     OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE = "outside_science_ai_education_scope"
+    # The title or summary contains a 屏蔽词 from the 运营后台 (operator keyword lists).
+    OPERATOR_BLOCKED_TERM = "operator_blocked_term"
 
 
 class NoTopicCode(StrEnum):
@@ -632,10 +634,18 @@ class TopicCandidate:
     privacy_legal_safety_uncertain: bool = False
     prohibited_marketing_risk: bool = False
     days_since_last_selection: int | None = None
+    # Operator keyword hits in the title/summary (empty unless the run recorded a keyword version).
+    operator_focus_terms: tuple[str, ...] = ()
+    operator_block_terms: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.event_time.tzinfo is None:
             raise ValueError("topic event time must be timezone-aware")
+        if any(
+            not term.strip() or len(term) > 20
+            for term in (*self.operator_focus_terms, *self.operator_block_terms)
+        ):
+            raise ValueError("operator keyword hits must be non-blank and bounded")
         if self.topic_priority_policy is not None and (
             not self.topic_priority_policy.strip() or len(self.topic_priority_policy) > 80
         ):
@@ -1138,6 +1148,8 @@ def _veto_codes(
         vetoes.append(TopicVetoCode.STALE_EVENT)
     if config.uses_science_education_features and not candidate.science_ai_education_eligible:
         vetoes.append(TopicVetoCode.OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE)
+    if candidate.operator_block_terms:
+        vetoes.append(TopicVetoCode.OPERATOR_BLOCKED_TERM)
     if (
         config.has_safety_industry_rules
         and TopicVetoCode.UNSUITABLE_NEGATIVE_INCIDENT not in vetoes

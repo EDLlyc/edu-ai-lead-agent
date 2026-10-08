@@ -355,6 +355,347 @@
         "title": "AdminAuditEventResponse",
         "type": "object"
       },
+      "AdminKeywordBlockedItem": {
+        "properties": {
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          },
+          "terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "terms",
+          "selected"
+        ],
+        "title": "AdminKeywordBlockedItem",
+        "type": "object"
+      },
+      "AdminKeywordFocusedItem": {
+        "properties": {
+          "terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "terms"
+        ],
+        "title": "AdminKeywordFocusedItem",
+        "type": "object"
+      },
+      "AdminKeywordHistoryItem": {
+        "properties": {
+          "block_count": {
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "copy_banned_count": {
+            "title": "Copy Banned Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "focus_count": {
+            "title": "Focus Count",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "note",
+          "created_by",
+          "created_at",
+          "focus_count",
+          "block_count",
+          "copy_banned_count"
+        ],
+        "title": "AdminKeywordHistoryItem",
+        "type": "object"
+      },
+      "AdminKeywordImpactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 400,
+            "title": "Block",
+            "type": "array"
+          },
+          "focus": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 400,
+            "title": "Focus",
+            "type": "array"
+          }
+        },
+        "title": "AdminKeywordImpactRequest",
+        "type": "object"
+      },
+      "AdminKeywordImpactResponse": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "$ref": "#/components/schemas/AdminKeywordBlockedItem"
+            },
+            "title": "Blocked",
+            "type": "array"
+          },
+          "blocked_count": {
+            "title": "Blocked Count",
+            "type": "integer"
+          },
+          "blocked_selected_count": {
+            "title": "Blocked Selected Count",
+            "type": "integer"
+          },
+          "blocked_share": {
+            "title": "Blocked Share",
+            "type": "number"
+          },
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "focused": {
+            "items": {
+              "$ref": "#/components/schemas/AdminKeywordFocusedItem"
+            },
+            "title": "Focused",
+            "type": "array"
+          },
+          "focused_count": {
+            "title": "Focused Count",
+            "type": "integer"
+          },
+          "per_block_term": {
+            "items": {
+              "$ref": "#/components/schemas/AdminKeywordTermCount"
+            },
+            "title": "Per Block Term",
+            "type": "array"
+          },
+          "wide": {
+            "title": "Wide",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "days",
+          "candidate_count",
+          "blocked_count",
+          "blocked_selected_count",
+          "blocked_share",
+          "wide",
+          "blocked",
+          "per_block_term",
+          "focused_count",
+          "focused"
+        ],
+        "title": "AdminKeywordImpactResponse",
+        "type": "object"
+      },
+      "AdminKeywordSaveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 400,
+            "title": "Block",
+            "type": "array"
+          },
+          "confirm_wide_block": {
+            "default": false,
+            "title": "Confirm Wide Block",
+            "type": "boolean"
+          },
+          "copy_banned": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 400,
+            "title": "Copy Banned",
+            "type": "array"
+          },
+          "focus": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 400,
+            "title": "Focus",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "AdminKeywordSaveRequest",
+        "type": "object"
+      },
+      "AdminKeywordTermCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term",
+          "count"
+        ],
+        "title": "AdminKeywordTermCount",
+        "type": "object"
+      },
+      "AdminKeywordVersionResponse": {
+        "properties": {
+          "block": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Block",
+            "type": "array"
+          },
+          "copy_banned": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Copy Banned",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "focus": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Focus",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "focus",
+          "block",
+          "copy_banned",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "title": "AdminKeywordVersionResponse",
+        "type": "object"
+      },
+      "AdminKeywordsResponse": {
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminKeywordVersionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AdminKeywordHistoryItem"
+            },
+            "title": "History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "current",
+          "history"
+        ],
+        "title": "AdminKeywordsResponse",
+        "type": "object"
+      },
       "AdminLoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -14662,6 +15003,229 @@
           }
         },
         "summary": "Get Admin Me",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/keywords": {
+      "get": {
+        "operationId": "get_admin_keywords_api_v1_admin_keywords_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminKeywordsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin Keywords",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_keywords_api_v1_admin_keywords_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminKeywordSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminKeywordsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Admin Keywords",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/keywords/impact": {
+      "post": {
+        "operationId": "post_admin_keyword_impact_api_v1_admin_keywords_impact_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminKeywordImpactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminKeywordImpactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Admin Keyword Impact",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/keywords/versions/{version}": {
+      "get": {
+        "operationId": "get_admin_keyword_version_api_v1_admin_keywords_versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminKeywordVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin Keyword Version",
         "tags": [
           "admin"
         ]

@@ -23,6 +23,7 @@ from app.domain.editorial_relevance import (
     evaluate_science_ai_education_relevance,
     evaluate_science_tech_editorial_relevance,
 )
+from app.domain.operator_keywords import OperatorKeywords, matched_terms
 from app.domain.topic_rerank import (
     TopicRerankConfig,
     TopicRerankOutcome,
@@ -461,8 +462,12 @@ async def load_governed_topic_candidates(
     governed_event_cutoff: datetime,
     config_snapshot: dict[str, object],
     include_content_slot_history: bool = False,
+    operator_keywords: OperatorKeywords | None = None,
 ) -> tuple[TopicCandidate, ...]:
     """Project immutable governed candidates without reinterpreting legacy history.
+
+    `operator_keywords` (the version a content-slot run recorded) adds 关注词/屏蔽词 hits found
+    in the title and summary; without it candidates are exactly as before.
 
     Legacy daily runs intentionally keep their historical daily-only repetition projection.
     Content-slot runs additionally merge prior slot selections. The delivered-history veto rule
@@ -954,6 +959,16 @@ async def load_governed_topic_candidates(
                     (business_date - last_selected[version.event_id]).days
                     if version.event_id in last_selected
                     else None
+                ),
+                operator_focus_terms=(
+                    matched_terms(searchable_text, operator_keywords.focus)
+                    if operator_keywords is not None
+                    else ()
+                ),
+                operator_block_terms=(
+                    matched_terms(searchable_text, operator_keywords.block)
+                    if operator_keywords is not None
+                    else ()
                 ),
             )
         )

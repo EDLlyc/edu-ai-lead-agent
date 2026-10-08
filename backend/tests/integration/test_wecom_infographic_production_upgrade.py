@@ -42,7 +42,7 @@ async def test_existing_production_head_upgrades_without_losing_draft_ownership(
 
     async with integration_context.engine.connect() as connection:
         assert await connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20261008_0053"
+            "20261008_0054"
         )
         tables = await connection.run_sync(lambda sync: set(inspect(sync).get_table_names()))
         assert {
@@ -124,5 +124,5 @@ async def test_empty_advisory_revision_can_downgrade_and_upgrade(
     await asyncio.to_thread(command.upgrade, config, "head")
     async with integration_context.engine.connect() as connection:
         assert await connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20261008_0053"
+            "20261008_0054"
         )

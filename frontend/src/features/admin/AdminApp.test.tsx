@@ -136,16 +136,14 @@ describe("运营后台", () => {
       .map((link) => link.textContent);
     expect(links).toEqual([
       "新闻源",
-      "关键词待上线",
+      "关键词",
       "发布待上线",
       "数据待上线",
       "排版模板待上线",
       "海报风格待上线",
     ]);
     // A link to an owner-only page falls back to the first allowed section.
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "当前账号不能打开这个页面",
-    );
+    expect(screen.getByText(/当前账号不能打开这个页面/)).toBeInTheDocument();
     expect(within(menu).getByRole("link", { name: /新闻源/ })).toHaveAttribute(
       "aria-current",
       "page",

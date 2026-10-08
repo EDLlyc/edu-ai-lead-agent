@@ -75,12 +75,38 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - **Local caveat**: a dev machine behind a fake-IP proxy (198.18.0.0/15) resolves some hosts to
   non-global addresses, and the fetcher correctly refuses them. Production DNS is normal.
 
+## 关键词 (item 2)
+
+- **Storage**: `operator_keyword_versions` holds immutable saves of 关注词 / 屏蔽词 / 文案禁用词.
+  - The highest version is in force; "restore" saves a new version with old lists.
+  - Terms are plain, case-insensitive substrings, 1–20 characters, at most 200 per list. A term
+    cannot be both 关注词 and 屏蔽词.
+- **Snapshot**: `content_slot_runs.operator_keyword_version_id` is set once by
+  `enqueue_content_slot_run` when the run is created.
+  - It is not part of the run identity comparison, so a scheduler retry never conflicts with an
+    edit.
+  - Human picks inherit it from their base run. Runs with null behave exactly as before
+    (replay-safe).
+- **Effects**:
+  - 屏蔽词 in title or summary: veto `operator_blocked_term`.
+  - 关注词: `OPERATOR_FOCUS_BONUS` (0.08) added to the slot ordering value only. Eligibility and
+    the base score are unchanged.
+  - The hits and the bonus are written to `content_slot_scores.explanation` only when present.
+  - 文案禁用词: `LockedTopicContext.operator_banned_terms`, loaded via the copy run's slot run.
+    `validate_material_draft` raises error `operator_banned_term` when `all_output` contains one
+    (the system headline is not checked).
+- **Impact check**: the last 7 days of scheduled slot candidates.
+  - Blocking more than 30 % needs `confirm_wide_block` (422 `keyword_block_too_wide`).
+- **Exhibit**: maps the new veto code to `other_rule`.
+
 ## Frontend
 
 `frontend/src/features/admin/`:
 
 - `AdminApp` checks `me`, then shows the login page or the shell.
 - `sections.ts` holds the menu, roles and planned items.
+- `keywords/` is the 关键词 page: chips per list, 试一下 (client-side, same matching rule), the
+  impact check, the wide-block confirmation, and history with 载入这一版.
 - `sources/` is the 新闻源 page: the list, on/off with confirmation, and the editor. Saving needs a
   successful preview of the same fetch settings.
 - `api.ts` is the same-origin client with the guard header.

@@ -123,6 +123,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Keywords */
+        get: operations["get_admin_keywords_api_v1_admin_keywords_get"];
+        put?: never;
+        /** Post Admin Keywords */
+        post: operations["post_admin_keywords_api_v1_admin_keywords_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/keywords/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Keyword Impact */
+        post: operations["post_admin_keyword_impact_api_v1_admin_keywords_impact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/keywords/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Keyword Version */
+        get: operations["get_admin_keyword_version_api_v1_admin_keywords_versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sources": {
         parameters: {
             query?: never;
@@ -1660,6 +1712,121 @@ export interface components {
             target_type: string | null;
             /** Username */
             username: string;
+        };
+        /** AdminKeywordBlockedItem */
+        AdminKeywordBlockedItem: {
+            /** Selected */
+            selected: boolean;
+            /** Terms */
+            terms: string[];
+            /** Title */
+            title: string;
+        };
+        /** AdminKeywordFocusedItem */
+        AdminKeywordFocusedItem: {
+            /** Terms */
+            terms: string[];
+            /** Title */
+            title: string;
+        };
+        /** AdminKeywordHistoryItem */
+        AdminKeywordHistoryItem: {
+            /** Block Count */
+            block_count: number;
+            /** Copy Banned Count */
+            copy_banned_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Focus Count */
+            focus_count: number;
+            /** Note */
+            note: string | null;
+            /** Version */
+            version: number;
+        };
+        /** AdminKeywordImpactRequest */
+        AdminKeywordImpactRequest: {
+            /** Block */
+            block?: string[];
+            /** Focus */
+            focus?: string[];
+        };
+        /** AdminKeywordImpactResponse */
+        AdminKeywordImpactResponse: {
+            /** Blocked */
+            blocked: components["schemas"]["AdminKeywordBlockedItem"][];
+            /** Blocked Count */
+            blocked_count: number;
+            /** Blocked Selected Count */
+            blocked_selected_count: number;
+            /** Blocked Share */
+            blocked_share: number;
+            /** Candidate Count */
+            candidate_count: number;
+            /** Days */
+            days: number;
+            /** Focused */
+            focused: components["schemas"]["AdminKeywordFocusedItem"][];
+            /** Focused Count */
+            focused_count: number;
+            /** Per Block Term */
+            per_block_term: components["schemas"]["AdminKeywordTermCount"][];
+            /** Wide */
+            wide: boolean;
+        };
+        /** AdminKeywordSaveRequest */
+        AdminKeywordSaveRequest: {
+            /** Block */
+            block?: string[];
+            /**
+             * Confirm Wide Block
+             * @default false
+             */
+            confirm_wide_block: boolean;
+            /** Copy Banned */
+            copy_banned?: string[];
+            /** Focus */
+            focus?: string[];
+            /** Note */
+            note?: string | null;
+        };
+        /** AdminKeywordTermCount */
+        AdminKeywordTermCount: {
+            /** Count */
+            count: number;
+            /** Term */
+            term: string;
+        };
+        /** AdminKeywordVersionResponse */
+        AdminKeywordVersionResponse: {
+            /** Block */
+            block: string[];
+            /** Copy Banned */
+            copy_banned: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Focus */
+            focus: string[];
+            /** Note */
+            note: string | null;
+            /** Version */
+            version: number;
+        };
+        /** AdminKeywordsResponse */
+        AdminKeywordsResponse: {
+            current: components["schemas"]["AdminKeywordVersionResponse"] | null;
+            /** History */
+            history: components["schemas"]["AdminKeywordHistoryItem"][];
         };
         /** AdminLoginRequest */
         AdminLoginRequest: {
@@ -6954,6 +7121,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_keywords_api_v1_admin_keywords_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_keywords_api_v1_admin_keywords_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminKeywordSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_keyword_impact_api_v1_admin_keywords_impact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminKeywordImpactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordImpactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_keyword_version_api_v1_admin_keywords_versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: number;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordVersionResponse"];
                 };
             };
             /** @description Validation Error */

@@ -1934,6 +1934,16 @@ class ContentSlotRunModel(Base):
     slot_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
     slot_policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     slot_policy_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Operator keyword lists in force when the run was created (null: none, today's behaviour).
+    operator_keyword_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "operator_keyword_versions.id",
+            name="fk_content_slot_runs_operator_keyword_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
     preparation_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     target_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -7038,4 +7048,34 @@ class AdminAuditEventModel(Base):
             "jsonb_typeof(detail) = 'object'", name="ck_admin_audit_events_detail_object"
         ),
         Index("ix_admin_audit_events_occurred_at", "occurred_at"),
+    )
+
+
+class OperatorKeywordVersionModel(Base):
+    """One immutable save of the operator keyword lists; the highest version is in force."""
+
+    __tablename__ = "operator_keyword_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    focus_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    block_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    copy_banned_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_operator_keyword_versions_version"),
+        CheckConstraint("version > 0", name="ck_operator_keyword_versions_version"),
+        CheckConstraint(
+            "jsonb_typeof(focus_terms) = 'array' AND jsonb_typeof(block_terms) = 'array' "
+            "AND jsonb_typeof(copy_banned_terms) = 'array'",
+            name="ck_operator_keyword_versions_arrays",
+        ),
+        CheckConstraint(
+            "jsonb_array_length(focus_terms) <= 200 AND jsonb_array_length(block_terms) <= 200 "
+            "AND jsonb_array_length(copy_banned_terms) <= 200",
+            name="ck_operator_keyword_versions_sizes",
+        ),
     )

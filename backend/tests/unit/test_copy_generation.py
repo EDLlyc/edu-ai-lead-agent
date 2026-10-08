@@ -1196,6 +1196,25 @@ def test_copy_body_hanzi_length_warns_above_compact_limit(
         assert all("260" in issue.message and "压缩" in issue.message for issue in length_issues)
 
 
+def test_operator_banned_terms_fail_the_copy_gate() -> None:
+    draft = _contract_draft()
+    plain = {
+        issue.code
+        for issue in validate_material_draft(draft, topic=_topic(), brand_context=_brand())
+    }
+    assert "operator_banned_term" not in plain
+
+    topic = replace(_topic(), operator_banned_terms=("保证提分", "机器人"))
+    issues = [
+        issue
+        for issue in validate_material_draft(draft, topic=topic, brand_context=_brand())
+        if issue.code == "operator_banned_term"
+    ]
+    assert len(issues) == 1
+    assert issues[0].severity == "error"
+    assert issues[0].message == "文案包含后台设置的禁用词：机器人"
+
+
 def test_copy_body_count_excludes_non_cjk_content_and_trailing_hashtags() -> None:
     topic = _topic()
     draft = _contract_draft(
