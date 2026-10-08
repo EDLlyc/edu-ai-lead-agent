@@ -27,3 +27,9 @@ better needs the owner's blind judgments: `tmp/visual-replay/2026-10-08/compare-
 Adopt semantic ordering only if it is preferred clearly (e.g. semantic wins ≥ 60% of the decided
 pairs); otherwise keep rules. Rollout would also need: production visual index + embedding keys,
 BRAND_EMBEDDING_PROVIDER_MODE pinned to zhipu, rule-order fallback when embedding fails.
+
+## Decision (2026-10-08)
+
+Owner's blind judgments (24 pairs): semantic 13, rules 9, neither 2 → 59% of decided pairs,
+below the 60% rule, one-sided binomial p ≈ 0.26. Not adopted; production keeps rule ordering.
+A definite answer would need ~60+ decided pairs.
