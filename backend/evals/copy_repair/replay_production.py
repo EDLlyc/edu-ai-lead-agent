@@ -31,7 +31,9 @@ from sqlalchemy import text
 
 _AGENT_RUNS = """
 SELECT DISTINCT j.run_id,
-       bool_or(a.safe_metadata->>'repair_method' = 'agent') AS agent_fixed,
+       -- a dropped agent attempt (workflow) also carries repair_method=agent
+       bool_or(a.capability = 'generation' AND a.safe_metadata->>'repair_method' = 'agent')
+         AS agent_fixed,
        max(a.safe_metadata->>'repair_agent_version') AS version,
        max(r.created_at) AS created
 FROM copy_generation_attempts a
@@ -180,8 +182,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-calls", type=int, default=120)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--from-json", type=Path, default=None, help="re-render saved results")
+    parser.add_argument(
+        "--production-fallback",
+        action="append",
+        default=[],
+        help="run id prefix whose production agent fell back (fixes results saved before 10-08)",
+    )
     args = parser.parse_args(argv)
-    results = asyncio.run(_run(args))
+    if args.from_json:
+        results = json.loads(args.from_json.read_text(encoding="utf-8"))
+        for item in results:
+            if any(item["run_id"].startswith(prefix) for prefix in args.production_fallback):
+                item["production_agent_fixed"] = False
+    else:
+        results = asyncio.run(_run(args))
     report = render(results)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
