@@ -206,3 +206,40 @@ Started item 1 on the owner's word (10/8 instead of 10/9) and finished it: gener
 
 - Item 2 关键词 next; deploy items 0+1 together only on the owner's word (migrations 0052+0053, API + acquisition worker image)
 - Local dev DNS uses a fake-IP proxy (198.18.x): some hosts are refused locally by the public-DNS check; production is fine
+
+
+## Session 93: 运营后台第 2 项：关键词后台增删改
+
+**Date**: 2026-10-08
+**Task**: 运营后台第 2 项：关键词后台增删改
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Operator 关注词/屏蔽词/文案禁用词 as immutable versions; slot runs snapshot the version; block = veto, focus = ordering bonus, banned = copy gate error
+
+### Main Changes
+
+- Migration 0054 operator_keyword_versions + content_slot_runs.operator_keyword_version_id; human picks inherit
+- Selection: operator_blocked_term veto, +0.08 ordering bonus for focus hits, explanation keys only when present (replay-safe)
+- Copy: LockedTopicContext.operator_banned_terms -> validate_material_draft error operator_banned_term
+- Admin API + 关键词 page with try box, 7-day impact, wide-block confirmation, history
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ac5f076` | (see git log) |
+
+### Testing
+
+- [OK] unit + 3 integration + 7 frontend; browser smoke; predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Item 3 公众号发布 needs owner answers first (WeChat 认证 + freepublish permission; item 5 before 3?)
+- Deploy items 0-2 together on the owner's word: migrations 0052-0054; API, acquisition worker, content scheduler/worker images
