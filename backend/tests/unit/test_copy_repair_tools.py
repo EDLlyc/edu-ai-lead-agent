@@ -226,10 +226,12 @@ def test_repair_registry_describes_every_field_and_marks_workspace_tools() -> No
         "check_draft",
         "drop_claim",
         "find_evidence",
+        "list_brand_sentences",
         "replace_claim",
         "rewrite_hook",
+        "use_brand_sentence",
     ]
-    for name in ("drop_claim", "replace_claim", "rewrite_hook"):
+    for name in ("drop_claim", "replace_claim", "rewrite_hook", "use_brand_sentence"):
         assert tools[name]["annotations"]["workspace_only"] is True
     assert tools["find_evidence"]["annotations"] == {"read_only": True, "open_world": False}
     for tool in tools.values():
@@ -374,3 +376,65 @@ def test_workspace_refuses_copy_templates_the_tools_cannot_edit() -> None:
             rule_version="preview-v12-standalone-heading-advisory",
             draft=workspace.draft,
         )
+
+
+@pytest.mark.asyncio
+async def test_a_brand_sentence_is_picked_by_id_not_copied() -> None:
+    workspace = _workspace()
+    other = ActiveBrandContext(
+        chunk_id=uuid4(),
+        document_id=uuid4(),
+        version_id=uuid4(),
+        document_title="赛先生课程理念",
+        document_kind="positioning",
+        text="在赛先生科学，孩子亲手做实验。孩子把观察到的现象说清楚。",
+    )
+    workspace.brand_context = (*workspace.brand_context, other)
+    workspace.scope_to([("brand-1", "unsupported_brand_claim")])
+    registry = build_repair_tool_registry(workspace)
+
+    listed = await registry.invoke("list_brand_sentences", {})
+    ids = {s.text: s.sentence_id for s in listed.sentences}  # type: ignore[attr-defined]
+    in_use = [s.sentence_id for s in listed.sentences if s.in_use]  # type: ignore[attr-defined]
+    same = await registry.invoke(
+        "use_brand_sentence", {"claim_id": "brand-1", "sentence_id": in_use[0]}
+    )
+    unknown = await registry.invoke(
+        "use_brand_sentence", {"claim_id": "brand-1", "sentence_id": "b99"}
+    )
+    not_brand = await registry.invoke(
+        "use_brand_sentence",
+        {"claim_id": "fact-1", "sentence_id": ids["孩子把观察到的现象说清楚。"]},
+    )
+    used = await registry.invoke(
+        "use_brand_sentence",
+        {"claim_id": "brand-1", "sentence_id": ids["孩子把观察到的现象说清楚。"]},
+    )
+
+    assert set(ids) == {
+        "赛先生重视科学精神、好奇心、思考力和创造力。",
+        "在赛先生科学，孩子亲手做实验。",
+        "孩子把观察到的现象说清楚。",
+    }
+    assert isinstance(same, EditResult) and same.error_code == "same_sentence"
+    assert isinstance(unknown, EditResult) and unknown.error_code == "unknown_sentence"
+    assert isinstance(not_brand, EditResult) and not_brand.error_code == "not_flagged"
+    assert isinstance(used, EditResult) and used.ok
+    brand = next(c for c in workspace.draft.claims if c.id == "brand-1")
+    assert brand.text == "孩子把观察到的现象说清楚。" and brand.brand_chunk_ids == (other.chunk_id,)
+    assert workspace.edits == ["use_brand_sentence:brand-1"]
+    assert workspace.flagged_targets_edited()
+
+
+@pytest.mark.asyncio
+async def test_the_agent_stops_after_the_same_error_three_times() -> None:
+    workspace = _workspace()
+    bad = {"claim_id": "brand-1", "text": "赛先生让孩子爱上科学。", "brand_chunk_ids": [str(BRAND)]}
+    turns = [ChatTurn(None, (_call(str(n), "replace_claim", bad),), 300, 20) for n in range(6)]
+
+    outcome = await CopyRepairAgent(_ScriptedModel(turns)).repair(
+        workspace, (CopyIssue(code="unsupported_brand_claim", message="x", claim_id="brand-1"),)
+    )
+
+    assert outcome.stopped == "repeated_error"
+    assert outcome.rounds == 3 and outcome.edits == ()

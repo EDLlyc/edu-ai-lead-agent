@@ -35,16 +35,16 @@ from app.schemas.copy_generation import (
     render_headline_hook_copy,
 )
 
-REPAIR_TOOLSET_VERSION = "copy-repair-tools-v3-checked-hook"
+REPAIR_TOOLSET_VERSION = "copy-repair-tools-v4-brand-by-id"
 # How to route between the tools. The repair agent's system prompt and the MCP server's
 # instructions both use this exact text, so a function-calling model and an MCP client model are
 # told the same thing.
 REPAIR_TOOL_RULES = (
     "1. 不得加入新闻里没有的事实。事实 claim 只能用 find_evidence 找到的原文句子，原样复制，"
     "并填入对应的 evidence_ids。\n"
-    "2. 品牌说法只能原样取自提供的品牌资料（可在 brand_chunk_ids 里换用另一份品牌资料）。"
-    "草稿必须保留至少一条品牌说法：品牌句有问题（重复、不当）时用 replace_claim 换一句，"
-    "不能删光。\n"
+    "2. 品牌说法有问题（重复、不当、资料不支持）时，先 list_brand_sentences 查看可用的品牌句，"
+    "再用 use_brand_sentence 按编号换成其中最贴合这条新闻的一句；不要自己写或改写品牌句。"
+    "草稿必须保留至少一条品牌说法，不能删光。\n"
     "3. 引导语的问题（与新闻无关、承诺效果、制造焦虑、生硬）用 rewrite_hook 解决：一句话，"
     "从这条新闻本身出发引出一次亲子交流，以一个表情结尾，不承诺效果、不制造焦虑、不加新事实。\n"
     "4. 只改被标出的地方：点名了 claim 的问题只改那条 claim，没点名 claim 的问题只改引导语。\n"
@@ -134,6 +134,25 @@ class ReplaceClaimArguments(_Model):
     )
     brand_chunk_ids: tuple[UUID, ...] = Field(
         default=(), max_length=8, description="品牌说法引用的品牌资料编号；为空时沿用原来的"
+    )
+
+
+class BrandSentence(_Model):
+    sentence_id: str = Field(description="品牌句编号，use_brand_sentence 时填入")
+    brand_chunk_id: str = Field(description="这句话所在的品牌资料编号")
+    document_title: str = Field(description="品牌资料标题")
+    text: str = Field(description="品牌资料里的一个完整句子")
+    in_use: bool = Field(description="草稿里是否已经在用这一句")
+
+
+class ListBrandSentencesResult(_Model):
+    sentences: tuple[BrandSentence, ...] = Field(description="可以直接用作品牌说法的句子")
+
+
+class UseBrandSentenceArguments(_Model):
+    claim_id: str = Field(min_length=1, max_length=80, description="要替换的品牌说法 claim 编号")
+    sentence_id: str = Field(
+        min_length=2, max_length=8, description="list_brand_sentences 返回的品牌句编号，例如 b3"
     )
 
 
@@ -240,6 +259,33 @@ def _other_brand_sentences(
         if len(picked) == limit:
             break
     return tuple(picked)
+
+
+BRAND_SENTENCE_LIMIT = 24
+
+
+def brand_sentences(workspace: RepairWorkspace) -> list[tuple[str, ActiveBrandContext, str]]:
+    """Whole sentences of the brand material as (id, chunk, text), in a stable order."""
+
+    picked: list[tuple[str, ActiveBrandContext, str]] = []
+    seen: set[str] = set()
+    for chunk in workspace.brand_context:
+        for sentence in _sentences(chunk.text):
+            if 8 <= len(sentence) <= 120 and sentence not in seen:
+                seen.add(sentence)
+                picked.append((f"b{len(picked) + 1}", chunk, sentence))
+                if len(picked) == BRAND_SENTENCE_LIMIT:
+                    return picked
+    return picked
+
+
+def brand_sentence_by_id(
+    workspace: RepairWorkspace, sentence_id: str
+) -> tuple[ActiveBrandContext, str] | None:
+    for candidate_id, chunk, text in brand_sentences(workspace):
+        if candidate_id == sentence_id.strip():
+            return chunk, text
+    return None
 
 
 def _closest_sentences(texts: Sequence[str], *targets: str, limit: int = 3) -> tuple[str, ...]:
@@ -412,12 +458,62 @@ def repair_tool_definitions(
             return _rejected(
                 workspace,
                 "brand_claim_required",
-                "必须保留一条品牌说法：用 replace_claim 换成品牌资料里的另一句，"
-                "brand_chunk_ids 填那句所在的品牌资料编号",
+                "必须保留一条品牌说法：先 list_brand_sentences，"
+                "再用 use_brand_sentence 按编号换一句",
                 _other_brand_sentences(workspace, dropped.text),
             )
         workspace.draft = workspace.draft.model_copy(update={"claims": remaining})
         workspace.edits.append(f"drop_claim:{arguments.claim_id}")
+        return EditResult(ok=True, draft=workspace.view())
+
+    async def list_brand_sentences(_: NoArguments) -> ListBrandSentencesResult:
+        workspace = resolve()
+        used = {c.text for c in workspace.draft.claims if c.kind == "brand_statement"}
+        return ListBrandSentencesResult(
+            sentences=tuple(
+                BrandSentence(
+                    sentence_id=sentence_id,
+                    brand_chunk_id=str(chunk.chunk_id),
+                    document_title=chunk.document_title[:80],
+                    text=text,
+                    in_use=text in used,
+                )
+                for sentence_id, chunk, text in brand_sentences(workspace)
+            )
+        )
+
+    async def use_brand_sentence(arguments: UseBrandSentenceArguments) -> EditResult:
+        workspace = resolve()
+        current = claim_by_id(workspace.draft, arguments.claim_id)
+        if current is None:
+            return _rejected(workspace, "claim_not_found", "先调用 check_draft 查看现有 claim 编号")
+        if (scoped := _out_of_scope(workspace, current.id)) is not None:
+            return scoped
+        if current.kind != "brand_statement":
+            return _rejected(
+                workspace,
+                "not_brand_claim",
+                "这条不是品牌说法；事实用 find_evidence + replace_claim",
+            )
+        found = brand_sentence_by_id(workspace, arguments.sentence_id)
+        if found is None:
+            return _rejected(
+                workspace, "unknown_sentence", "先调用 list_brand_sentences，从返回的编号里选一个"
+            )
+        chunk, text = found
+        if text == current.text:
+            return _rejected(
+                workspace, "same_sentence", "这就是草稿正在用的品牌句，换一个不同编号的句子"
+            )
+        updated = current.model_copy(update={"text": text, "brand_chunk_ids": (chunk.chunk_id,)})
+        workspace.draft = workspace.draft.model_copy(
+            update={
+                "claims": tuple(
+                    updated if claim.id == current.id else claim for claim in workspace.draft.claims
+                )
+            }
+        )
+        workspace.edits.append(f"use_brand_sentence:{current.id}")
         return EditResult(ok=True, draft=workspace.view())
 
     async def rewrite_hook(arguments: RewriteHookArguments) -> EditResult:
@@ -497,6 +593,16 @@ def repair_tool_definitions(
             handler=find_evidence,  # type: ignore[arg-type]
         ),
         ToolDefinition(
+            name="list_brand_sentences",
+            description=(
+                "列出本条草稿可用的品牌句（取自品牌资料的完整句子）和编号，并标出草稿已在用的那句。"
+                "品牌说法有问题时先调用它，再用 use_brand_sentence 按编号替换。"
+            ),
+            argument_model=NoArguments,
+            result_model=ListBrandSentencesResult,
+            handler=list_brand_sentences,  # type: ignore[arg-type]
+        ),
+        ToolDefinition(
             name="replace_claim",
             description=(
                 "替换一条 claim 的文本。事实必须原样取自所引证据，"
@@ -518,6 +624,18 @@ def repair_tool_definitions(
             argument_model=RewriteHookArguments,
             result_model=EditResult,
             handler=rewrite_hook,  # type: ignore[arg-type]
+            read_only=False,
+            workspace_only=True,
+        ),
+        ToolDefinition(
+            name="use_brand_sentence",
+            description=(
+                "把一条品牌说法换成 list_brand_sentences 里的某一句（按编号），"
+                "系统原样写入那句并引用它所在的品牌资料。"
+            ),
+            argument_model=UseBrandSentenceArguments,
+            result_model=EditResult,
+            handler=use_brand_sentence,  # type: ignore[arg-type]
             read_only=False,
             workspace_only=True,
         ),

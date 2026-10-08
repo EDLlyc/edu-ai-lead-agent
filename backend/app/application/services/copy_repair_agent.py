@@ -35,7 +35,7 @@ from app.application.services.copy_repair_tools import (
 )
 from app.schemas.copy_generation import CopyIssue, MaterialDraft
 
-REPAIR_AGENT_VERSION = "copy-repair-agent-v4-keep-brand"
+REPAIR_AGENT_VERSION = "copy-repair-agent-v5-brand-by-id"
 
 REPAIR_SYSTEM_PROMPT = (
     "你是赛先生朋友圈文案的修复节点。审查拦下了这份草稿，你只能通过工具修改工作稿，"
@@ -69,7 +69,10 @@ class RepairChatModel(Protocol):
 
 # checked: stopped by the loop because check_draft passed after every flagged target
 # was edited.
-Stopped = Literal["finished", "checked", "gave_up", "round_limit", "call_limit"]
+Stopped = Literal["finished", "checked", "gave_up", "round_limit", "call_limit", "repeated_error"]
+# The same tool error this many times in a row means the agent is stuck: stop and let the caller
+# fall back instead of spending the remaining rounds.
+REPEATED_ERROR_LIMIT = 3
 
 
 @dataclass(slots=True)
@@ -89,7 +92,7 @@ def _fix_with(issue: CopyIssue, draft: MaterialDraft) -> str:
         return "rewrite_hook"
     claim = next((item for item in draft.claims if item.id == issue.claim_id), None)
     if claim is not None and claim.kind == "brand_statement":
-        return "replace_claim（原样复制所引品牌资料里的句子）或 drop_claim"
+        return "list_brand_sentences 后 use_brand_sentence（按编号换一句，不要自己写）"
     if claim is not None and claim.kind == "opinion":
         return "replace_claim"
     return "find_evidence 后 replace_claim（原样复制证据句子），找不到就 drop_claim"
@@ -111,6 +114,16 @@ def _issue_payload(
         }
         for issue in issues
     ]
+
+
+def _stuck(trace: Sequence[Mapping[str, object]]) -> bool:
+    """The last REPEATED_ERROR_LIMIT tool results all failed with the same error code."""
+
+    tail = list(trace)[-REPEATED_ERROR_LIMIT:]
+    if len(tail) < REPEATED_ERROR_LIMIT:
+        return False
+    codes = {step.get("error_code") for step in tail}
+    return all(not step.get("ok") for step in tail) and len(codes) == 1 and None not in codes
 
 
 class CopyRepairAgent:
@@ -227,6 +240,9 @@ class CopyRepairAgent:
                     outcome.trace.append({"tool": call.name, "ok": ok, "error_code": code})
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "content": content})
             if outcome.stopped == "call_limit":
+                break
+            if _stuck(outcome.trace):
+                outcome.stopped = "repeated_error"
                 break
             if checked_clean:
                 # The deterministic rules pass after an edit: stop without another model round.

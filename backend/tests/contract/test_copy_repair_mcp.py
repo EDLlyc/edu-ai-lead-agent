@@ -38,7 +38,7 @@ async def test_mcp_lists_the_agents_exact_repair_registry_and_shares_its_rules()
         assert tool.description == definition["description"]
         assert tool.input_schema == definition["parameters"]
         assert tool.annotations is not None
-        writes = tool.name in {"drop_claim", "replace_claim", "rewrite_hook"}
+        writes = tool.name in {"drop_claim", "replace_claim", "rewrite_hook", "use_brand_sentence"}
         assert tool.annotations.read_only_hint is not writes
         assert tool.annotations.open_world_hint is False
     assert instructions is not None and REPAIR_TOOL_RULES in instructions
@@ -101,7 +101,7 @@ async def test_stdio_repair_server_runs_offline_and_logs_to_stderr_only() -> Non
         stderr.seek(0)
         stderr_text = stderr.read()
 
-    assert len(listed.tools) == 5
+    assert len(listed.tools) == 7
     assert result.is_error is False
     assert '"event":"mcp_tool_call"' in stderr_text
     assert '"tool":"check_draft"' in stderr_text

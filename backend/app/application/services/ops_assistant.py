@@ -78,6 +78,7 @@ from app.application.services.copy_repair_tools import (
     DraftView,
     RepairWorkspace,
     UnsupportedRuleVersionError,
+    brand_sentence_by_id,
     build_repair_tool_registry,
     claim_by_id,
     repair_tool_definitions,
@@ -91,9 +92,18 @@ OPS_ASSISTANT_VERSION = "ops-assistant-v3-repair-subagent"
 AGENT_NAME = "ops_assistant"
 SUB_AGENT_NAME = "copy_repair"
 DELEGATE_TOOL = "delegate_repair"
-APPROVAL_REQUIRED = frozenset({"drop_claim", "replace_claim", "rewrite_hook"})
+APPROVAL_REQUIRED = frozenset({"drop_claim", "replace_claim", "rewrite_hook", "use_brand_sentence"})
 DRAFT_TOOLS = frozenset(
-    {"check_draft", "drop_claim", "find_evidence", "replace_claim", "rewrite_hook", DELEGATE_TOOL}
+    {
+        "check_draft",
+        "drop_claim",
+        "find_evidence",
+        "list_brand_sentences",
+        "replace_claim",
+        "rewrite_hook",
+        "use_brand_sentence",
+        DELEGATE_TOOL,
+    }
 )
 CONTEXT_BUDGET_CHARACTERS = 30_000
 LIMIT_TEXT = "这一轮查询步骤太多，已停止；请把问题说得更具体一些。"
@@ -1086,6 +1096,11 @@ def _preview(workspace: RepairWorkspace | None, call: ChatToolCall) -> dict[str,
         return None  # the tool itself refuses an unknown claim; no approval needed
     if call.name == "replace_claim":
         return {"claim_id": claim.id, "before": claim.text, "after": str(arguments.get("text", ""))}
+    if call.name == "use_brand_sentence":
+        found = brand_sentence_by_id(workspace, str(arguments.get("sentence_id", "")))
+        if found is None:
+            return None  # the tool itself refuses an unknown sentence id
+        return {"claim_id": claim.id, "before": claim.text, "after": found[1]}
     return {"claim_id": claim.id, "before": claim.text, "after": None}
 
 

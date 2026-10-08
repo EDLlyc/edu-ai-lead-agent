@@ -30,10 +30,10 @@ READ_TOOLS = frozenset(
     }
 )
 DELEGATE_TOOL = "delegate_repair"
-SINGLE_EDIT_TOOLS = frozenset({"rewrite_hook", "replace_claim", "drop_claim"})
+SINGLE_EDIT_TOOLS = frozenset({"rewrite_hook", "replace_claim", "drop_claim", "use_brand_sentence"})
 # delegate_repair is an edit too: its change set needs the operator's approval.
 EDIT_TOOLS = SINGLE_EDIT_TOOLS | {DELEGATE_TOOL}
-DRAFT_HELPERS = frozenset({"open_draft", "check_draft", "find_evidence"})
+DRAFT_HELPERS = frozenset({"open_draft", "check_draft", "find_evidence", "list_brand_sentences"})
 
 
 @dataclass(frozen=True, slots=True)

@@ -69,7 +69,7 @@ REPAIR_INSTRUCTIONS = (
 )
 
 
-EDIT_TOOLS = ("replace_claim", "drop_claim", "rewrite_hook")
+EDIT_TOOLS = ("replace_claim", "drop_claim", "rewrite_hook", "use_brand_sentence")
 _PREVIEW_CHARACTERS = 300
 
 
