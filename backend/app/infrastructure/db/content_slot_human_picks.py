@@ -187,6 +187,7 @@ async def create_human_pick(
         unfilled_reason_codes=[],
         started_at=now,
         completed_at=now,
+        operator_keyword_version_id=base.operator_keyword_version_id,
     )
     score_values: dict[str, Any] = {
         column.key: getattr(source, column.key)

@@ -9,6 +9,7 @@ export default tseslint.config(
     ignores: [
       "eslint.config.js",
       "dist",
+      "dist-admin",
       "coverage",
       "playwright-report",
       "src/lib/api/generated",

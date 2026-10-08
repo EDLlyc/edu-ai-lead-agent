@@ -13,6 +13,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
+from app.domain.operator_keywords import OPERATOR_FOCUS_BONUS
 from app.domain.topic_selection import (
     TopicCandidate,
     TopicScore,
@@ -304,8 +305,15 @@ class ContentSlotScore:
     selected_ordinal: int | None = None
     rerank_reason_codes: tuple[str, ...] = ()
     rerank_explanation: str | None = None
+    # 运营后台 keyword hits: 关注词 add `operator_focus_bonus` to the ordering value only;
+    # 屏蔽词 are already a veto in `base`.
+    operator_focus_terms: tuple[str, ...] = ()
+    operator_block_terms: tuple[str, ...] = ()
+    operator_focus_bonus: float = 0.0
 
     def __post_init__(self) -> None:
+        if not 0 <= self.operator_focus_bonus <= OPERATOR_FOCUS_BONUS:
+            raise ValueError("operator focus bonus is out of range")
         if not 0 <= self.affinity <= 0.25 or not math.isfinite(self.affinity):
             raise ValueError("content slot affinity must be finite and bounded")
         if self.same_day_excluded != (self.same_day_exclusion_reason is not None):
@@ -416,12 +424,16 @@ def select_slot_topics(
         )
         for candidate in candidates
     }
+    focus_bonus = {
+        candidate.event_id: OPERATOR_FOCUS_BONUS if candidate.operator_focus_terms else 0.0
+        for candidate in candidates
+    }
     similar_topic_ids = (
         _same_topic_exclusions(
             candidates,
             base_scores,
             ordering_values={
-                event_id: round(base_scores[event_id].total + affinity, 8)
+                event_id: round(base_scores[event_id].total + affinity + focus_bonus[event_id], 8)
                 for event_id, (affinity, _reasons) in affinities.items()
             },
             fingerprints=topic_fingerprints or {},
@@ -444,7 +456,7 @@ def select_slot_topics(
             else None
         )
         excluded = exclusion_reason is not None
-        ordering_value = round(base.total + affinity, 8)
+        ordering_value = round(base.total + affinity + focus_bonus[candidate.event_id], 8)
         base_group = topic_priority_group(base, excluded=excluded)
         final_key = (
             f"{base_group}:"
@@ -462,6 +474,9 @@ def select_slot_topics(
                 same_day_exclusion_reason=exclusion_reason,
                 ordering_value=ordering_value,
                 final_ordering_key=final_key,
+                operator_focus_terms=candidate.operator_focus_terms,
+                operator_block_terms=candidate.operator_block_terms,
+                operator_focus_bonus=focus_bonus[candidate.event_id],
             )
         )
 

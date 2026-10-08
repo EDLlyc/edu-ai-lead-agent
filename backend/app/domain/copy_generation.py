@@ -174,6 +174,8 @@ class LockedTopicContext:
     title: str | None
     summary: str | None
     evidence: tuple[EligibleEvidence, ...]
+    # 文案禁用词 from the 运营后台, recorded by the slot run this copy came from.
+    operator_banned_terms: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.decision_kind == "selected":
@@ -833,6 +835,16 @@ def validate_material_draft(
         )
     )
     _append_phrase_issues(issues, all_output, _BANNED_MARKETING, "prohibited_marketing")
+    operator_hits = [
+        term for term in topic.operator_banned_terms if term.casefold() in all_output.casefold()
+    ]
+    if operator_hits:
+        issues.append(
+            _issue(
+                "operator_banned_term",
+                f"文案包含后台设置的禁用词：{'、'.join(operator_hits)}",
+            )
+        )
     _append_phrase_issues(issues, all_output, _ANXIETY, "education_anxiety")
     _append_phrase_issues(issues, all_output, _PROMPT_INJECTION, "prompt_injection_echo")
     _append_phrase_issues(issues, draft.image_prompt, _UNSAFE_IMAGE, "unsafe_image_prompt")

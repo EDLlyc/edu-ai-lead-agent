@@ -178,7 +178,9 @@ class AcquisitionExecutor:
                     response=list_response,
                     stored=stored_list,
                 )
-                connector = get_connector(claimed.profile.connector_key)
+                connector = get_connector(
+                    claimed.profile.connector_key, claimed.profile.connector_config
+                )
                 accepted_limit = (
                     self._settings.acquisition_first_run_item_limit
                     if cursor.last_item_id is None

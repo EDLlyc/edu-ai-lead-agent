@@ -1,5 +1,6 @@
 export type ApplicationPath =
   | "console"
+  | "admin"
   | "ip-assets"
   | "ip-assets-create"
   | "ip-assets-flipbook"
@@ -8,6 +9,7 @@ export type ApplicationPath =
 
 export function resolveApplicationPath(pathname: string): ApplicationPath {
   if (pathname === "/") return "console";
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return "admin";
   if (pathname === "/ip-assets" || pathname === "/ip-assets/") {
     return "ip-assets";
   }

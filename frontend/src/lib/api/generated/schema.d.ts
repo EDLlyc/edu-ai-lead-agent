@@ -55,6 +55,213 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Audit Events */
+        get: operations["get_admin_audit_events_api_v1_admin_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Login */
+        post: operations["post_admin_login_api_v1_admin_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Logout */
+        post: operations["post_admin_logout_api_v1_admin_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Me */
+        get: operations["get_admin_me_api_v1_admin_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Keywords */
+        get: operations["get_admin_keywords_api_v1_admin_keywords_get"];
+        put?: never;
+        /** Post Admin Keywords */
+        post: operations["post_admin_keywords_api_v1_admin_keywords_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/keywords/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Keyword Impact */
+        post: operations["post_admin_keyword_impact_api_v1_admin_keywords_impact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/keywords/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Keyword Version */
+        get: operations["get_admin_keyword_version_api_v1_admin_keywords_versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Sources */
+        get: operations["get_admin_sources_api_v1_admin_sources_get"];
+        put?: never;
+        /** Post Admin Source */
+        post: operations["post_admin_source_api_v1_admin_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Source Preview */
+        post: operations["post_admin_source_preview_api_v1_admin_sources_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Admin Source */
+        delete: operations["delete_admin_source_api_v1_admin_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Admin Source */
+        patch: operations["patch_admin_source_api_v1_admin_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Source Disable */
+        post: operations["post_admin_source_disable_api_v1_admin_sources__source_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Source Enable */
+        post: operations["post_admin_source_enable_api_v1_admin_sources__source_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/brand-context/retrieve": {
         parameters: {
             query?: never;
@@ -243,9 +450,49 @@ export interface paths {
         put?: never;
         /**
          * Create Content Slot Human Pick
-         * @description Operator-approved extra item: copy, image, WeCom delivery and long image follow at once.
+         * @description Operator-approved extra item: copy and image are produced, then held for the push.
          */
         post: operations["create_content_slot_human_pick_api_v1_content_slot_human_picks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-human-picks/{run_id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Content Slot Human Pick Copy
+         * @description Check (``dry_run``) or save the operator's hook and hashtags for a held human pick.
+         */
+        post: operations["revise_content_slot_human_pick_copy_api_v1_content_slot_human_picks__run_id__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-human-picks/{run_id}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Content Slot Human Pick
+         * @description Send a held human pick to the formal WeCom group now (the long image follows).
+         */
+        post: operations["push_content_slot_human_pick_api_v1_content_slot_human_picks__run_id__push_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1433,6 +1680,326 @@ export interface components {
             trigger: string;
             /** Unchanged Count */
             unchanged_count: number;
+        };
+        /** AdminAuditEventListResponse */
+        AdminAuditEventListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminAuditEventResponse"][];
+        };
+        /** AdminAuditEventResponse */
+        AdminAuditEventResponse: {
+            /** Action */
+            action: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** Username */
+            username: string;
+        };
+        /** AdminKeywordBlockedItem */
+        AdminKeywordBlockedItem: {
+            /** Selected */
+            selected: boolean;
+            /** Terms */
+            terms: string[];
+            /** Title */
+            title: string;
+        };
+        /** AdminKeywordFocusedItem */
+        AdminKeywordFocusedItem: {
+            /** Terms */
+            terms: string[];
+            /** Title */
+            title: string;
+        };
+        /** AdminKeywordHistoryItem */
+        AdminKeywordHistoryItem: {
+            /** Block Count */
+            block_count: number;
+            /** Copy Banned Count */
+            copy_banned_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Focus Count */
+            focus_count: number;
+            /** Note */
+            note: string | null;
+            /** Version */
+            version: number;
+        };
+        /** AdminKeywordImpactRequest */
+        AdminKeywordImpactRequest: {
+            /** Block */
+            block?: string[];
+            /** Focus */
+            focus?: string[];
+        };
+        /** AdminKeywordImpactResponse */
+        AdminKeywordImpactResponse: {
+            /** Blocked */
+            blocked: components["schemas"]["AdminKeywordBlockedItem"][];
+            /** Blocked Count */
+            blocked_count: number;
+            /** Blocked Selected Count */
+            blocked_selected_count: number;
+            /** Blocked Share */
+            blocked_share: number;
+            /** Candidate Count */
+            candidate_count: number;
+            /** Days */
+            days: number;
+            /** Focused */
+            focused: components["schemas"]["AdminKeywordFocusedItem"][];
+            /** Focused Count */
+            focused_count: number;
+            /** Per Block Term */
+            per_block_term: components["schemas"]["AdminKeywordTermCount"][];
+            /** Wide */
+            wide: boolean;
+        };
+        /** AdminKeywordSaveRequest */
+        AdminKeywordSaveRequest: {
+            /** Block */
+            block?: string[];
+            /**
+             * Confirm Wide Block
+             * @default false
+             */
+            confirm_wide_block: boolean;
+            /** Copy Banned */
+            copy_banned?: string[];
+            /** Focus */
+            focus?: string[];
+            /** Note */
+            note?: string | null;
+        };
+        /** AdminKeywordTermCount */
+        AdminKeywordTermCount: {
+            /** Count */
+            count: number;
+            /** Term */
+            term: string;
+        };
+        /** AdminKeywordVersionResponse */
+        AdminKeywordVersionResponse: {
+            /** Block */
+            block: string[];
+            /** Copy Banned */
+            copy_banned: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Focus */
+            focus: string[];
+            /** Note */
+            note: string | null;
+            /** Version */
+            version: number;
+        };
+        /** AdminKeywordsResponse */
+        AdminKeywordsResponse: {
+            current: components["schemas"]["AdminKeywordVersionResponse"] | null;
+            /** History */
+            history: components["schemas"]["AdminKeywordHistoryItem"][];
+        };
+        /** AdminLoginRequest */
+        AdminLoginRequest: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /** AdminMeResponse */
+        AdminMeResponse: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "editor";
+            /** Username */
+            username: string;
+        };
+        /** AdminSourceConfig */
+        AdminSourceConfig: {
+            /** Content Selectors */
+            content_selectors?: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "html" | "rss";
+            /** Link Contains */
+            link_contains?: string[];
+            /** List Selectors */
+            list_selectors?: string[];
+        };
+        /** AdminSourceDraftRequest */
+        AdminSourceDraftRequest: {
+            config: components["schemas"]["AdminSourceConfig"];
+            /** Display Name */
+            display_name: string;
+            /** Entry Url */
+            entry_url: string;
+            /**
+             * Organization Type
+             * @enum {string}
+             */
+            organization_type: "government" | "education_institution" | "research_organization" | "authoritative_media";
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "A" | "B";
+        };
+        /** AdminSourceLatestJob */
+        AdminSourceLatestJob: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Error Code */
+            error_code: string | null;
+            /** Filtered Count */
+            filtered_count: number;
+            /** New Count */
+            new_count: number;
+            /** Outcome */
+            outcome: string | null;
+            /** Status */
+            status: string;
+        };
+        /** AdminSourceListResponse */
+        AdminSourceListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminSourceResponse"][];
+        };
+        /** AdminSourcePreviewLink */
+        AdminSourcePreviewLink: {
+            /** Published At */
+            published_at: string | null;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string;
+        };
+        /** AdminSourcePreviewRequest */
+        AdminSourcePreviewRequest: {
+            config: components["schemas"]["AdminSourceConfig"];
+            /** Entry Url */
+            entry_url: string;
+        };
+        /** AdminSourcePreviewResponse */
+        AdminSourcePreviewResponse: {
+            /** Links */
+            links: components["schemas"]["AdminSourcePreviewLink"][];
+            /** Ok */
+            ok: boolean;
+            /** Problem */
+            problem: string | null;
+            /** Robots */
+            robots: ("allowed" | "no_robots_file" | "disallowed") | null;
+            /** Samples */
+            samples: components["schemas"]["AdminSourcePreviewSample"][];
+        };
+        /** AdminSourcePreviewSample */
+        AdminSourcePreviewSample: {
+            /** Characters */
+            characters: number;
+            /** Excerpt */
+            excerpt: string;
+            /**
+             * Freshness
+             * @enum {string}
+             */
+            freshness: "fresh" | "stale" | "unknown";
+            /** Problem */
+            problem: string | null;
+            /** Published At */
+            published_at: string | null;
+            /** Relevant */
+            relevant: boolean;
+            /** Title */
+            title: string | null;
+            /** Topic */
+            topic: ("education" | "frontier" | "other") | null;
+            /** Url */
+            url: string;
+        };
+        /** AdminSourceResponse */
+        AdminSourceResponse: {
+            /** Archived At */
+            archived_at: string | null;
+            config: components["schemas"]["AdminSourceConfig"] | null;
+            /** Display Name */
+            display_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Entry Url */
+            entry_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "code" | "html" | "rss";
+            latest_job: components["schemas"]["AdminSourceLatestJob"] | null;
+            /**
+             * Managed By
+             * @enum {string}
+             */
+            managed_by: "seed" | "operator";
+            /** New Last 7 Days */
+            new_last_7_days: number;
+            /** Organization Type */
+            organization_type: string;
+            /** Robots Status */
+            robots_status: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "A" | "B";
+            /** Version */
+            version: number;
         };
         /** ArticleBulletListBlock */
         ArticleBulletListBlock: {
@@ -2909,7 +3476,7 @@ export interface components {
         };
         /**
          * CreateContentSlotHumanPickRequest
-         * @description An operator approves one scored candidate; it is produced and sent right away.
+         * @description An operator approves one scored candidate; it is produced, then held for review and push.
          */
         CreateContentSlotHumanPickRequest: {
             /**
@@ -3851,6 +4418,45 @@ export interface components {
             status: "ok";
             /** Timezone */
             timezone: string;
+        };
+        /** HumanPickCopyIssueResponse */
+        HumanPickCopyIssueResponse: {
+            /** Code */
+            code: string;
+            /** Field */
+            field: string | null;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
+        /** HumanPickCopyResponse */
+        HumanPickCopyResponse: {
+            /** Copywriting */
+            copywriting: string | null;
+            /** Hashtags */
+            hashtags: string[];
+            /** Hook */
+            hook: string;
+            /** Issues */
+            issues: components["schemas"]["HumanPickCopyIssueResponse"][];
+            /** Passed */
+            passed: boolean;
+            /**
+             * Push Deadline
+             * Format: date-time
+             */
+            push_deadline: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Saved */
+            saved: boolean;
         };
         /** ImageArtifactResponse */
         ImageArtifactResponse: {
@@ -5731,6 +6337,45 @@ export interface components {
             /** Passed */
             passed: boolean;
         };
+        /** PushHumanPickRequest */
+        PushHumanPickRequest: {
+            /** Note */
+            note?: string | null;
+            /** Reviewer */
+            reviewer: string;
+        };
+        /** PushHumanPickResponse */
+        PushHumanPickResponse: {
+            /**
+             * Delivery Id
+             * Format: uuid
+             */
+            delivery_id: string;
+            /** Delivery Status */
+            delivery_status: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /**
+         * ReviseHumanPickCopyRequest
+         * @description The operator's hook sentence and hashtags; the rest of the copy stays system-owned.
+         */
+        ReviseHumanPickCopyRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Hashtags */
+            hashtags?: string[];
+            /** Hook */
+            hook: string;
+            /** Reviewer */
+            reviewer: string;
+        };
         /** SnapshotMetadataResponse */
         SnapshotMetadataResponse: {
             /** Bucket */
@@ -6362,6 +7007,504 @@ export interface operations {
             };
         };
     };
+    get_admin_audit_events_api_v1_admin_audit_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAuditEventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_login_api_v1_admin_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_logout_api_v1_admin_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_me_api_v1_admin_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_keywords_api_v1_admin_keywords_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_keywords_api_v1_admin_keywords_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminKeywordSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_keyword_impact_api_v1_admin_keywords_impact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminKeywordImpactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordImpactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_keyword_version_api_v1_admin_keywords_versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: number;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminKeywordVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_sources_api_v1_admin_sources_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_api_v1_admin_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSourceDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_preview_api_v1_admin_sources_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSourcePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourcePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_admin_source_api_v1_admin_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_admin_source_api_v1_admin_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSourceDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_disable_api_v1_admin_sources__source_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_enable_api_v1_admin_sources__source_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retrieve_brand_context_route_api_v1_brand_context_retrieve_post: {
         parameters: {
             query?: never;
@@ -6722,6 +7865,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentSlotHumanPickResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_content_slot_human_pick_copy_api_v1_content_slot_human_picks__run_id__copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseHumanPickCopyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanPickCopyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_content_slot_human_pick_api_v1_content_slot_human_picks__run_id__push_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushHumanPickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushHumanPickResponse"];
                 };
             };
             /** @description Validation Error */

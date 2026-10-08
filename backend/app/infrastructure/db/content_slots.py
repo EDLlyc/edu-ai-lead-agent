@@ -45,6 +45,10 @@ from app.infrastructure.db.models import (
     GovernanceRunModel,
     TopicRerankRecordModel,
 )
+from app.infrastructure.db.operator_keywords import (
+    keywords_for_slot_run,
+    load_active_keyword_row,
+)
 from app.infrastructure.db.topic_selection import (
     ensure_topic_scoring_config,
     load_governed_topic_candidates,
@@ -187,6 +191,8 @@ async def enqueue_content_slot_run(
         return existing, False
 
     run_id = uuid4()
+    # The keyword lists in force now stay with this run; later edits never change its decision.
+    keyword_row = await load_active_keyword_row(session)
     run = ContentSlotRunModel(
         id=run_id,
         trigger=trigger,
@@ -211,6 +217,7 @@ async def enqueue_content_slot_run(
         item_limit=schedule.max_items,
         status="queued",
         unfilled_count=schedule.max_items,
+        operator_keyword_version_id=None if keyword_row is None else keyword_row.id,
     )
     session.add(run)
     # These tables intentionally have no ORM relationship; persist the parent
@@ -356,6 +363,16 @@ async def heartbeat_content_slot_job(
     return True
 
 
+def _operator_keyword_explanation(score: ContentSlotScore) -> dict[str, object]:
+    explanation: dict[str, object] = {}
+    if score.operator_focus_terms:
+        explanation["operator_focus_terms"] = list(score.operator_focus_terms)
+        explanation["operator_focus_bonus"] = score.operator_focus_bonus
+    if score.operator_block_terms:
+        explanation["operator_block_terms"] = list(score.operator_block_terms)
+    return explanation
+
+
 async def load_content_slot_candidates(
     session: AsyncSession, run_id: UUID
 ) -> tuple[TopicCandidate, ...]:
@@ -370,6 +387,7 @@ async def load_content_slot_candidates(
         governed_event_cutoff=run.governed_event_cutoff,
         config_snapshot=run.config_snapshot,
         include_content_slot_history=True,
+        operator_keywords=await keywords_for_slot_run(session, run),
     )
 
 
@@ -674,6 +692,8 @@ async def persist_content_slot_decision(
                     "final_rank": score.rank,
                     "rerank_reason_codes": list(score.rerank_reason_codes),
                     "rerank_explanation": score.rerank_explanation,
+                    # Only runs with operator keyword hits carry these keys.
+                    **_operator_keyword_explanation(score),
                 },
                 slot_affinity=score.affinity,
                 slot_affinity_reasons=list(score.affinity_reasons),

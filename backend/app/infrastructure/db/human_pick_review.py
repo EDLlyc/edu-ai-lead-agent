@@ -51,6 +51,7 @@ from app.infrastructure.db.models import (
     MaterialPackageModel,
     WeComDeliveryJobModel,
 )
+from app.infrastructure.db.operator_keywords import copy_banned_terms_for_copy_run
 
 _READY_PACKAGE_STATUSES = ("awaiting_manual_use", "completed")
 
@@ -171,6 +172,7 @@ async def load_review_context(
         title=version.representative_title,
         summary=raw_summary if isinstance(raw_summary, str) else None,
         evidence=evidence,
+        operator_banned_terms=await copy_banned_terms_for_copy_run(session, copy_run),
     )
     attempt = await session.scalar(
         select(CopyGenerationAttemptModel).where(

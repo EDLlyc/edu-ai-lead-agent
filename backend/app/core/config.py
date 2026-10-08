@@ -66,6 +66,8 @@ class Settings(BaseSettings):
         default="http://127.0.0.1:5173", min_length=1, max_length=1_000
     )
     business_timezone: str = "Asia/Shanghai"
+    # 运营后台 session cookie; unset means Secure everywhere except development.
+    admin_session_cookie_secure: bool | None = None
 
     database_url: SecretStr = SecretStr(
         "postgresql+asyncpg://edu_ai:edu_ai_local_change_me@127.0.0.1:5432/edu_ai"

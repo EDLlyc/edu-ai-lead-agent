@@ -71,6 +71,7 @@ from app.infrastructure.db.models import (
     EvidenceBindingModel,
     NormalizedArticleModel,
 )
+from app.infrastructure.db.operator_keywords import copy_banned_terms_for_copy_run
 from app.schemas.copy_generation import AuditVerdict, CopyIssue, DraftClaim, MaterialDraft
 
 _SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,79}")
@@ -334,6 +335,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                 title=version.representative_title,
                 summary=raw_summary if isinstance(raw_summary, str) else None,
                 evidence=evidence,
+                operator_banned_terms=await copy_banned_terms_for_copy_run(session, run),
             )
 
     async def load_drafts(self, claimed: ClaimedCopyGenerationJob) -> tuple[StoredDraft, ...]:

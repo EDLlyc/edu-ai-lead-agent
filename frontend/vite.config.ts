@@ -68,7 +68,31 @@ function servePreviewAssets() {
   };
 }
 
-export default defineConfig({
+// The 运营后台 talks to the API through this origin, so its session cookie stays same-origin
+// (SameSite=Strict, no credentialed CORS on the API).
+const adminApiProxy = {
+  "/api/v1/admin": {
+    target: process.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
+    changeOrigin: false,
+  },
+};
+
+// `vite build --mode admin` builds the 运营后台 alone into dist-admin/ (page at /admin/, files at /assets/).
+export default defineConfig(({ mode }) => ({
+  ...(mode === "admin"
+    ? {
+        base: "/",
+        build: {
+          outDir: "dist-admin",
+          emptyOutDir: true,
+          rollupOptions: {
+            input: fileURLToPath(
+              new URL("./admin/index.html", import.meta.url),
+            ),
+          },
+        },
+      }
+    : {}),
   envDir: "..",
   plugins: [react(), servePreviewAssets()],
   resolve: {
@@ -79,6 +103,10 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 5173,
+    proxy: adminApiProxy,
+  },
+  preview: {
+    proxy: adminApiProxy,
   },
   test: {
     environment: "jsdom",
@@ -89,4 +117,4 @@ export default defineConfig({
       reporter: ["text", "html"],
     },
   },
-});
+}));

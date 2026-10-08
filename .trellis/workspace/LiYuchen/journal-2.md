@@ -132,3 +132,150 @@ Found why selector v3 reused cooled images (two-person pool had 2 prop-free imag
 
 - After the evening slot, compare live cooldown-exhausted picks with the replay.
 - Owner review of resume v3.
+
+
+## Session 91: 运营后台计划与第 0 项（登录 + 设置页框架）
+
+**Date**: 2026-10-08
+**Task**: 运营后台计划与第 0 项（登录 + 设置页框架）
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Owner's 8 admin features planned as nine Trellis tasks (10/8-11/17); item 0 built: operator login, roles, audit log, /admin shell
+
+### Main Changes
+
+- Tasks 10-08-admin-console + admin-0..8 with PRDs from a code survey (sources are code seeds, keywords hard-coded, WeChat draft-only, no datacube, single env account, style constants, env-only model keys)
+- Backend: migration 0052 admin_users/sessions/audit, /api/v1/admin auth + audit-events, write guard header, CLI admin_users_main
+- Frontend: /admin login + grouped menu by role + placeholders + 操作记录; same-origin via Vite proxy (no credentialed CORS)
+- Spec .trellis/spec/backend/admin-console.md: rules items 1-8 must follow (audit, fallback, versioning, encrypted write-only secrets)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95059dd` | (see git log) |
+| `90c5cdd` | (see git log) |
+
+### Testing
+
+- [OK] 12 unit + 6 integration (PostgreSQL), 34 frontend, browser smoke on a throwaway DB, predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Item 1 新闻源 from 10/9; owner questions: WeChat 认证/发布/数据统计 permissions, meaning of 文字数据统计, item 5 before 3, poster samples, how operators reach the console (tunnel vs HTTPS)
+
+
+## Session 92: 运营后台第 1 项：新闻源后台增删改
+
+**Date**: 2026-10-08
+**Task**: 运营后台第 1 项：新闻源后台增删改
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Started item 1 on the owner's word (10/8 instead of 10/9) and finished it: generic HTML/RSS connectors configured in the database, sticky on/off for code sources, preview before save, audit
+
+### Main Changes
+
+- Generic connectors generic_html_v1 / generic_rss_v1 with settings in source_versions.connector_config (migration 0053)
+- seed_sources keeps an operator's on/off (enabled_set_by); operator sources can be edited (new version) and archived
+- Preview route: robots.txt, list, 3 sample articles with freshness/relevance verdicts; create re-checks robots; sources start disabled
+- 新闻源 page in /admin; audit labels for source actions
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0b1c33c` | (see git log) |
+
+### Testing
+
+- [OK] 15 unit + 10 integration + 12 frontend; browser smoke + one real acquisition job on kepu.gmw.cn kept 2 articles; predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Item 2 关键词 next; deploy items 0+1 together only on the owner's word (migrations 0052+0053, API + acquisition worker image)
+- Local dev DNS uses a fake-IP proxy (198.18.x): some hosts are refused locally by the public-DNS check; production is fine
+
+
+## Session 93: 运营后台第 2 项：关键词后台增删改
+
+**Date**: 2026-10-08
+**Task**: 运营后台第 2 项：关键词后台增删改
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Operator 关注词/屏蔽词/文案禁用词 as immutable versions; slot runs snapshot the version; block = veto, focus = ordering bonus, banned = copy gate error
+
+### Main Changes
+
+- Migration 0054 operator_keyword_versions + content_slot_runs.operator_keyword_version_id; human picks inherit
+- Selection: operator_blocked_term veto, +0.08 ordering bonus for focus hits, explanation keys only when present (replay-safe)
+- Copy: LockedTopicContext.operator_banned_terms -> validate_material_draft error operator_banned_term
+- Admin API + 关键词 page with try box, 7-day impact, wide-block confirmation, history
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ac5f076` | (see git log) |
+
+### Testing
+
+- [OK] unit + 3 integration + 7 frontend; browser smoke; predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Item 3 公众号发布 needs owner answers first (WeChat 认证 + freepublish permission; item 5 before 3?)
+- Deploy items 0-2 together on the owner's word: migrations 0052-0054; API, acquisition worker, content scheduler/worker images
+
+
+## Session 94: 运营后台第 0-2 项上线
+
+**Date**: 2026-10-08
+**Task**: 运营后台第 0-2 项上线
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Deployed login/audit, 新闻源, 关键词 to production at 17:28 CST on the owner's word (evening slot waived): image 5a5fb24c, migrations 0052-0054, mainline e6b3a5b
+
+### Main Changes
+
+- Base hashes 0 mismatches, offline smoke ok, DB dump 95 MB verified, migrate 0051->0054, six services recreated, admin routes 401/403, no log errors; 18:30 deliveries stayed queued
+- Admin-only build (npm run build:admin) and nginx template tested locally (only console + /api/v1/admin exposed, CSP clean, login rate limit)
+- mainline fast-forwarded to e6b3a5b (merged peer's docs-only e4534ac); exhibit connector pins 5a5fb24c; peer notified
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e6b3a5b` | (see git log) |
+
+### Testing
+
+- [OK] predeploy gate PASS; production checks listed above
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Create the first owner account on production (owner picks the username)
+- Domain: company domain is ICP-filed; need the name, DNS access, Tencent access filing check, office IP; install nginx + cert

@@ -25,6 +25,7 @@ htmlcov/
 # Frontend artifacts
 node_modules/
 frontend/dist/
+frontend/dist-admin/
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/

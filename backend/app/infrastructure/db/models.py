@@ -149,6 +149,15 @@ class SourceModel(Base):
     organization_type: Mapped[str] = mapped_column(String(80), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     owner: Mapped[str] = mapped_column(String(120), nullable=False)
+    # `seed`: defined in code (SOURCE_SEEDS); `operator`: added in the 运营后台.
+    managed_by: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'seed'")
+    )
+    # Who set `enabled` last; `seed_sources` leaves an operator's choice alone.
+    enabled_set_by: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'seed'")
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     active_version_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
@@ -168,6 +177,12 @@ class SourceModel(Base):
 
     __table_args__ = (
         UniqueConstraint("slug", name="uq_sources_slug"),
+        CheckConstraint("managed_by IN ('seed', 'operator')", name="ck_sources_managed_by"),
+        CheckConstraint("enabled_set_by IN ('seed', 'operator')", name="ck_sources_enabled_set_by"),
+        CheckConstraint(
+            "archived_at IS NULL OR (enabled = false AND managed_by = 'operator')",
+            name="ck_sources_archive_shape",
+        ),
         Index("ix_sources_enabled", "enabled"),
     )
 
@@ -200,6 +215,8 @@ class SourceVersionModel(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     topic_priority_policy: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Settings of a generic connector (generic_html_v1 / generic_rss_v1); null for code ones.
+    connector_config: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -208,6 +225,10 @@ class SourceVersionModel(Base):
     __table_args__ = (
         CheckConstraint("trust_tier IN ('A', 'B')", name="ck_source_versions_trust_tier"),
         CheckConstraint("rate_limit_seconds >= 0", name="ck_source_versions_rate_limit"),
+        CheckConstraint(
+            "connector_config IS NULL OR jsonb_typeof(connector_config) = 'object'",
+            name="ck_source_versions_connector_config",
+        ),
         UniqueConstraint("source_id", "version", name="uq_source_versions_source_version"),
         UniqueConstraint(
             "source_id", "config_fingerprint", name="uq_source_versions_source_fingerprint"
@@ -1913,6 +1934,16 @@ class ContentSlotRunModel(Base):
     slot_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
     slot_policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     slot_policy_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Operator keyword lists in force when the run was created (null: none, today's behaviour).
+    operator_keyword_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "operator_keyword_versions.id",
+            name="fk_content_slot_runs_operator_keyword_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
     preparation_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     target_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -6935,4 +6966,116 @@ class WeChatOfficialAccountDraftAttemptModel(Base):
             name="ck_wechat_mp_draft_attempts_unknown_shape",
         ),
         Index("ix_wechat_mp_draft_attempts_job_started", "job_id", "started_at"),
+    )
+
+
+class AdminUserModel(Base):
+    """An operator account of the 运营后台; managed with `app.admin_users_main`."""
+
+    __tablename__ = "admin_users"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    username: Mapped[str] = mapped_column(String(40), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(40), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    failed_login_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_admin_users_username"),
+        CheckConstraint("username ~ '^[a-z][a-z0-9_.-]{1,39}$'", name="ck_admin_users_username"),
+        CheckConstraint("role IN ('owner', 'editor')", name="ck_admin_users_role"),
+        CheckConstraint("failed_login_count >= 0", name="ck_admin_users_failed_login_count"),
+        CheckConstraint("password_hash LIKE 'scrypt$%'", name="ck_admin_users_password_hash"),
+    )
+
+
+class AdminSessionModel(Base):
+    """A browser login. Only the SHA-256 of the cookie token is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_admin_sessions_token_hash"),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="ck_admin_sessions_token_hash"),
+        CheckConstraint("expires_at > created_at", name="ck_admin_sessions_expiry"),
+        Index("ix_admin_sessions_user_id", "user_id"),
+    )
+
+
+class AdminAuditEventModel(Base):
+    """Who did what in the 运营后台. `detail` never holds a password, token or API key."""
+
+    __tablename__ = "admin_audit_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    username: Mapped[str] = mapped_column(String(40), nullable=False)
+    action: Mapped[str] = mapped_column(String(60), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    __table_args__ = (
+        CheckConstraint("action ~ '^[a-z][a-z0-9_.]{0,59}$'", name="ck_admin_audit_events_action"),
+        CheckConstraint(
+            "jsonb_typeof(detail) = 'object'", name="ck_admin_audit_events_detail_object"
+        ),
+        Index("ix_admin_audit_events_occurred_at", "occurred_at"),
+    )
+
+
+class OperatorKeywordVersionModel(Base):
+    """One immutable save of the operator keyword lists; the highest version is in force."""
+
+    __tablename__ = "operator_keyword_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    focus_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    block_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    copy_banned_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_operator_keyword_versions_version"),
+        CheckConstraint("version > 0", name="ck_operator_keyword_versions_version"),
+        CheckConstraint(
+            "jsonb_typeof(focus_terms) = 'array' AND jsonb_typeof(block_terms) = 'array' "
+            "AND jsonb_typeof(copy_banned_terms) = 'array'",
+            name="ck_operator_keyword_versions_arrays",
+        ),
+        CheckConstraint(
+            "jsonb_array_length(focus_terms) <= 200 AND jsonb_array_length(block_terms) <= 200 "
+            "AND jsonb_array_length(copy_banned_terms) <= 200",
+            name="ck_operator_keyword_versions_sizes",
+        ),
     )
