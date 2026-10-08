@@ -70,9 +70,30 @@ never be exposed. Only `/api/v1/admin/*` and the built console may be exposed.
 - **Now (no domain):** serve the console from the office machine, as with the exhibit. Run Vite or
   `vite preview` with the `/api/v1/admin` proxy to the production API through the existing SSH
   tunnel. Open it on the office LAN.
-- **Later (public HTTPS):**
-  - Needs a domain with ICP 备案 on Tencent Cloud (the server 124.222.207.221 is in mainland
-    China), a free TLS certificate, and a reverse proxy on the server. The proxy serves the built
-    console and forwards only `/api/v1/admin/*` to `127.0.0.1:8000`.
-  - Open 443 in the security group, ideally only to the office IP.
-  - Use `APP_ENV=production`, which makes the session cookie Secure.
+- **Public HTTPS on a subdomain of the company's ICP-filed domain** (owner, 2026-10-08: the
+  company domain is filed), for example `admin.<company domain>`:
+  1. **备案接入.** The filing must list Tencent Cloud as the access provider, because the server
+     124.222.207.221 is Tencent Cloud in mainland China. Check in the Tencent Cloud 备案
+     console. If the domain was filed through another provider, file a 新增接入 at Tencent
+     first (about 1–2 weeks). Until then, Tencent blocks the subdomain on 80/443.
+  2. **DNS.** Add an A record `admin` → `124.222.207.221` wherever the domain's DNS is managed.
+  3. **Security group.** Open 443, plus 80 for the HTTPS redirect and an HTTP-01 certificate.
+     Restricting both to the office IP is optional.
+  4. **Certificate.** Use a free DV certificate: Tencent Cloud SSL (DNS validation, download
+     the nginx format) or certbot. Install it as `/etc/nginx/ssl/<domain>.crt` / `.key`.
+  5. **Site.**
+     - On the server, `npm run build:admin` (or copy `frontend/dist-admin/` built from this
+       branch) into `/var/www/edu-ai-admin/`.
+     - Copy `deploy/admin-console/edu-admin-headers.conf` to `/etc/nginx/snippets/`.
+     - Copy `edu-admin.conf.template` to `/etc/nginx/conf.d/edu-admin.conf`, replace
+       `__DOMAIN__`, then `nginx -t && systemctl reload nginx`.
+     - If nginx is missing, install it first.
+     - If ports 80/443 are already used by another site on this server, add only the server
+       blocks.
+  6. **Secure cookie.** Production `.env` must have `APP_ENV=production` (or
+     `ADMIN_SESSION_COOKIE_SECURE=true`).
+  7. **Check from outside.**
+     - `https://admin.<domain>/admin/` shows the login page.
+     - `/api/v1/admin/auth/me` → 401.
+     - `/api/v1/sources` → 404, so the internal API is not exposed.
+     - `http://` redirects to `https://`.
