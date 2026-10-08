@@ -132,3 +132,40 @@ Found why selector v3 reused cooled images (two-person pool had 2 prop-free imag
 
 - After the evening slot, compare live cooldown-exhausted picks with the replay.
 - Owner review of resume v3.
+
+
+## Session 91: 运营后台计划与第 0 项（登录 + 设置页框架）
+
+**Date**: 2026-10-08
+**Task**: 运营后台计划与第 0 项（登录 + 设置页框架）
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Owner's 8 admin features planned as nine Trellis tasks (10/8-11/17); item 0 built: operator login, roles, audit log, /admin shell
+
+### Main Changes
+
+- Tasks 10-08-admin-console + admin-0..8 with PRDs from a code survey (sources are code seeds, keywords hard-coded, WeChat draft-only, no datacube, single env account, style constants, env-only model keys)
+- Backend: migration 0052 admin_users/sessions/audit, /api/v1/admin auth + audit-events, write guard header, CLI admin_users_main
+- Frontend: /admin login + grouped menu by role + placeholders + 操作记录; same-origin via Vite proxy (no credentialed CORS)
+- Spec .trellis/spec/backend/admin-console.md: rules items 1-8 must follow (audit, fallback, versioning, encrypted write-only secrets)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95059dd` | (see git log) |
+| `90c5cdd` | (see git log) |
+
+### Testing
+
+- [OK] 12 unit + 6 integration (PostgreSQL), 34 frontend, browser smoke on a throwaway DB, predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Item 1 新闻源 from 10/9; owner questions: WeChat 认证/发布/数据统计 permissions, meaning of 文字数据统计, item 5 before 3, poster samples, how operators reach the console (tunnel vs HTTPS)
