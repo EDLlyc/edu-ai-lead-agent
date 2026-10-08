@@ -28,6 +28,17 @@ Production settings on a copy of the production catalog (41/41 checksums):
   (186/186), which validates the cached-score mapping;
 - failure drill (wrong key): `semantic_unavailable / provider_unavailable`, rule order, 0 errors.
 
-## Rollout
+## Decision (2026-10-08 15:00): local only
 
-Pending the owner's confirmation (incl. putting the Qwen key on the server).
+Owner: "不用上线了，你看看，本地做一下". Production is unchanged (semantic off, no visual index).
+
+Local environment now runs it:
+- `.env` (backup `.env.before-semantic-local-20261008T150004`): + IMAGE_DIVERSITY_ENABLED=true,
+  IMAGE_DIVERSITY_SELECTOR_VERSION=v3 (the local settings did not load before: semantic was on
+  without selector v3). BRAND_EMBEDDING_PROVIDER_MODE stays unset: the local brand index is Qwen
+  (989 alibaba chunks vs 113 zhipu), unlike production.
+- Local private catalog = production's: the 12 resized action PNGs + the production manifest
+  (originals backed up in `tmp/visual-replay/2026-10-08/local-originals-before-resize-20261008T150142/`);
+  41/41 checksums; local visual index covers all 41.
+- Check with the local settings: 6/6 categories ready, 186/186 picks with semantic in-tier order,
+  0 errors, 2 LRU, 21 distinct images, identical to the offline re-check; wrong key → rule order.
