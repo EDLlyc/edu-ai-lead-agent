@@ -1,0 +1,32 @@
+# Unified image for the six app services and the ops crons: app/ = mainline e9feebd.
+FROM offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:1f238fc2c1e2f86f7b7769057b3e0679d351ac458c3fdd40a5e58a1fda7052ec
+COPY app/application/services/agent_tracing.py /app/app/application/services/agent_tracing.py
+COPY app/application/services/copy_generation.py /app/app/application/services/copy_generation.py
+COPY app/application/services/copy_repair_agent.py /app/app/application/services/copy_repair_agent.py
+COPY app/application/services/copy_repair_tools.py /app/app/application/services/copy_repair_tools.py
+COPY app/application/services/ops_actions.py /app/app/application/services/ops_actions.py
+COPY app/application/services/ops_assistant.py /app/app/application/services/ops_assistant.py
+COPY app/application/services/ops_diagnosis.py /app/app/application/services/ops_diagnosis.py
+COPY app/application/services/ops_tools.py /app/app/application/services/ops_tools.py
+COPY app/application/services/quality_report.py /app/app/application/services/quality_report.py
+COPY app/copy_repair_mcp_main.py /app/app/copy_repair_mcp_main.py
+COPY app/copy_repair_shadow_main.py /app/app/copy_repair_shadow_main.py
+COPY app/delivery_watchdog_main.py /app/app/delivery_watchdog_main.py
+COPY app/domain/quality_report.py /app/app/domain/quality_report.py
+COPY app/domain/repair_metrics.py /app/app/domain/repair_metrics.py
+COPY app/domain/weekly_report.py /app/app/domain/weekly_report.py
+COPY app/infrastructure/db/copy_repair_workspace.py /app/app/infrastructure/db/copy_repair_workspace.py
+COPY app/infrastructure/db/ops_actions.py /app/app/infrastructure/db/ops_actions.py
+COPY app/infrastructure/db/ops_assistant_checkpointer.py /app/app/infrastructure/db/ops_assistant_checkpointer.py
+COPY app/infrastructure/db/ops_reader.py /app/app/infrastructure/db/ops_reader.py
+COPY app/infrastructure/db/quality_report.py /app/app/infrastructure/db/quality_report.py
+COPY app/infrastructure/db/repair_metrics.py /app/app/infrastructure/db/repair_metrics.py
+COPY app/infrastructure/db/weekly_report.py /app/app/infrastructure/db/weekly_report.py
+COPY app/mcp_http.py /app/app/mcp_http.py
+COPY app/mcp_registry_server.py /app/app/mcp_registry_server.py
+COPY app/ops_actions_main.py /app/app/ops_actions_main.py
+COPY app/ops_assistant_main.py /app/app/ops_assistant_main.py
+COPY app/ops_assistant_page.html /app/app/ops_assistant_page.html
+COPY app/ops_mcp_main.py /app/app/ops_mcp_main.py
+COPY app/weekly_report_main.py /app/app/weekly_report_main.py
+COPY files.txt /app/release-e9feebd-files.txt
