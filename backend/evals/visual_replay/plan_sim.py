@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -35,10 +35,11 @@ from app.domain.visual_assets import (
     VisualAssetRole,
     action_pool_capacity,
 )
+from app.domain.visual_brief import VisualCategory
 from app.domain.visual_diversity import (
     VISUAL_SELECTOR_V3_VERSION,
+    ControlledVisualPlan,
     RecentVisualPlan,
-    VisualCategory,
     build_visual_plan_bundle,
 )
 from app.infrastructure.brand.visual_catalog import (
@@ -80,7 +81,18 @@ def compressed(loaded: LoadedVisualCatalog) -> LoadedVisualCatalog:
     return replace(loaded, catalog=replace(loaded.catalog, assets=assets))
 
 
-def simulate(briefs: Sequence[Brief], loaded: LoadedVisualCatalog, arm: str) -> ArmResult:
+SemanticScores = Callable[[Brief, ControlledVisualPlan], Mapping[str, float] | None]
+
+
+def simulate(
+    briefs: Sequence[Brief],
+    loaded: LoadedVisualCatalog,
+    arm: str,
+    *,
+    semantic: SemanticScores | None = None,
+) -> ArmResult:
+    """`semantic` (optional) gives the selector's in-tier semantic scores for a brief and plan."""
+
     catalog = compressed(loaded) if arm == "pool_aware_compressed" else loaded
     result = ArmResult()
     history: list[tuple[RecentVisualPlan, str]] = []
@@ -135,6 +147,7 @@ def simulate(briefs: Sequence[Brief], loaded: LoadedVisualCatalog, arm: str) -> 
                 selector_version=VISUAL_SELECTOR_V3_VERSION,
                 max_references=3,
                 max_reference_bytes=IMAGE_REFERENCE_BUDGET_BYTES,
+                semantic_scores=semantic(brief, plan) if semantic is not None else None,
             )
         except Exception:  # count, keep going: the arm's history simply does not grow
             result.errors += 1
@@ -155,7 +168,10 @@ def simulate(briefs: Sequence[Brief], loaded: LoadedVisualCatalog, arm: str) -> 
                 "cast": plan.cast.value,
                 "subject": plan.subject.value,
                 "action": action.filename,
+                "action_id": action.asset_id,
+                "brief": brief.artifact_id,
                 "lru": "cooldown exhausted" in action.reason,
+                "semantic": "semantic in-tier order" in action.reason,
             }
         )
         history.append(
