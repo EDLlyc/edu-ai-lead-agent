@@ -70,6 +70,8 @@ async def seed_sources(session: AsyncSession) -> int:
                 organization_type=seed.organization_type,
                 enabled=True,
                 owner=seed.owner,
+                managed_by="seed",
+                enabled_set_by="seed",
             )
             session.add(source)
             await session.flush()
@@ -77,7 +79,9 @@ async def seed_sources(session: AsyncSession) -> int:
         else:
             source.display_name = seed.display_name
             source.organization_type = seed.organization_type
-            source.enabled = True
+            # An operator's on/off choice in the 运营后台 survives deploys.
+            if source.enabled_set_by != "operator":
+                source.enabled = True
             source.owner = seed.owner
             source.updated_at = _utcnow()
 
@@ -294,6 +298,7 @@ async def claim_job(
             rate_limit_seconds=version.rate_limit_seconds,
             robots_status=version.robots_status,
             terms_reviewed_at=version.terms_reviewed_at,
+            connector_config=version.connector_config,
         ),
     )
 

@@ -24,7 +24,7 @@ export interface AdminApi {
 
 // Same origin on purpose: the dev server (and later the reverse proxy) forwards /api/v1/admin to
 // the API, so the SameSite=Strict session cookie needs no credentialed CORS.
-const client = createClient<paths>({
+export const adminClient = createClient<paths>({
   baseUrl: "",
   credentials: "same-origin",
   headers: { "X-Admin-Request": "1" },
@@ -32,12 +32,12 @@ const client = createClient<paths>({
 
 type ErrorBody = { readonly error?: { readonly message?: unknown } };
 
-function serverMessage(error: unknown, fallback: string): string {
+export function serverMessage(error: unknown, fallback: string): string {
   const message = (error as ErrorBody | undefined)?.error?.message;
   return typeof message === "string" && message !== "" ? message : fallback;
 }
 
-async function reach<T>(call: () => Promise<T>): Promise<T> {
+export async function reach<T>(call: () => Promise<T>): Promise<T> {
   try {
     return await call();
   } catch {
@@ -48,7 +48,7 @@ async function reach<T>(call: () => Promise<T>): Promise<T> {
 export const adminApi: AdminApi = {
   async me() {
     const { data, response } = await reach(() =>
-      client.GET("/api/v1/admin/auth/me"),
+      adminClient.GET("/api/v1/admin/auth/me"),
     );
     if (response.status === 401) return null;
     if (data === undefined) throw new Error("读取登录状态失败，请刷新重试");
@@ -56,7 +56,7 @@ export const adminApi: AdminApi = {
   },
   async login(username, password) {
     const { data, error } = await reach(() =>
-      client.POST("/api/v1/admin/auth/login", {
+      adminClient.POST("/api/v1/admin/auth/login", {
         body: { username, password },
       }),
     );
@@ -64,11 +64,11 @@ export const adminApi: AdminApi = {
     return data;
   },
   async logout() {
-    await reach(() => client.POST("/api/v1/admin/auth/logout"));
+    await reach(() => adminClient.POST("/api/v1/admin/auth/logout"));
   },
   async auditEvents() {
     const { data, response } = await reach(() =>
-      client.GET("/api/v1/admin/audit-events", {
+      adminClient.GET("/api/v1/admin/audit-events", {
         params: { query: { limit: 100 } },
       }),
     );

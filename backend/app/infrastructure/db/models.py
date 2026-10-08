@@ -149,6 +149,15 @@ class SourceModel(Base):
     organization_type: Mapped[str] = mapped_column(String(80), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     owner: Mapped[str] = mapped_column(String(120), nullable=False)
+    # `seed`: defined in code (SOURCE_SEEDS); `operator`: added in the 运营后台.
+    managed_by: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'seed'")
+    )
+    # Who set `enabled` last; `seed_sources` leaves an operator's choice alone.
+    enabled_set_by: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'seed'")
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     active_version_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
@@ -168,6 +177,12 @@ class SourceModel(Base):
 
     __table_args__ = (
         UniqueConstraint("slug", name="uq_sources_slug"),
+        CheckConstraint("managed_by IN ('seed', 'operator')", name="ck_sources_managed_by"),
+        CheckConstraint("enabled_set_by IN ('seed', 'operator')", name="ck_sources_enabled_set_by"),
+        CheckConstraint(
+            "archived_at IS NULL OR (enabled = false AND managed_by = 'operator')",
+            name="ck_sources_archive_shape",
+        ),
         Index("ix_sources_enabled", "enabled"),
     )
 
@@ -200,6 +215,8 @@ class SourceVersionModel(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     topic_priority_policy: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Settings of a generic connector (generic_html_v1 / generic_rss_v1); null for code ones.
+    connector_config: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -208,6 +225,10 @@ class SourceVersionModel(Base):
     __table_args__ = (
         CheckConstraint("trust_tier IN ('A', 'B')", name="ck_source_versions_trust_tier"),
         CheckConstraint("rate_limit_seconds >= 0", name="ck_source_versions_rate_limit"),
+        CheckConstraint(
+            "connector_config IS NULL OR jsonb_typeof(connector_config) = 'object'",
+            name="ck_source_versions_connector_config",
+        ),
         UniqueConstraint("source_id", "version", name="uq_source_versions_source_version"),
         UniqueConstraint(
             "source_id", "config_fingerprint", name="uq_source_versions_source_fingerprint"

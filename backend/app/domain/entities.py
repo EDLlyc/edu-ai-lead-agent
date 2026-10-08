@@ -30,6 +30,8 @@ class SourceProfile:
     rate_limit_seconds: float = 2.0
     robots_status: str = "allowed"
     terms_reviewed_at: datetime | None = None
+    # Settings of a generic connector (operator sources); None for code connectors.
+    connector_config: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

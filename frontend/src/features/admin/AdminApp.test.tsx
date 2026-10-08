@@ -11,6 +11,17 @@ import {
   type AdminMe,
 } from "./api";
 import { sectionFromPath, visibleSections } from "./sections";
+import type { SourcesApi } from "./sources/api";
+
+// The 新闻源 page is the landing section; these tests only need it quiet.
+const NO_SOURCES: SourcesApi = {
+  list: () => Promise.resolve([]),
+  preview: () => Promise.reject(new Error("unused")),
+  create: () => Promise.reject(new Error("unused")),
+  update: () => Promise.reject(new Error("unused")),
+  setEnabled: () => Promise.reject(new Error("unused")),
+  archive: () => Promise.reject(new Error("unused")),
+};
 
 const OWNER: AdminMe = {
   username: "teacher.li",
@@ -44,6 +55,15 @@ const EVENTS: readonly AdminAuditEvent[] = [
     target_id: null,
     detail: { reason: "wrong_password" },
   },
+  {
+    id: "00000000-0000-0000-0000-000000000003",
+    occurred_at: "2026-10-08T02:03:00Z",
+    username: "teacher.li",
+    action: "source.updated",
+    target_type: "source",
+    target_id: "a6ddb3d7-1853-4443-a558-3edcefc467dd",
+    detail: { changed: ["display_name", "connector_config"], version: 2 },
+  },
 ];
 
 function api(overrides: Partial<AdminApi> = {}) {
@@ -76,7 +96,7 @@ describe("运营后台", () => {
         .mockResolvedValueOnce(OWNER),
     });
     openAt("/admin");
-    const view = render(<AdminApp api={calls} />);
+    const view = render(<AdminApp api={calls} sourcesApi={NO_SOURCES} />);
 
     await user.type(await screen.findByLabelText("用户名"), " Teacher.Li ");
     await user.type(screen.getByLabelText("密码"), "wrong-password");
@@ -94,15 +114,20 @@ describe("运营后台", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("李老师（管理员）")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "内容来源 · 新闻源" }),
+      await screen.findByRole("heading", { name: "新闻源" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("第 1 项 · 计划 10/9 – 10/14")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "新增新闻源" }),
+    ).toBeInTheDocument();
   });
 
   it("shows an editor only the sections an editor may open", async () => {
     openAt("/admin/models");
     render(
-      <AdminApp api={api({ me: vi.fn(() => Promise.resolve(EDITOR)) })} />,
+      <AdminApp
+        api={api({ me: vi.fn(() => Promise.resolve(EDITOR)) })}
+        sourcesApi={NO_SOURCES}
+      />,
     );
 
     const menu = await screen.findByRole("navigation", { name: "后台菜单" });
@@ -110,7 +135,7 @@ describe("运营后台", () => {
       .getAllByRole("link")
       .map((link) => link.textContent);
     expect(links).toEqual([
-      "新闻源待上线",
+      "新闻源",
       "关键词待上线",
       "发布待上线",
       "数据待上线",
@@ -131,7 +156,7 @@ describe("运营后台", () => {
     const user = userEvent.setup();
     const calls = api({ me: vi.fn(() => Promise.resolve(OWNER)) });
     openAt("/admin/sources");
-    render(<AdminApp api={calls} />);
+    render(<AdminApp api={calls} sourcesApi={NO_SOURCES} />);
 
     const menu = await screen.findByRole("navigation", { name: "后台菜单" });
     expect(within(menu).getAllByRole("link")).toHaveLength(9);
@@ -145,6 +170,7 @@ describe("运营后台", () => {
     expect(rows.slice(1).map((row) => row.textContent)).toEqual([
       "10/08 10:05:00teacher.li登录",
       "10/08 10:04:00teacher.li登录失败密码不对",
+      "10/08 10:03:00teacher.li修改新闻源对象：a6ddb3d7-1853-4443-a558-3edcefc467dd；改了：名称、抓取设置；第 2 版",
     ]);
   });
 
@@ -155,7 +181,7 @@ describe("运营后台", () => {
       auditEvents: vi.fn(() => Promise.reject(new AdminSessionExpiredError())),
     });
     openAt("/admin/audit");
-    const first = render(<AdminApp api={expired} />);
+    const first = render(<AdminApp api={expired} sourcesApi={NO_SOURCES} />);
     expect(
       await screen.findByText("登录已过期，请重新登录"),
     ).toBeInTheDocument();
@@ -164,7 +190,7 @@ describe("运营后台", () => {
 
     const calls = api({ me: vi.fn(() => Promise.resolve(OWNER)) });
     openAt("/admin");
-    render(<AdminApp api={calls} />);
+    render(<AdminApp api={calls} sourcesApi={NO_SOURCES} />);
     await user.click(await screen.findByRole("button", { name: "退出" }));
     expect(calls.logout).toHaveBeenCalledOnce();
     expect(await screen.findByText("已退出")).toBeInTheDocument();
@@ -174,6 +200,7 @@ describe("运营后台", () => {
     openAt("/admin");
     render(
       <AdminApp
+        sourcesApi={NO_SOURCES}
         api={api({
           me: vi.fn(() =>
             Promise.reject(new Error("连不上后台服务，请确认服务已启动")),

@@ -3,6 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import { adminApi, type AdminApi, type AdminMe } from "./api";
 import { AuditLogPage } from "./AuditLogPage";
+import { SourcesPage } from "./sources/SourcesPage";
+import {
+  sourcesApi as defaultSourcesApi,
+  type SourcesApi,
+} from "./sources/api";
 import styles from "./Admin.module.css";
 import {
   sectionFromPath,
@@ -20,7 +25,13 @@ type Session =
 const ROLE_LABELS = { owner: "管理员", editor: "编辑" } as const;
 
 /** The 运营后台 at /admin: login, the section menu, and one section at a time. */
-export function AdminApp({ api = adminApi }: { readonly api?: AdminApi }) {
+export function AdminApp({
+  api = adminApi,
+  sourcesApi = defaultSourcesApi,
+}: {
+  readonly api?: AdminApi;
+  readonly sourcesApi?: SourcesApi;
+}) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
   const [path, setPath] = useState(() => window.location.pathname);
 
@@ -164,6 +175,8 @@ export function AdminApp({ api = adminApi }: { readonly api?: AdminApi }) {
         ) : null}
         {current === undefined ? null : current.key === "audit" ? (
           <AuditLogPage api={api} onSessionExpired={expire} />
+        ) : current.key === "sources" ? (
+          <SourcesPage api={sourcesApi} onSessionExpired={expire} />
         ) : (
           <PlannedSection section={current} />
         )}

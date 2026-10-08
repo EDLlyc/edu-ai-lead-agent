@@ -275,6 +275,143 @@
   color: #b42318;
 }
 
+.success {
+  margin: 0;
+  color: #0f766e;
+}
+
+/* 新闻源 */
+.editor {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #c4cfcb;
+  border-radius: 0.75rem;
+}
+
+.editor h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem 1.25rem;
+}
+
+.field select {
+  padding: 0.55rem 0.6rem;
+  border: 1px solid #c4cfcb;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-weight: 400;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.9rem;
+}
+
+.choice legend {
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.advanced {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.advanced[open] {
+  padding-bottom: 0.25rem;
+}
+
+.advanced summary {
+  color: #0f766e;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.advanced .field {
+  margin-top: 0.75rem;
+}
+
+.actions,
+.rowActions,
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.confirm {
+  font-size: 0.85rem;
+}
+
+.preview {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: #f5f8f6;
+  border-radius: 0.6rem;
+}
+
+.preview p {
+  margin: 0;
+}
+
+.samples {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.samples li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  background: #fff;
+  border-left: 4px solid #b42318;
+  border-radius: 0.4rem;
+}
+
+.samples li[data-kept="true"] {
+  border-left-color: #0f766e;
+}
+
+.samples span,
+.samples small {
+  color: #5b6b70;
+  font-size: 0.85rem;
+}
+
+.table tr[data-enabled="false"] td {
+  color: #7a8a8f;
+}
+
+.table a {
+  color: inherit;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  color: #5b6b70;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 720px) {
   .shell {
     grid-template-areas:

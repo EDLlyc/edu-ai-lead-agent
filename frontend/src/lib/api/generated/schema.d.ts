@@ -123,6 +123,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Sources */
+        get: operations["get_admin_sources_api_v1_admin_sources_get"];
+        put?: never;
+        /** Post Admin Source */
+        post: operations["post_admin_source_api_v1_admin_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Source Preview */
+        post: operations["post_admin_source_preview_api_v1_admin_sources_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Admin Source */
+        delete: operations["delete_admin_source_api_v1_admin_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Admin Source */
+        patch: operations["patch_admin_source_api_v1_admin_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Source Disable */
+        post: operations["post_admin_source_disable_api_v1_admin_sources__source_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Source Enable */
+        post: operations["post_admin_source_enable_api_v1_admin_sources__source_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/brand-context/retrieve": {
         parameters: {
             query?: never;
@@ -1597,6 +1684,155 @@ export interface components {
             role: "owner" | "editor";
             /** Username */
             username: string;
+        };
+        /** AdminSourceConfig */
+        AdminSourceConfig: {
+            /** Content Selectors */
+            content_selectors?: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "html" | "rss";
+            /** Link Contains */
+            link_contains?: string[];
+            /** List Selectors */
+            list_selectors?: string[];
+        };
+        /** AdminSourceDraftRequest */
+        AdminSourceDraftRequest: {
+            config: components["schemas"]["AdminSourceConfig"];
+            /** Display Name */
+            display_name: string;
+            /** Entry Url */
+            entry_url: string;
+            /**
+             * Organization Type
+             * @enum {string}
+             */
+            organization_type: "government" | "education_institution" | "research_organization" | "authoritative_media";
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "A" | "B";
+        };
+        /** AdminSourceLatestJob */
+        AdminSourceLatestJob: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Error Code */
+            error_code: string | null;
+            /** Filtered Count */
+            filtered_count: number;
+            /** New Count */
+            new_count: number;
+            /** Outcome */
+            outcome: string | null;
+            /** Status */
+            status: string;
+        };
+        /** AdminSourceListResponse */
+        AdminSourceListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminSourceResponse"][];
+        };
+        /** AdminSourcePreviewLink */
+        AdminSourcePreviewLink: {
+            /** Published At */
+            published_at: string | null;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string;
+        };
+        /** AdminSourcePreviewRequest */
+        AdminSourcePreviewRequest: {
+            config: components["schemas"]["AdminSourceConfig"];
+            /** Entry Url */
+            entry_url: string;
+        };
+        /** AdminSourcePreviewResponse */
+        AdminSourcePreviewResponse: {
+            /** Links */
+            links: components["schemas"]["AdminSourcePreviewLink"][];
+            /** Ok */
+            ok: boolean;
+            /** Problem */
+            problem: string | null;
+            /** Robots */
+            robots: ("allowed" | "no_robots_file" | "disallowed") | null;
+            /** Samples */
+            samples: components["schemas"]["AdminSourcePreviewSample"][];
+        };
+        /** AdminSourcePreviewSample */
+        AdminSourcePreviewSample: {
+            /** Characters */
+            characters: number;
+            /** Excerpt */
+            excerpt: string;
+            /**
+             * Freshness
+             * @enum {string}
+             */
+            freshness: "fresh" | "stale" | "unknown";
+            /** Problem */
+            problem: string | null;
+            /** Published At */
+            published_at: string | null;
+            /** Relevant */
+            relevant: boolean;
+            /** Title */
+            title: string | null;
+            /** Topic */
+            topic: ("education" | "frontier" | "other") | null;
+            /** Url */
+            url: string;
+        };
+        /** AdminSourceResponse */
+        AdminSourceResponse: {
+            /** Archived At */
+            archived_at: string | null;
+            config: components["schemas"]["AdminSourceConfig"] | null;
+            /** Display Name */
+            display_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Entry Url */
+            entry_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "code" | "html" | "rss";
+            latest_job: components["schemas"]["AdminSourceLatestJob"] | null;
+            /**
+             * Managed By
+             * @enum {string}
+             */
+            managed_by: "seed" | "operator";
+            /** New Last 7 Days */
+            new_last_7_days: number;
+            /** Organization Type */
+            organization_type: string;
+            /** Robots Status */
+            robots_status: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "A" | "B";
+            /** Version */
+            version: number;
         };
         /** ArticleBulletListBlock */
         ArticleBulletListBlock: {
@@ -6718,6 +6954,243 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_sources_api_v1_admin_sources_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_api_v1_admin_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSourceDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_preview_api_v1_admin_sources_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSourcePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourcePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_admin_source_api_v1_admin_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_admin_source_api_v1_admin_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSourceDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_disable_api_v1_admin_sources__source_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_source_enable_api_v1_admin_sources__source_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceResponse"];
                 };
             };
             /** @description Validation Error */

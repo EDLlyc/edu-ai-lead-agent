@@ -15,6 +15,21 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "user.password_set": "重设密码",
   "user.disabled": "停用账号",
   "user.enabled": "启用账号",
+  "source.previewed": "预览新闻源",
+  "source.created": "新增新闻源",
+  "source.updated": "修改新闻源",
+  "source.enabled": "打开新闻源",
+  "source.disabled": "关闭新闻源",
+  "source.archived": "删除新闻源",
+};
+
+const FIELD_LABELS: Readonly<Record<string, string>> = {
+  display_name: "名称",
+  organization_type: "机构类型",
+  entry_url: "网址",
+  tier: "可信度",
+  connector_config: "抓取设置",
+  fetch_settings: "抓取设置",
 };
 
 const REASON_LABELS: Readonly<Record<string, string>> = {
@@ -41,7 +56,23 @@ function describe(event: AdminAuditEvent): string {
   if (typeof detail.reason === "string") {
     parts.push(REASON_LABELS[detail.reason] ?? detail.reason);
   }
-  if (event.target_id !== null) parts.push(`对象：${event.target_id}`);
+  if (typeof detail.display_name === "string") {
+    parts.push(`「${detail.display_name}」`);
+  } else if (typeof detail.entry_url === "string") {
+    parts.push(detail.entry_url);
+  } else if (event.target_id !== null) {
+    parts.push(`对象：${event.target_id}`);
+  }
+  if (Array.isArray(detail.changed)) {
+    const fields = detail.changed
+      .map((field) => FIELD_LABELS[String(field)] ?? String(field))
+      .filter((field, index, all) => all.indexOf(field) === index);
+    parts.push(`改了：${fields.join("、")}`);
+  }
+  if (typeof detail.version === "number") parts.push(`第 ${detail.version} 版`);
+  if (typeof detail.ok === "boolean") {
+    parts.push(detail.ok ? "能抓到文章" : "抓不到文章");
+  }
   if (typeof detail.sessions_ended === "number" && detail.sessions_ended > 0) {
     parts.push(`结束 ${detail.sessions_ended} 个在线会话`);
   }

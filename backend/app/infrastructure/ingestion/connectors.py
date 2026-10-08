@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import json
 import re
 from collections.abc import Callable, Iterable
@@ -9,6 +10,7 @@ from typing import Any, Protocol
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import feedparser  # type: ignore[import-untyped]
 import trafilatura
 from bs4 import BeautifulSoup, Tag
 
@@ -20,6 +22,14 @@ from app.domain.entities import (
     FetchedResponse,
     SourceImageReference,
     SourceProfile,
+)
+from app.domain.source_admin import (
+    GENERIC_HTML_CONNECTOR_KEY,
+    GENERIC_RSS_CONNECTOR_KEY,
+    GenericConnectorConfig,
+    SourceConfigError,
+    link_matches,
+    parse_connector_config,
 )
 
 SOURCE_IMAGE_EXTRACTION_VERSION = "source-image-extractor-v1"
@@ -622,7 +632,84 @@ CONNECTORS: dict[str, SourceConnector] = {
 }
 
 
-def get_connector(connector_key: str) -> SourceConnector:
+# Article body fallbacks for operator sources before trafilatura.
+_GENERIC_CONTENT_SELECTORS = ("article", ".article", ".content", "#content", "main")
+
+
+class RssConnector:
+    """RSS/Atom feed list; each article page is extracted like a generic HTML page."""
+
+    def __init__(self, content_selectors: tuple[str, ...]) -> None:
+        self._detail = HtmlConnector(lambda _url: True, content_selectors)
+
+    def discover(
+        self, response: FetchedResponse, profile: SourceProfile, *, limit: int
+    ) -> list[DiscoveredItem]:
+        feed = feedparser.parse(response.body)
+        items: list[DiscoveredItem] = []
+        seen: set[str] = set()
+        for entry in feed.entries:
+            raw_url = str(entry.get("link") or "").strip()
+            if not raw_url:
+                continue
+            url = _approved_discovered_url(
+                _canonical_url(urljoin(response.final_url, raw_url)), profile
+            )
+            if url is None or url in seen:
+                continue
+            seen.add(url)
+            stamp = entry.get("published_parsed") or entry.get("updated_parsed")
+            published_at = datetime.fromtimestamp(calendar.timegm(stamp), UTC) if stamp else None
+            title = " ".join(str(entry.get("title") or "").split()) or None
+            items.append(
+                DiscoveredItem(
+                    source_item_id=urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1] or url,
+                    url=url,
+                    title=title,
+                    published_at=published_at,
+                )
+            )
+            if len(items) >= limit:
+                break
+        if not items:
+            raise ParseError("feed contains no approved article links")
+        return items
+
+    def extract(
+        self,
+        response: FetchedResponse,
+        item: DiscoveredItem,
+        profile: SourceProfile,
+    ) -> ExtractedDocument:
+        return self._detail.extract(response, item, profile)
+
+
+def build_generic_connector(config: GenericConnectorConfig) -> SourceConnector:
+    content_selectors = config.content_selectors + tuple(
+        selector
+        for selector in _GENERIC_CONTENT_SELECTORS
+        if selector not in config.content_selectors
+    )
+    if config.kind == "rss":
+        return RssConnector(content_selectors)
+    return HtmlConnector(
+        lambda url: link_matches(config, url),
+        content_selectors,
+        discovery_selectors=config.list_selectors,
+    )
+
+
+def get_connector(
+    connector_key: str, connector_config: dict[str, Any] | None = None
+) -> SourceConnector:
+    if connector_key in {GENERIC_HTML_CONNECTOR_KEY, GENERIC_RSS_CONNECTOR_KEY}:
+        try:
+            config = parse_connector_config(connector_config)
+        except SourceConfigError as error:
+            raise ParseError("generic source connector settings are invalid") from error
+        if config.connector_key != connector_key:
+            raise ParseError("generic source connector settings do not match the connector")
+        return build_generic_connector(config)
     try:
         return CONNECTORS[connector_key]
     except KeyError as error:

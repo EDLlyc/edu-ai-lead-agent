@@ -1,0 +1,275 @@
+import { useCallback, useEffect, useState } from "react";
+
+import styles from "../Admin.module.css";
+import { AdminSessionExpiredError } from "../api";
+import {
+  sourcesApi as defaultApi,
+  type AdminSource,
+  type SourcesApi,
+} from "./api";
+import { SourceEditor } from "./SourceEditor";
+import { TIER_LABELS, kindLabel, latestJobLabel } from "./labels";
+
+type Editing = { readonly source: AdminSource | null } | null;
+type Pending = {
+  readonly id: string;
+  readonly action: "enable" | "disable" | "archive";
+} | null;
+
+const CONFIRM_TEXT = {
+  enable: "确认打开？下一轮抓取开始抓它。",
+  disable: "确认关闭？下一轮抓取起不再抓它，已抓的新闻保留。",
+  archive: "确认删除？会从列表里移走、不再抓取，历史记录保留。",
+} as const;
+
+/** 运营后台 · 新闻源: which sites feed the daily news selection. */
+export function SourcesPage({
+  api = defaultApi,
+  onSessionExpired,
+}: {
+  readonly api?: SourcesApi;
+  readonly onSessionExpired: () => void;
+}) {
+  const [sources, setSources] = useState<readonly AdminSource[] | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [reloads, setReloads] = useState(0);
+  const [editing, setEditing] = useState<Editing>(null);
+  const [pending, setPending] = useState<Pending>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{
+    readonly kind: "ok" | "error";
+    readonly text: string;
+  } | null>(null);
+
+  const handleError = useCallback(
+    (error: unknown): boolean => {
+      if (error instanceof AdminSessionExpiredError) {
+        onSessionExpired();
+        return true;
+      }
+      return false;
+    },
+    [onSessionExpired],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    api.list(showArchived).then(
+      (items) => {
+        if (!cancelled) setSources(items);
+      },
+      (error: unknown) => {
+        if (cancelled || handleError(error)) return;
+        setMessage({
+          kind: "error",
+          text: error instanceof Error ? error.message : "读取失败",
+        });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api, handleError, showArchived, reloads]);
+
+  const reload = () => setReloads((count) => count + 1);
+
+  const confirm = async (action: NonNullable<Pending>) => {
+    setBusy(true);
+    try {
+      if (action.action === "archive") {
+        await api.archive(action.id);
+        setMessage({ kind: "ok", text: "已删除（归档）" });
+      } else {
+        const updated = await api.setEnabled(
+          action.id,
+          action.action === "enable",
+        );
+        setMessage({
+          kind: "ok",
+          text: `已${updated.enabled ? "打开" : "关闭"}「${updated.display_name}」`,
+        });
+      }
+      setPending(null);
+      reload();
+    } catch (error) {
+      if (!handleError(error)) {
+        setMessage({
+          kind: "error",
+          text: error instanceof Error ? error.message : "操作失败",
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enabledCount = sources?.filter((source) => source.enabled).length ?? 0;
+
+  return (
+    <section aria-labelledby="admin-section-title">
+      <header className={styles.sectionHeader}>
+        <h2 id="admin-section-title">新闻源</h2>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={editing !== null}
+          onClick={() => {
+            setMessage(null);
+            setEditing({ source: null });
+          }}
+        >
+          新增新闻源
+        </button>
+      </header>
+      <p className={styles.lede}>
+        每天抓取这些网站的新闻，再由 AI
+        选题。「内置」的只能开关；新增的可以修改、删除。
+        {sources === null ? null : `现在打开了 ${enabledCount} 个。`}
+      </p>
+      {message === null ? null : (
+        <p
+          className={message.kind === "error" ? styles.error : styles.success}
+          role={message.kind === "error" ? "alert" : "status"}
+        >
+          {message.text}
+        </p>
+      )}
+      {editing === null ? null : (
+        <SourceEditor
+          api={api}
+          source={editing.source}
+          onError={handleError}
+          onCancel={() => setEditing(null)}
+          onSaved={(saved) => {
+            setEditing(null);
+            setMessage({
+              kind: "ok",
+              text:
+                editing.source === null
+                  ? `已新增「${saved.display_name}」，现在是关闭的，确认后再打开`
+                  : `已保存「${saved.display_name}」（第 ${saved.version} 版）`,
+            });
+            reload();
+          }}
+        />
+      )}
+      {sources === null ? (
+        message?.kind === "error" ? null : (
+          <p role="status">正在读取…</p>
+        )
+      ) : (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th scope="col">名称</th>
+              <th scope="col">类型</th>
+              <th scope="col">可信度</th>
+              <th scope="col">最近一次抓取</th>
+              <th scope="col">7 天新增</th>
+              <th scope="col">状态</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sources.map((source) => (
+              <tr key={source.id} data-enabled={source.enabled}>
+                <td>
+                  <a
+                    href={source.entry_url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    {source.display_name}
+                  </a>
+                </td>
+                <td>{kindLabel(source)}</td>
+                <td>{TIER_LABELS[source.tier]}</td>
+                <td>{latestJobLabel(source)}</td>
+                <td>{source.new_last_7_days}</td>
+                <td>
+                  {source.archived_at !== null
+                    ? "已删除"
+                    : source.enabled
+                      ? "打开"
+                      : "关闭"}
+                </td>
+                <td>
+                  {pending?.id === source.id ? (
+                    <span
+                      className={styles.confirm}
+                      role="group"
+                      aria-label="确认操作"
+                    >
+                      {CONFIRM_TEXT[pending.action]}
+                      <button
+                        type="button"
+                        className={styles.primary}
+                        disabled={busy}
+                        onClick={() => {
+                          void confirm(pending);
+                        }}
+                      >
+                        确认
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setPending(null)}
+                      >
+                        取消
+                      </button>
+                    </span>
+                  ) : source.archived_at !== null ? null : (
+                    <span className={styles.rowActions}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPending({
+                            id: source.id,
+                            action: source.enabled ? "disable" : "enable",
+                          })
+                        }
+                      >
+                        {source.enabled ? "关闭" : "打开"}
+                      </button>
+                      {source.managed_by === "operator" ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={editing !== null}
+                            onClick={() => {
+                              setMessage(null);
+                              setEditing({ source });
+                            }}
+                          >
+                            修改
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPending({ id: source.id, action: "archive" })
+                            }
+                          >
+                            删除
+                          </button>
+                        </>
+                      ) : null}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <label className={styles.toggle}>
+        <input
+          type="checkbox"
+          checked={showArchived}
+          onChange={(event) => setShowArchived(event.target.checked)}
+        />
+        显示已删除的
+      </label>
+    </section>
+  );
+}

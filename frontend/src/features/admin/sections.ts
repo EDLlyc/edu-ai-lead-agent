@@ -31,11 +31,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "新闻源",
     group: "内容来源",
     role: "editor",
-    plan: {
-      item: 1,
-      dates: "10/9 – 10/14",
-      summary: "查看、新增、停用和修改抓取的新闻网站，改动后下一轮抓取生效。",
-    },
+    plan: null,
   },
   {
     key: "keywords",

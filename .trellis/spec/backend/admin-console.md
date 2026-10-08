@@ -47,11 +47,41 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - Secrets (WeChat app secret, model keys) are encrypted at rest. They are write-only from the
   browser and displayed as `••••1234`.
 
+## 新闻源 (item 1)
+
+- **Ownership**: `sources.managed_by` is `seed` (code, `SOURCE_SEEDS`) or `operator`.
+  - Seed sources: on/off only.
+  - Operator sources: edit and archive. `archived_at` requires `enabled = false`.
+- **Sticky toggles**: `sources.enabled_set_by = 'operator'` makes `seed_sources` keep the
+  operator's on/off choice across deploys.
+- **Generic connectors** (`app/domain/source_admin.py`): `generic_html_v1` and `generic_rss_v1`.
+  - Settings live in `source_versions.connector_config`: kind, link_contains, list_selectors,
+    content_selectors.
+  - Validated: bounded, plain substrings, CSS compiled by soupsieve.
+  - Part of the version fingerprint, so every change is a new immutable version; going back to
+    earlier settings reuses that version.
+  - `SourceProfile.connector_config` carries the settings to `get_connector(key, config)`.
+  - A missing or mismatched config is a `ParseError`, never a silent fallback.
+- **Defaults for operator sources**: tier A/B by choice, rule `science-tech-editorial-v3-broad`,
+  rate limit 3 s, allowed host = the entry URL's host, start **disabled**.
+- **Preview** (`POST /admin/sources/preview`): robots.txt (4xx means no file, which allows), the
+  entry page, up to 10 links, and the first 3 articles extracted.
+  - For each article: the date, the freshness window and the relevance verdict. Acquisition drops
+    unknown dates too.
+  - Uses the acquisition `SafeHttpFetcher` (https, public DNS only, bounded redirects and size)
+    and stores nothing.
+  - Audited as `source.previewed`.
+  - Create and edit re-check robots and refuse `disallowed`.
+- **Local caveat**: a dev machine behind a fake-IP proxy (198.18.0.0/15) resolves some hosts to
+  non-global addresses, and the fetcher correctly refuses them. Production DNS is normal.
+
 ## Frontend
 
 `frontend/src/features/admin/`:
 
 - `AdminApp` checks `me`, then shows the login page or the shell.
 - `sections.ts` holds the menu, roles and planned items.
+- `sources/` is the 新闻源 page: the list, on/off with confirmation, and the editor. Saving needs a
+  successful preview of the same fetch settings.
 - `api.ts` is the same-origin client with the guard header.
 - Tests inject an `AdminApi` instead of fetching.
