@@ -1,0 +1,201 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { axe } from "jest-axe";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { AdminApp } from "./AdminApp";
+import {
+  AdminSessionExpiredError,
+  type AdminApi,
+  type AdminAuditEvent,
+  type AdminMe,
+} from "./api";
+import { sectionFromPath, visibleSections } from "./sections";
+
+const OWNER: AdminMe = {
+  username: "teacher.li",
+  display_name: "李老师",
+  role: "owner",
+  expires_at: "2026-10-08T14:00:00Z",
+};
+const EDITOR: AdminMe = {
+  ...OWNER,
+  username: "wang",
+  display_name: "王老师",
+  role: "editor",
+};
+
+const EVENTS: readonly AdminAuditEvent[] = [
+  {
+    id: "00000000-0000-0000-0000-000000000002",
+    occurred_at: "2026-10-08T02:05:00Z",
+    username: "teacher.li",
+    action: "auth.login",
+    target_type: null,
+    target_id: null,
+    detail: {},
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000001",
+    occurred_at: "2026-10-08T02:04:00Z",
+    username: "teacher.li",
+    action: "auth.login_failed",
+    target_type: null,
+    target_id: null,
+    detail: { reason: "wrong_password" },
+  },
+];
+
+function api(overrides: Partial<AdminApi> = {}) {
+  return {
+    me: vi.fn(() => Promise.resolve<AdminMe | null>(null)),
+    login: vi.fn(() => Promise.resolve(OWNER)),
+    logout: vi.fn(() => Promise.resolve()),
+    auditEvents: vi.fn(() => Promise.resolve(EVENTS)),
+    ...overrides,
+  } satisfies AdminApi;
+}
+
+function openAt(pathname: string) {
+  window.history.replaceState(null, "", pathname);
+}
+
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+});
+
+describe("运营后台", () => {
+  it("logs in, shows the server's refusal, then opens the first section", async () => {
+    const user = userEvent.setup();
+    const calls = api({
+      login: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error("用户名或密码不对。连续输错 5 次，账号会锁定 15 分钟。"),
+        )
+        .mockResolvedValueOnce(OWNER),
+    });
+    openAt("/admin");
+    const view = render(<AdminApp api={calls} />);
+
+    await user.type(await screen.findByLabelText("用户名"), " Teacher.Li ");
+    await user.type(screen.getByLabelText("密码"), "wrong-password");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("连续输错 5 次");
+    expect(calls.login).toHaveBeenLastCalledWith(
+      "Teacher.Li",
+      "wrong-password",
+    );
+    // The password field is cleared after a refusal.
+    expect(screen.getByLabelText("密码")).toHaveValue("");
+    expect((await axe(view.container)).violations).toEqual([]);
+
+    await user.type(screen.getByLabelText("密码"), "teacher-pass-2026");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByText("李老师（管理员）")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "内容来源 · 新闻源" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("第 1 项 · 计划 10/9 – 10/14")).toBeInTheDocument();
+  });
+
+  it("shows an editor only the sections an editor may open", async () => {
+    openAt("/admin/models");
+    render(
+      <AdminApp api={api({ me: vi.fn(() => Promise.resolve(EDITOR)) })} />,
+    );
+
+    const menu = await screen.findByRole("navigation", { name: "后台菜单" });
+    const links = within(menu)
+      .getAllByRole("link")
+      .map((link) => link.textContent);
+    expect(links).toEqual([
+      "新闻源待上线",
+      "关键词待上线",
+      "发布待上线",
+      "数据待上线",
+      "排版模板待上线",
+      "海报风格待上线",
+    ]);
+    // A link to an owner-only page falls back to the first allowed section.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "当前账号不能打开这个页面",
+    );
+    expect(within(menu).getByRole("link", { name: /新闻源/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("moves between sections and reads the audit log as the owner", async () => {
+    const user = userEvent.setup();
+    const calls = api({ me: vi.fn(() => Promise.resolve(OWNER)) });
+    openAt("/admin/sources");
+    render(<AdminApp api={calls} />);
+
+    const menu = await screen.findByRole("navigation", { name: "后台菜单" });
+    expect(within(menu).getAllByRole("link")).toHaveLength(9);
+    await user.click(within(menu).getByRole("link", { name: /模型配置/ }));
+    expect(window.location.pathname).toBe("/admin/models");
+    expect(screen.getByText(/key 只显示末 4 位/)).toBeInTheDocument();
+
+    await user.click(within(menu).getByRole("link", { name: "操作记录" }));
+    expect(window.location.pathname).toBe("/admin/audit");
+    const rows = await screen.findAllByRole("row");
+    expect(rows.slice(1).map((row) => row.textContent)).toEqual([
+      "10/08 10:05:00teacher.li登录",
+      "10/08 10:04:00teacher.li登录失败密码不对",
+    ]);
+  });
+
+  it("returns to the login page when the session ends or the user logs out", async () => {
+    const user = userEvent.setup();
+    const expired = api({
+      me: vi.fn(() => Promise.resolve(OWNER)),
+      auditEvents: vi.fn(() => Promise.reject(new AdminSessionExpiredError())),
+    });
+    openAt("/admin/audit");
+    const first = render(<AdminApp api={expired} />);
+    expect(
+      await screen.findByText("登录已过期，请重新登录"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "登录" })).toBeInTheDocument();
+    first.unmount();
+
+    const calls = api({ me: vi.fn(() => Promise.resolve(OWNER)) });
+    openAt("/admin");
+    render(<AdminApp api={calls} />);
+    await user.click(await screen.findByRole("button", { name: "退出" }));
+    expect(calls.logout).toHaveBeenCalledOnce();
+    expect(await screen.findByText("已退出")).toBeInTheDocument();
+  });
+
+  it("says so when the API cannot be reached", async () => {
+    openAt("/admin");
+    render(
+      <AdminApp
+        api={api({
+          me: vi.fn(() =>
+            Promise.reject(new Error("连不上后台服务，请确认服务已启动")),
+          ),
+        })}
+      />,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "连不上后台服务",
+    );
+  });
+});
+
+describe("admin sections", () => {
+  it("maps paths and roles", () => {
+    expect(sectionFromPath("/admin/keywords")).toBe("keywords");
+    expect(sectionFromPath("/admin/keywords/")).toBe("keywords");
+    expect(sectionFromPath("/admin")).toBeNull();
+    expect(sectionFromPath("/admin/unknown")).toBeNull();
+    expect(visibleSections("owner")).toHaveLength(9);
+    expect(
+      visibleSections("editor").map((section) => section.key),
+    ).not.toContain("audit");
+  });
+});

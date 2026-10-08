@@ -13,6 +13,11 @@ import { App } from "./App";
 import styles from "./Application.module.css";
 import { resolveApplicationPath } from "./pathResolver";
 
+const AdminApp = lazy(async () => {
+  const module = await import("@/features/admin/AdminApp");
+  return { default: module.AdminApp };
+});
+
 const IpAssetPage = lazy(async () => {
   const module = await import("@/features/ip-assets/IpAssetPage");
   return { default: module.IpAssetPage };
@@ -33,6 +38,15 @@ export function Application() {
   const route = resolveApplicationPath(location.pathname);
 
   if (route === "console") return <App />;
+  if (route === "admin") {
+    return (
+      <StandaloneDocument title="运营后台">
+        <Suspense fallback={<p role="status">正在打开运营后台…</p>}>
+          <AdminApp />
+        </Suspense>
+      </StandaloneDocument>
+    );
+  }
   if (
     route === "ip-assets" ||
     route === "ip-assets-create" ||

@@ -110,6 +110,9 @@ describe("Application route composition", () => {
     expect(resolveApplicationPath("/ip-assets/login")).toBe("ip-assets-login");
     expect(resolveApplicationPath("/ip-assets/login/")).toBe("ip-assets-login");
     expect(resolveApplicationPath("/ip-assets/archive")).toBe("not-found");
+    expect(resolveApplicationPath("/admin")).toBe("admin");
+    expect(resolveApplicationPath("/admin/sources")).toBe("admin");
+    expect(resolveApplicationPath("/administrator")).toBe("not-found");
     expect(resolveApplicationPath("/unknown")).toBe("not-found");
   });
 

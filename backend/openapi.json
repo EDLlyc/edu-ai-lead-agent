@@ -274,6 +274,143 @@
         "title": "AcquisitionRunResponse",
         "type": "object"
       },
+      "AdminAuditEventListResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminAuditEventResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "AdminAuditEventListResponse",
+        "type": "object"
+      },
+      "AdminAuditEventResponse": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "username",
+          "action",
+          "target_type",
+          "target_id",
+          "detail"
+        ],
+        "title": "AdminAuditEventResponse",
+        "type": "object"
+      },
+      "AdminLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "AdminLoginRequest",
+        "type": "object"
+      },
+      "AdminMeResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "editor"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "display_name",
+          "role",
+          "expires_at"
+        ],
+        "title": "AdminMeResponse",
+        "type": "object"
+      },
       "ArticleBulletListBlock": {
         "additionalProperties": false,
         "properties": {
@@ -4320,7 +4457,7 @@
       },
       "CreateContentSlotHumanPickRequest": {
         "additionalProperties": false,
-        "description": "An operator approves one scored candidate; it is produced and sent right away.",
+        "description": "An operator approves one scored candidate; it is produced, then held for review and push.",
         "properties": {
           "event_id": {
             "format": "uuid",
@@ -6627,6 +6764,108 @@
           "timezone"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HumanPickCopyIssueResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "field",
+          "message"
+        ],
+        "title": "HumanPickCopyIssueResponse",
+        "type": "object"
+      },
+      "HumanPickCopyResponse": {
+        "properties": {
+          "copywriting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copywriting"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "hook": {
+            "title": "Hook",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/HumanPickCopyIssueResponse"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "push_deadline": {
+            "format": "date-time",
+            "title": "Push Deadline",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run_id",
+          "copywriting",
+          "hook",
+          "hashtags",
+          "passed",
+          "saved",
+          "issues",
+          "push_deadline"
+        ],
+        "title": "HumanPickCopyResponse",
         "type": "object"
       },
       "ImageArtifactResponse": {
@@ -11919,6 +12158,96 @@
         "title": "OfficialAccountValidationResponse",
         "type": "object"
       },
+      "PushHumanPickRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reviewer": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Reviewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reviewer"
+        ],
+        "title": "PushHumanPickRequest",
+        "type": "object"
+      },
+      "PushHumanPickResponse": {
+        "properties": {
+          "delivery_id": {
+            "format": "uuid",
+            "title": "Delivery Id",
+            "type": "string"
+          },
+          "delivery_status": {
+            "title": "Delivery Status",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "delivery_id",
+          "delivery_status"
+        ],
+        "title": "PushHumanPickResponse",
+        "type": "object"
+      },
+      "ReviseHumanPickCopyRequest": {
+        "additionalProperties": false,
+        "description": "The operator's hook sentence and hashtags; the rest of the copy stays system-owned.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "hook": {
+            "maxLength": 500,
+            "title": "Hook",
+            "type": "string"
+          },
+          "reviewer": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Reviewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook",
+          "reviewer"
+        ],
+        "title": "ReviseHumanPickCopyRequest",
+        "type": "object"
+      },
       "SnapshotMetadataResponse": {
         "properties": {
           "bucket": {
@@ -13633,6 +13962,216 @@
         ]
       }
     },
+    "/api/v1/admin/audit-events": {
+      "get": {
+        "operationId": "get_admin_audit_events_api_v1_admin_audit_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuditEventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin Audit Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/auth/login": {
+      "post": {
+        "operationId": "post_admin_login_api_v1_admin_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Admin Login",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/auth/logout": {
+      "post": {
+        "operationId": "post_admin_logout_api_v1_admin_auth_logout_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Admin Logout",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/auth/me": {
+      "get": {
+        "operationId": "get_admin_me_api_v1_admin_auth_me_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin Me",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/brand-context/retrieve": {
       "post": {
         "description": "Returns bounded active brand guidance for the internal WeChat Moments copy-generation pipeline and operator diagnostics. The audience field describes the target reader of generated copy; this endpoint is not a parent-facing search product, and its results cannot be used as factual evidence.",
@@ -14120,7 +14659,7 @@
     },
     "/api/v1/content-slot-human-picks": {
       "post": {
-        "description": "Operator-approved extra item: copy, image, WeCom delivery and long image follow at once.",
+        "description": "Operator-approved extra item: copy and image are produced, then held for the push.",
         "operationId": "create_content_slot_human_pick_api_v1_content_slot_human_picks_post",
         "requestBody": {
           "content": {
@@ -14155,6 +14694,114 @@
           }
         },
         "summary": "Create Content Slot Human Pick",
+        "tags": [
+          "content-slots"
+        ]
+      }
+    },
+    "/api/v1/content-slot-human-picks/{run_id}/copy": {
+      "post": {
+        "description": "Check (``dry_run``) or save the operator's hook and hashtags for a held human pick.",
+        "operationId": "revise_content_slot_human_pick_copy_api_v1_content_slot_human_picks__run_id__copy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseHumanPickCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanPickCopyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Content Slot Human Pick Copy",
+        "tags": [
+          "content-slots"
+        ]
+      }
+    },
+    "/api/v1/content-slot-human-picks/{run_id}/push": {
+      "post": {
+        "description": "Send a held human pick to the formal WeCom group now (the long image follows).",
+        "operationId": "push_content_slot_human_pick_api_v1_content_slot_human_picks__run_id__push_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushHumanPickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushHumanPickResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Push Content Slot Human Pick",
         "tags": [
           "content-slots"
         ]

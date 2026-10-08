@@ -55,6 +55,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Audit Events */
+        get: operations["get_admin_audit_events_api_v1_admin_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Login */
+        post: operations["post_admin_login_api_v1_admin_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Logout */
+        post: operations["post_admin_logout_api_v1_admin_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Me */
+        get: operations["get_admin_me_api_v1_admin_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/brand-context/retrieve": {
         parameters: {
             query?: never;
@@ -243,9 +311,49 @@ export interface paths {
         put?: never;
         /**
          * Create Content Slot Human Pick
-         * @description Operator-approved extra item: copy, image, WeCom delivery and long image follow at once.
+         * @description Operator-approved extra item: copy and image are produced, then held for the push.
          */
         post: operations["create_content_slot_human_pick_api_v1_content_slot_human_picks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-human-picks/{run_id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Content Slot Human Pick Copy
+         * @description Check (``dry_run``) or save the operator's hook and hashtags for a held human pick.
+         */
+        post: operations["revise_content_slot_human_pick_copy_api_v1_content_slot_human_picks__run_id__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-human-picks/{run_id}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Content Slot Human Pick
+         * @description Send a held human pick to the formal WeCom group now (the long image follows).
+         */
+        post: operations["push_content_slot_human_pick_api_v1_content_slot_human_picks__run_id__push_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1433,6 +1541,62 @@ export interface components {
             trigger: string;
             /** Unchanged Count */
             unchanged_count: number;
+        };
+        /** AdminAuditEventListResponse */
+        AdminAuditEventListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminAuditEventResponse"][];
+        };
+        /** AdminAuditEventResponse */
+        AdminAuditEventResponse: {
+            /** Action */
+            action: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** Username */
+            username: string;
+        };
+        /** AdminLoginRequest */
+        AdminLoginRequest: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /** AdminMeResponse */
+        AdminMeResponse: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "editor";
+            /** Username */
+            username: string;
         };
         /** ArticleBulletListBlock */
         ArticleBulletListBlock: {
@@ -2909,7 +3073,7 @@ export interface components {
         };
         /**
          * CreateContentSlotHumanPickRequest
-         * @description An operator approves one scored candidate; it is produced and sent right away.
+         * @description An operator approves one scored candidate; it is produced, then held for review and push.
          */
         CreateContentSlotHumanPickRequest: {
             /**
@@ -3851,6 +4015,45 @@ export interface components {
             status: "ok";
             /** Timezone */
             timezone: string;
+        };
+        /** HumanPickCopyIssueResponse */
+        HumanPickCopyIssueResponse: {
+            /** Code */
+            code: string;
+            /** Field */
+            field: string | null;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
+        /** HumanPickCopyResponse */
+        HumanPickCopyResponse: {
+            /** Copywriting */
+            copywriting: string | null;
+            /** Hashtags */
+            hashtags: string[];
+            /** Hook */
+            hook: string;
+            /** Issues */
+            issues: components["schemas"]["HumanPickCopyIssueResponse"][];
+            /** Passed */
+            passed: boolean;
+            /**
+             * Push Deadline
+             * Format: date-time
+             */
+            push_deadline: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Saved */
+            saved: boolean;
         };
         /** ImageArtifactResponse */
         ImageArtifactResponse: {
@@ -5731,6 +5934,45 @@ export interface components {
             /** Passed */
             passed: boolean;
         };
+        /** PushHumanPickRequest */
+        PushHumanPickRequest: {
+            /** Note */
+            note?: string | null;
+            /** Reviewer */
+            reviewer: string;
+        };
+        /** PushHumanPickResponse */
+        PushHumanPickResponse: {
+            /**
+             * Delivery Id
+             * Format: uuid
+             */
+            delivery_id: string;
+            /** Delivery Status */
+            delivery_status: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /**
+         * ReviseHumanPickCopyRequest
+         * @description The operator's hook sentence and hashtags; the rest of the copy stays system-owned.
+         */
+        ReviseHumanPickCopyRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Hashtags */
+            hashtags?: string[];
+            /** Hook */
+            hook: string;
+            /** Reviewer */
+            reviewer: string;
+        };
         /** SnapshotMetadataResponse */
         SnapshotMetadataResponse: {
             /** Bucket */
@@ -6362,6 +6604,133 @@ export interface operations {
             };
         };
     };
+    get_admin_audit_events_api_v1_admin_audit_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAuditEventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_login_api_v1_admin_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_logout_api_v1_admin_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_me_api_v1_admin_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retrieve_brand_context_route_api_v1_brand_context_retrieve_post: {
         parameters: {
             query?: never;
@@ -6722,6 +7091,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentSlotHumanPickResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_content_slot_human_pick_copy_api_v1_content_slot_human_picks__run_id__copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseHumanPickCopyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanPickCopyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_content_slot_human_pick_api_v1_content_slot_human_picks__run_id__push_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushHumanPickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushHumanPickResponse"];
                 };
             };
             /** @description Validation Error */

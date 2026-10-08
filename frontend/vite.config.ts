@@ -68,6 +68,15 @@ function servePreviewAssets() {
   };
 }
 
+// The 运营后台 talks to the API through this origin, so its session cookie stays same-origin
+// (SameSite=Strict, no credentialed CORS on the API).
+const adminApiProxy = {
+  "/api/v1/admin": {
+    target: process.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
+    changeOrigin: false,
+  },
+};
+
 export default defineConfig({
   envDir: "..",
   plugins: [react(), servePreviewAssets()],
@@ -79,6 +88,10 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 5173,
+    proxy: adminApiProxy,
+  },
+  preview: {
+    proxy: adminApiProxy,
   },
   test: {
     environment: "jsdom",

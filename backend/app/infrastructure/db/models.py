@@ -6936,3 +6936,85 @@ class WeChatOfficialAccountDraftAttemptModel(Base):
         ),
         Index("ix_wechat_mp_draft_attempts_job_started", "job_id", "started_at"),
     )
+
+
+class AdminUserModel(Base):
+    """An operator account of the 运营后台; managed with `app.admin_users_main`."""
+
+    __tablename__ = "admin_users"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    username: Mapped[str] = mapped_column(String(40), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(40), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    failed_login_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_admin_users_username"),
+        CheckConstraint("username ~ '^[a-z][a-z0-9_.-]{1,39}$'", name="ck_admin_users_username"),
+        CheckConstraint("role IN ('owner', 'editor')", name="ck_admin_users_role"),
+        CheckConstraint("failed_login_count >= 0", name="ck_admin_users_failed_login_count"),
+        CheckConstraint("password_hash LIKE 'scrypt$%'", name="ck_admin_users_password_hash"),
+    )
+
+
+class AdminSessionModel(Base):
+    """A browser login. Only the SHA-256 of the cookie token is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_admin_sessions_token_hash"),
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="ck_admin_sessions_token_hash"),
+        CheckConstraint("expires_at > created_at", name="ck_admin_sessions_expiry"),
+        Index("ix_admin_sessions_user_id", "user_id"),
+    )
+
+
+class AdminAuditEventModel(Base):
+    """Who did what in the 运营后台. `detail` never holds a password, token or API key."""
+
+    __tablename__ = "admin_audit_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    username: Mapped[str] = mapped_column(String(40), nullable=False)
+    action: Mapped[str] = mapped_column(String(60), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    __table_args__ = (
+        CheckConstraint("action ~ '^[a-z][a-z0-9_.]{0,59}$'", name="ck_admin_audit_events_action"),
+        CheckConstraint(
+            "jsonb_typeof(detail) = 'object'", name="ck_admin_audit_events_detail_object"
+        ),
+        Index("ix_admin_audit_events_occurred_at", "occurred_at"),
+    )
