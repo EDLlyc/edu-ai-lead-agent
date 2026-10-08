@@ -1,5 +1,17 @@
 # Rollout: 运营后台 items 0–2 (login + audit, 新闻源, 关键词)
 
+**Done 2026-10-08 17:28 CST** by this session, after the owner granted `Bash(ssh edu-ai-production:*)`
+and waived the evening slot. Steps 1–8 all passed:
+- base hashes: 0 mismatches;
+- offline smoke ok;
+- 0 running jobs (three 18:30 deliveries queued, unleased);
+- DB dump 95 MB, verified with `pg_restore --list`;
+- migration 0051 → 0054, still 10 seeds enabled;
+- six services on `5a5fb24c…`, 0 restarts;
+- `/api/v1/admin/auth/me` → 401, write without the guard → 403;
+- no errors in the logs.
+Next: step 9 (owner account) and the domain setup.
+
 Owner said "上线吧" on 2026-10-08 11:57 (in the noon slot), so the deploy waits for 13:30. This
 session cannot reach production (the classifier denies production SSH). Whoever deploys follows
 these steps, after the owner grants the permission or instructs the deploy window directly.

@@ -8,7 +8,8 @@
   to the running service image and the quality-report cron image on 2026-09-29).
 - Start every feature, fix and release branch from `mainline`; merge back into it after deploy.
 - The production database follows mainline's migration chain (…0048 → 0049 wecom_news_infographics →
-  0050 infographic_advisory → 0051 human_pick_lanes). New migrations go on top of it.
+  0050 infographic_advisory → 0051 human_pick_lanes → 0052 admin_console → 0053 operator_sources →
+  0054 operator_keywords). New migrations go on top of it.
 
 ## Deploying
 
@@ -25,6 +26,35 @@
   `docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env up -d --no-deps …`.
 - Avoid restarting workers while an acquisition, copy or long-image job is running.
 - Several sessions may deploy: tell the others the new digest and build only `FROM` the running one.
+
+## Live since 2026-10-08 17:28 (image `sha256:5a5fb24c…`, 运营后台 items 0–2, release bdb0963)
+
+- The owner waived the evening-slot rule for this deploy ("先在就做，今天的任务不用管"). The three
+  18:30 deliveries were queued and not leased when the services switched.
+- The six app services run
+  `offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:5a5fb24ccaccf1894e3d857e583f412fb01526dd4bd5f71f83125bd2482f92b7`.
+  This is 64dc8ade plus the 35 backend files of `feat/admin-console-20261008` @ ac5f076
+  (`.trellis/tasks/10-08-admin-console/rollout/`). The base hashes matched in the running
+  container and the offline smoke passed.
+- DB `20260928_0051` → `20261008_0054`: admin users, sessions and audit log; source ownership,
+  sticky toggles, archive and `connector_config`; operator keyword versions and
+  `content_slot_runs.operator_keyword_version_id`. `seed_sources` still found the same 10
+  enabled seeds.
+- New API `/api/v1/admin/*` (login cookie, write guard). It is on loopback only, like the rest
+  of the API; there is no public entry yet (domain + nginx pending, see the rollout README).
+  `APP_ENV=production`, so the session cookie is Secure.
+- Behaviour is unchanged until an operator acts:
+  - no keyword version → slot scoring as before;
+  - seeds stay enabled until toggled;
+  - generic connectors only for operator sources.
+- Cron images unchanged: quality report 9c9d1c01, watchdog + ops-action 8f14b771, shadow and
+  regression as before. They do not read the new tables. Rebuild them from 5a5fb24c the next
+  time Settings change.
+- Backups:
+  - DB `/var/backups/edu-ai/postgres/edu-ai-before-admin-console-20261008T092757Z.dump` (+ `.sha256`);
+  - env files `*.before-bdb0963-20261008T092757Z`.
+- Rollback: restore the env pair and recreate the six services. The schema is additive, and
+  64dc8ade runs on it unchanged.
 
 ## Live since 2026-09-30 15:21 (image `sha256:21c63fc9…`, release d6e6772)
 
