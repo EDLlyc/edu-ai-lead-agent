@@ -1,0 +1,39 @@
+# Python-only overlay for the 运营后台 items 0-2 (login + audit, 新闻源, 关键词) on the image production
+# runs since 2026-10-08 09:22 (app = mainline e9feebd). Adds migrations 0052-0054.
+FROM offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:64dc8ade051c8c5fd54285aafc4ec9976eeb22397c6f51c42be372ac8a6beb45
+COPY alembic/versions/20261008_0052_admin_console.py /app/alembic/versions/20261008_0052_admin_console.py
+COPY alembic/versions/20261008_0053_operator_sources.py /app/alembic/versions/20261008_0053_operator_sources.py
+COPY alembic/versions/20261008_0054_operator_keywords.py /app/alembic/versions/20261008_0054_operator_keywords.py
+COPY app/admin_users_main.py /app/app/admin_users_main.py
+COPY app/api/admin_dependencies.py /app/app/api/admin_dependencies.py
+COPY app/api/v1/routes/admin.py /app/app/api/v1/routes/admin.py
+COPY app/api/v1/routes/admin_keywords.py /app/app/api/v1/routes/admin_keywords.py
+COPY app/api/v1/routes/admin_sources.py /app/app/api/v1/routes/admin_sources.py
+COPY app/api_main.py /app/app/api_main.py
+COPY app/application/services/admin_auth.py /app/app/application/services/admin_auth.py
+COPY app/application/services/execute_acquisition.py /app/app/application/services/execute_acquisition.py
+COPY app/application/services/keyword_admin.py /app/app/application/services/keyword_admin.py
+COPY app/application/services/source_admin.py /app/app/application/services/source_admin.py
+COPY app/core/config.py /app/app/core/config.py
+COPY app/domain/admin_auth.py /app/app/domain/admin_auth.py
+COPY app/domain/content_slots.py /app/app/domain/content_slots.py
+COPY app/domain/copy_generation.py /app/app/domain/copy_generation.py
+COPY app/domain/entities.py /app/app/domain/entities.py
+COPY app/domain/operator_keywords.py /app/app/domain/operator_keywords.py
+COPY app/domain/source_admin.py /app/app/domain/source_admin.py
+COPY app/domain/topic_selection.py /app/app/domain/topic_selection.py
+COPY app/infrastructure/db/admin_auth.py /app/app/infrastructure/db/admin_auth.py
+COPY app/infrastructure/db/content_slot_human_picks.py /app/app/infrastructure/db/content_slot_human_picks.py
+COPY app/infrastructure/db/content_slots.py /app/app/infrastructure/db/content_slots.py
+COPY app/infrastructure/db/copy_generation.py /app/app/infrastructure/db/copy_generation.py
+COPY app/infrastructure/db/human_pick_review.py /app/app/infrastructure/db/human_pick_review.py
+COPY app/infrastructure/db/models.py /app/app/infrastructure/db/models.py
+COPY app/infrastructure/db/operator_keywords.py /app/app/infrastructure/db/operator_keywords.py
+COPY app/infrastructure/db/repositories.py /app/app/infrastructure/db/repositories.py
+COPY app/infrastructure/db/source_admin.py /app/app/infrastructure/db/source_admin.py
+COPY app/infrastructure/db/topic_selection.py /app/app/infrastructure/db/topic_selection.py
+COPY app/infrastructure/ingestion/connectors.py /app/app/infrastructure/ingestion/connectors.py
+COPY app/schemas/admin.py /app/app/schemas/admin.py
+COPY app/schemas/admin_keywords.py /app/app/schemas/admin_keywords.py
+COPY app/schemas/admin_sources.py /app/app/schemas/admin_sources.py
+COPY files.txt /app/release-bdb0963-files.txt
