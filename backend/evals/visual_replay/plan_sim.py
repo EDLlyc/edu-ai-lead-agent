@@ -171,6 +171,7 @@ def simulate(
                 "action_id": action.asset_id,
                 "brief": brief.artifact_id,
                 "lru": "cooldown exhausted" in action.reason,
+                "semantic": "semantic in-tier order" in action.reason,
             }
         )
         history.append(
