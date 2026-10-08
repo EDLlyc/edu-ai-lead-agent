@@ -237,4 +237,9 @@ Open gaps kept visible in `canonical-report.md`:
   bases 4/4; gate PASS @ 6a4d660; smoke ok; no job running; six services healthy, 0 restarts,
   0 errors; live `copy-repair-agent-v4-keep-brand` / agent_first. Fixes the 10-03 noon #1 post
   delivered without a long image. Backups `*.before-6a4d660-20261003T142446`.
+- 10-08 09:22 repair agent v5 brand-by-id (owner: "确认上线"): unified image
+  `…@sha256:64dc8ade051c8c5fd54285aafc4ec9976eeb22397c6f51c42be372ac8a6beb45` (app/ = mainline
+  e9feebd) for the six services and the weekly + shadow crons; bases 29/29; gate PASS @ da2d2a3;
+  smoke ok; no job running; six services healthy, 0 restarts, 0 errors; live v5 / agent_first.
+  Backups `*.before-e9feebd-20261008T092226`.
 

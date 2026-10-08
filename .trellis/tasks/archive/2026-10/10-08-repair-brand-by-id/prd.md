@@ -28,3 +28,5 @@ Unified image `sha256:64dc8ade051c8c5fd54285aafc4ec9976eeb22397c6f51c42be372ac8a
 (tag release-e9feebd) = app image 1f238fc2 + every backend/app file changed in de22d32..e9feebd
 (app/ = mainline e9feebd); bases 29/29; smoke ok. Plan: six app services and the weekly + shadow
 crons move to it (outside slot hours, no job running).
+
+LIVE 2026-10-08 09:22 (owner "确认上线"); backups `*.before-e9feebd-20261008T092226`.

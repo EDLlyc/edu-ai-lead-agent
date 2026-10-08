@@ -39,6 +39,19 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-08 09:22 (unified image `sha256:64dc8ade…`, mainline e9feebd)
+
+- Repair agent `copy-repair-agent-v5-brand-by-id`: brand sentences are picked by id
+  (`list_brand_sentences` / `use_brand_sentence`, written verbatim); the agent stops with
+  `repeated_error` after the same tool error three times. Production replay 10 drafts × 2: 17/20
+  vs production 7/10 (`backend/evals/copy_repair/reports/2026-10-08-brand-by-id.md`).
+- The six app services and the weekly + shadow crons run
+  `…@sha256:64dc8ade051c8c5fd54285aafc4ec9976eeb22397c6f51c42be372ac8a6beb45` = 1f238fc2 + every
+  backend/app file changed in de22d32..e9feebd, so their app/ equals mainline e9feebd. Still on
+  older images: quality report 9c9d1c01, watchdog + ops-action 8f14b771, eval regression 7bffe4ed.
+- Backups `*.before-e9feebd-20261008T092226` (env files, weekly and shadow wrappers). Rollback:
+  restore them and recreate the six services.
+
 ## Live since 2026-10-03 14:24 (image `sha256:1f238fc2…`, release 6a4d660); mainline = feat/repair-agent-20260930
 
 - Incident 10-03 noon #1: the repair agent dropped the only brand statement of a draft blocked
