@@ -169,3 +169,40 @@ Owner's 8 admin features planned as nine Trellis tasks (10/8-11/17); item 0 buil
 ### Next Steps
 
 - Item 1 新闻源 from 10/9; owner questions: WeChat 认证/发布/数据统计 permissions, meaning of 文字数据统计, item 5 before 3, poster samples, how operators reach the console (tunnel vs HTTPS)
+
+
+## Session 92: 运营后台第 1 项：新闻源后台增删改
+
+**Date**: 2026-10-08
+**Task**: 运营后台第 1 项：新闻源后台增删改
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Started item 1 on the owner's word (10/8 instead of 10/9) and finished it: generic HTML/RSS connectors configured in the database, sticky on/off for code sources, preview before save, audit
+
+### Main Changes
+
+- Generic connectors generic_html_v1 / generic_rss_v1 with settings in source_versions.connector_config (migration 0053)
+- seed_sources keeps an operator's on/off (enabled_set_by); operator sources can be edited (new version) and archived
+- Preview route: robots.txt, list, 3 sample articles with freshness/relevance verdicts; create re-checks robots; sources start disabled
+- 新闻源 page in /admin; audit labels for source actions
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0b1c33c` | (see git log) |
+
+### Testing
+
+- [OK] 15 unit + 10 integration + 12 frontend; browser smoke + one real acquisition job on kepu.gmw.cn kept 2 articles; predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Item 2 关键词 next; deploy items 0+1 together only on the owner's word (migrations 0052+0053, API + acquisition worker image)
+- Local dev DNS uses a fake-IP proxy (198.18.x): some hosts are refused locally by the public-DNS check; production is fine
