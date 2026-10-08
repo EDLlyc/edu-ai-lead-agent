@@ -243,3 +243,39 @@ Operator 关注词/屏蔽词/文案禁用词 as immutable versions; slot runs sn
 
 - Item 3 公众号发布 needs owner answers first (WeChat 认证 + freepublish permission; item 5 before 3?)
 - Deploy items 0-2 together on the owner's word: migrations 0052-0054; API, acquisition worker, content scheduler/worker images
+
+
+## Session 94: 运营后台第 0-2 项上线
+
+**Date**: 2026-10-08
+**Task**: 运营后台第 0-2 项上线
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Deployed login/audit, 新闻源, 关键词 to production at 17:28 CST on the owner's word (evening slot waived): image 5a5fb24c, migrations 0052-0054, mainline e6b3a5b
+
+### Main Changes
+
+- Base hashes 0 mismatches, offline smoke ok, DB dump 95 MB verified, migrate 0051->0054, six services recreated, admin routes 401/403, no log errors; 18:30 deliveries stayed queued
+- Admin-only build (npm run build:admin) and nginx template tested locally (only console + /api/v1/admin exposed, CSP clean, login rate limit)
+- mainline fast-forwarded to e6b3a5b (merged peer's docs-only e4534ac); exhibit connector pins 5a5fb24c; peer notified
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e6b3a5b` | (see git log) |
+
+### Testing
+
+- [OK] predeploy gate PASS; production checks listed above
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Create the first owner account on production (owner picks the username)
+- Domain: company domain is ICP-filed; need the name, DNS access, Tencent access filing check, office IP; install nginx + cert
