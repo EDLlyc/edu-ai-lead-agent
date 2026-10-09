@@ -1,34 +1,54 @@
 # 公众号发布与定时发布（运营后台第 3 项）
 
-Parent `10-08-admin-console`. Planned 10/19–10/23 (4 d).
+Parent `10-08-admin-console`. Built with item 5, which provides the credentials.
 
-## Today
+## Design
 
-- Draft only:
-  - `infrastructure/wechat_official_account/client.py` calls stable_token, uploadimg,
-    add_material and `draft/add`.
-  - `WeChatOfficialAccountHttpClient` refuses to start unless `wechat_mp_mode == "draft_only"`.
-- No freepublish or mass-send code anywhere.
-- The single edition is drafted Mon/Wed/Fri at 10:00 (`official_account_single_runtime.py`).
-- The draft `media_id` is **not stored**, only `sha256(media_id)` (`receipt_fingerprint`,
-  `draft_media_fingerprint`). Publishing needs the raw id: store it (encrypted or plain; it is not
-  a secret) going forward. Older drafts can be found with `draft/batchget`.
+- **Admin WeChat client** (`infrastructure/wechat_official_account/admin_client.py`):
+  `stable_token` (no force refresh; per-app process cache), `draft/batchget`,
+  `freepublish/submit`, `freepublish/get`, `freepublish/batchget`.
+  - Fixed host, bounded responses, WeChat error codes shown in Chinese.
+  - A timeout on submit is *outcome unknown*: it is never retried automatically.
+- **Live lists**, read from WeChat:
+  - `GET /admin/wechat/{account}/drafts` (title, author, digest, updated);
+  - `GET /admin/wechat/{account}/published` (title, link, time).
+- **`wechat_publish_jobs`** (migration 0055) holds:
+  - account, draft `media_id`, title snapshot;
+  - `scheduled_at`;
+  - status `scheduled → submitting → publishing → succeeded | failed | outcome_unknown`, or
+    `cancelled`;
+  - `publish_id`, `article_id`, `article_url`, WeChat status code / error;
+  - who created and cancelled it; lease fields.
+- **Publishing.**
+  - `POST /admin/wechat/publish-jobs` with `{account_id, media_id, scheduled_at?}`.
+    Immediate jobs are submitted in the request. Scheduled ones are submitted by the loop at
+    their time. The same draft cannot have two open jobs.
+  - `POST …/{id}/cancel` works only while scheduled. `GET /admin/wechat/publish-jobs` lists
+    recent jobs.
+  - Editors may publish; the UI asks twice and the audit log records it.
+- **Loop.** A background task in the API process runs while `ADMIN_SECRET_KEY` is set.
+  - Every 20 s it claims due scheduled jobs (`FOR UPDATE SKIP LOCKED` plus a lease) and polls
+    `publishing` jobs with `freepublish/get`.
+  - Status 0 means succeeded and records the URL. Status 1 means wait, with a give-up after
+    30 min → `outcome_unknown`. Statuses 2, 3, 4 and 6 mean failed.
+  - The loop is also the home of item 4's daily stats sync.
 
-## Scope
+## Not in scope
 
-- List the drafts the system created (title, date, account, status).
-- **Publish now**: `freepublish/submit`, then poll `freepublish/get` until success or failure;
-  store `publish_id`, `article_id` and the URL.
-- **Schedule**: the operator picks a time; a scheduler job submits then. Cancel while pending.
-  WeChat freepublish has no native schedule, so ours must survive restarts (database job with a
-  lease, like the draft jobs).
-- New mode `wechat_mp_mode = "draft_and_publish"`, off by default; publishing stays impossible
-  until the owner enables it.
-- Two confirmations before a publish (like 人工加推). Audit row for each submit, cancel and result.
+Mass send (群发), deleting published articles, editing drafts here (the drafts come from the
+existing pipeline or the WeChat backend).
 
-## Blockers (ask the owner first)
+## Acceptance
 
-- The account must be 认证 and the app must have the 发布能力 (freepublish) permission. Without
-  it, testing is mock-only.
-- A test account, or permission to publish one real test article.
-- Do item 5 (multi-account) first? Then publishing is per-account from the start.
+Integration tests with a mock WeChat:
+- drafts and published lists;
+- publish now → publishing → succeeded with URL;
+- scheduled → loop submits at time;
+- cancel;
+- duplicate open job refused;
+- submit timeout → outcome_unknown with no retry;
+- failed status;
+- the editor may publish, but accounts stay owner-only;
+- audit.
+Frontend tests with two confirmations. Browser smoke against a mock WeChat. Real publishing only
+on the owner's explicit word.

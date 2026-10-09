@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class AdminWeChatStatusResponse(BaseModel):
+    secret_key_configured: bool
+
+
+class AdminWeChatAccountResponse(BaseModel):
+    id: UUID
+    name: str
+    app_id: str
+    secret_hint: str
+    topics: list[str]
+    enabled: bool
+    last_verified_at: datetime | None
+    last_verify_error: str | None
+    created_by: str
+    created_at: datetime
+
+
+class AdminWeChatAccountListResponse(BaseModel):
+    items: list[AdminWeChatAccountResponse]
+    count: int
+
+
+class AdminWeChatAccountOption(BaseModel):
+    id: UUID
+    name: str
+    topics: list[str]
+
+
+class AdminWeChatAccountOptionsResponse(BaseModel):
+    items: list[AdminWeChatAccountOption]
+
+
+class AdminWeChatAccountCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    app_id: str = Field(min_length=1, max_length=40)
+    app_secret: str = Field(min_length=1, max_length=80)
+    topics: list[str] = Field(default_factory=list, max_length=20)
+
+
+class AdminWeChatAccountUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    topics: list[str] | None = Field(default=None, max_length=20)
+    enabled: bool | None = None
+    app_secret: str | None = Field(default=None, max_length=80)
+
+
+class AdminWeChatDraftArticle(BaseModel):
+    title: str
+    author: str
+    digest: str
+
+
+class AdminWeChatDraft(BaseModel):
+    media_id: str
+    updated_at: datetime
+    articles: list[AdminWeChatDraftArticle]
+    open_job_id: UUID | None
+
+
+class AdminWeChatDraftListResponse(BaseModel):
+    total: int
+    items: list[AdminWeChatDraft]
+
+
+class AdminWeChatPublishedArticle(BaseModel):
+    title: str
+    url: str
+
+
+class AdminWeChatPublished(BaseModel):
+    article_id: str
+    updated_at: datetime
+    articles: list[AdminWeChatPublishedArticle]
+
+
+class AdminWeChatPublishedListResponse(BaseModel):
+    total: int
+    items: list[AdminWeChatPublished]
+
+
+class AdminWeChatPublishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_id: UUID
+    media_id: str = Field(min_length=1, max_length=128)
+    title: str = Field(default="", max_length=300)
+    scheduled_at: datetime | None = None
+
+
+class AdminWeChatPublishJob(BaseModel):
+    id: UUID
+    account_id: UUID
+    account_name: str
+    media_id: str
+    title: str
+    scheduled_at: datetime
+    status: Literal[
+        "scheduled",
+        "submitting",
+        "publishing",
+        "succeeded",
+        "failed",
+        "outcome_unknown",
+        "cancelled",
+    ]
+    article_url: str | None
+    error: str | None
+    created_by: str
+    cancelled_by: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class AdminWeChatPublishJobListResponse(BaseModel):
+    items: list[AdminWeChatPublishJob]

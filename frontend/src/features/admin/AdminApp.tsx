@@ -15,6 +15,9 @@ import {
   type KeywordsApi,
 } from "./keywords/api";
 import { SourcesPage } from "./sources/SourcesPage";
+import { WeChatAccountsPage } from "./wechat/WeChatAccountsPage";
+import { WeChatPublishPage } from "./wechat/WeChatPublishPage";
+import { wechatApi as defaultWeChatApi, type WeChatApi } from "./wechat/api";
 import {
   sourcesApi as defaultSourcesApi,
   type SourcesApi,
@@ -41,11 +44,13 @@ export function AdminApp({
   sourcesApi = defaultSourcesApi,
   keywordsApi = defaultKeywordsApi,
   accountsApi = defaultAccountsApi,
+  wechatApi = defaultWeChatApi,
 }: {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
   readonly keywordsApi?: KeywordsApi;
   readonly accountsApi?: AccountsApi;
+  readonly wechatApi?: WeChatApi;
 }) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
   const [path, setPath] = useState(() => window.location.pathname);
@@ -200,6 +205,10 @@ export function AdminApp({
             me={me.username}
             onSessionExpired={expire}
           />
+        ) : current.key === "wechat-publish" ? (
+          <WeChatPublishPage api={wechatApi} onSessionExpired={expire} />
+        ) : current.key === "wechat-accounts" ? (
+          <WeChatAccountsPage api={wechatApi} onSessionExpired={expire} />
         ) : current.key === "account" ? (
           <MyAccountPage api={api} me={me} onSessionExpired={expire} />
         ) : (

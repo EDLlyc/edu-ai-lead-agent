@@ -47,12 +47,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "发布",
     group: "公众号",
     role: "editor",
-    plan: {
-      item: 3,
-      dates: "10/19 – 10/23",
-      summary:
-        "把草稿箱里的文章立即发布或定时发布，可以取消还没到时间的定时发布。",
-    },
+    plan: null,
   },
   {
     key: "wechat-stats",
@@ -70,12 +65,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "账号",
     group: "公众号",
     role: "owner",
-    plan: {
-      item: 5,
-      dates: "10/28 – 11/3",
-      summary:
-        "绑定一个或多个公众号，每个号设置发布的主题；密钥加密保存，页面只显示末 4 位。",
-    },
+    plan: null,
   },
   {
     key: "layout-templates",

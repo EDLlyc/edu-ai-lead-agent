@@ -584,7 +584,8 @@
   margin-bottom: 0.75rem;
 }
 
-.filters button[aria-pressed="true"] {
+.filters button[aria-pressed="true"],
+.filters button[aria-selected="true"] {
   color: #fff;
   background: #0f766e;
   border-color: #0f766e;
@@ -609,6 +610,48 @@
   margin-left: 0.6rem;
   color: #5b6b70;
   font-size: 0.8rem;
+}
+
+/* 公众号 */
+.inlineField {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.inlineField select,
+.inlineField input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #c4cfcb;
+  border-radius: 0.45rem;
+  font: inherit;
+}
+
+.cards {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cards > li {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  background: #fff;
+  border: 1px solid #dfe5e2;
+  border-radius: 0.6rem;
+}
+
+.cards small {
+  color: #5b6b70;
+}
+
+.table tr[data-status="failed"] td,
+.table tr[data-status="outcome_unknown"] td {
+  color: #b42318;
 }
 
 @media (max-width: 720px) {

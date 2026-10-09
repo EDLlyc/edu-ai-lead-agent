@@ -27,6 +27,16 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "source.disabled": "关闭新闻源",
   "source.archived": "删除新闻源",
   "keywords.saved": "保存关键词",
+  "wechat_account.bound": "绑定公众号",
+  "wechat_account.updated": "修改公众号",
+  "wechat_account.verified": "验证公众号",
+  "wechat.publish_requested": "立即发布",
+  "wechat.publish_scheduled": "定时发布",
+  "wechat.publish_submitted": "已提交给微信",
+  "wechat.publish_succeeded": "发布成功",
+  "wechat.publish_failed": "发布失败",
+  "wechat.publish_outcome_unknown": "发布结果未知",
+  "wechat.publish_cancelled": "取消定时发布",
 };
 
 const LIST_LABELS: Readonly<Record<string, string>> = {
@@ -42,6 +52,11 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   tier: "可信度",
   connector_config: "抓取设置",
   fetch_settings: "抓取设置",
+  name: "名称",
+  topics: "主题",
+  enabled: "启用",
+  disabled: "停用",
+  credentials: "更换 AppSecret",
 };
 
 const ROLE_NAMES: Readonly<Record<string, string>> = {
@@ -58,6 +73,7 @@ const KINDS: readonly {
   { kind: "user", label: "账号" },
   { kind: "source", label: "新闻源" },
   { kind: "keywords", label: "关键词" },
+  { kind: "wechat", label: "公众号" },
 ];
 
 const REASON_LABELS: Readonly<Record<string, string>> = {
@@ -84,7 +100,11 @@ function describe(event: AdminAuditEvent): string {
   if (typeof detail.reason === "string") {
     parts.push(REASON_LABELS[detail.reason] ?? detail.reason);
   }
-  if (typeof detail.display_name === "string") {
+  if (typeof detail.title === "string") {
+    parts.push(`「${detail.title}」`);
+  } else if (typeof detail.name === "string") {
+    parts.push(`「${detail.name}」`);
+  } else if (typeof detail.display_name === "string") {
     parts.push(`「${detail.display_name}」`);
   } else if (typeof detail.entry_url === "string") {
     parts.push(detail.entry_url);
@@ -98,6 +118,18 @@ function describe(event: AdminAuditEvent): string {
     parts.push(`改了：${fields.join("、")}`);
   }
   if (typeof detail.version === "number") parts.push(`第 ${detail.version} 版`);
+  if (
+    typeof detail.scheduled_at === "string" &&
+    event.action === "wechat.publish_scheduled"
+  ) {
+    parts.push(`时间：${timeFormat.format(new Date(detail.scheduled_at))}`);
+  }
+  if (typeof detail.error === "string" && detail.error !== "") {
+    parts.push(`原因：${detail.error}`);
+  }
+  if (typeof detail.article_url === "string" && detail.article_url !== "") {
+    parts.push("已拿到文章链接");
+  }
   if (
     event.action === "user.updated" &&
     detail.changes !== null &&
@@ -134,7 +166,11 @@ function describe(event: AdminAuditEvent): string {
     parts.push(`备注：${detail.note}`);
   }
   if (typeof detail.ok === "boolean") {
-    parts.push(detail.ok ? "能抓到文章" : "抓不到文章");
+    if (event.action === "wechat_account.verified") {
+      parts.push(detail.ok ? "验证通过" : "验证没通过");
+    } else {
+      parts.push(detail.ok ? "能抓到文章" : "抓不到文章");
+    }
   }
   if (typeof detail.sessions_ended === "number" && detail.sessions_ended > 0) {
     parts.push(`结束 ${detail.sessions_ended} 个在线会话`);

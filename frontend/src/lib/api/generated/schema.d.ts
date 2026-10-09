@@ -382,6 +382,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/wechat/account-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Account Options */
+        get: operations["get_wechat_account_options_api_v1_admin_wechat_account_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Accounts */
+        get: operations["get_wechat_accounts_api_v1_admin_wechat_accounts_get"];
+        put?: never;
+        /** Post Wechat Account */
+        post: operations["post_wechat_account_api_v1_admin_wechat_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Wechat Account */
+        patch: operations["patch_wechat_account_api_v1_admin_wechat_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/accounts/{account_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Drafts */
+        get: operations["get_wechat_drafts_api_v1_admin_wechat_accounts__account_id__drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/accounts/{account_id}/published": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Published */
+        get: operations["get_wechat_published_api_v1_admin_wechat_accounts__account_id__published_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Wechat Account Verify */
+        post: operations["post_wechat_account_verify_api_v1_admin_wechat_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/publish-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Publish Jobs */
+        get: operations["get_wechat_publish_jobs_api_v1_admin_wechat_publish_jobs_get"];
+        put?: never;
+        /** Post Wechat Publish Job */
+        post: operations["post_wechat_publish_job_api_v1_admin_wechat_publish_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/publish-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Wechat Publish Job Cancel */
+        post: operations["post_wechat_publish_job_cancel_api_v1_admin_wechat_publish_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Status */
+        get: operations["get_wechat_status_api_v1_admin_wechat_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/brand-context/retrieve": {
         parameters: {
             query?: never;
@@ -2213,6 +2368,208 @@ export interface components {
             tier: "A" | "B";
             /** Version */
             version: number;
+        };
+        /** AdminWeChatAccountCreateRequest */
+        AdminWeChatAccountCreateRequest: {
+            /** App Id */
+            app_id: string;
+            /** App Secret */
+            app_secret: string;
+            /** Name */
+            name: string;
+            /** Topics */
+            topics?: string[];
+        };
+        /** AdminWeChatAccountListResponse */
+        AdminWeChatAccountListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminWeChatAccountResponse"][];
+        };
+        /** AdminWeChatAccountOption */
+        AdminWeChatAccountOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Topics */
+            topics: string[];
+        };
+        /** AdminWeChatAccountOptionsResponse */
+        AdminWeChatAccountOptionsResponse: {
+            /** Items */
+            items: components["schemas"]["AdminWeChatAccountOption"][];
+        };
+        /** AdminWeChatAccountResponse */
+        AdminWeChatAccountResponse: {
+            /** App Id */
+            app_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Verified At */
+            last_verified_at: string | null;
+            /** Last Verify Error */
+            last_verify_error: string | null;
+            /** Name */
+            name: string;
+            /** Secret Hint */
+            secret_hint: string;
+            /** Topics */
+            topics: string[];
+        };
+        /** AdminWeChatAccountUpdateRequest */
+        AdminWeChatAccountUpdateRequest: {
+            /** App Secret */
+            app_secret?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Topics */
+            topics?: string[] | null;
+        };
+        /** AdminWeChatDraft */
+        AdminWeChatDraft: {
+            /** Articles */
+            articles: components["schemas"]["AdminWeChatDraftArticle"][];
+            /** Media Id */
+            media_id: string;
+            /** Open Job Id */
+            open_job_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** AdminWeChatDraftArticle */
+        AdminWeChatDraftArticle: {
+            /** Author */
+            author: string;
+            /** Digest */
+            digest: string;
+            /** Title */
+            title: string;
+        };
+        /** AdminWeChatDraftListResponse */
+        AdminWeChatDraftListResponse: {
+            /** Items */
+            items: components["schemas"]["AdminWeChatDraft"][];
+            /** Total */
+            total: number;
+        };
+        /** AdminWeChatPublishJob */
+        AdminWeChatPublishJob: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name: string;
+            /** Article Url */
+            article_url: string | null;
+            /** Cancelled By */
+            cancelled_by: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Error */
+            error: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Media Id */
+            media_id: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "submitting" | "publishing" | "succeeded" | "failed" | "outcome_unknown" | "cancelled";
+            /** Title */
+            title: string;
+        };
+        /** AdminWeChatPublishJobListResponse */
+        AdminWeChatPublishJobListResponse: {
+            /** Items */
+            items: components["schemas"]["AdminWeChatPublishJob"][];
+        };
+        /** AdminWeChatPublishRequest */
+        AdminWeChatPublishRequest: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Media Id */
+            media_id: string;
+            /** Scheduled At */
+            scheduled_at?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /** AdminWeChatPublished */
+        AdminWeChatPublished: {
+            /** Article Id */
+            article_id: string;
+            /** Articles */
+            articles: components["schemas"]["AdminWeChatPublishedArticle"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** AdminWeChatPublishedArticle */
+        AdminWeChatPublishedArticle: {
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /** AdminWeChatPublishedListResponse */
+        AdminWeChatPublishedListResponse: {
+            /** Items */
+            items: components["schemas"]["AdminWeChatPublished"][];
+            /** Total */
+            total: number;
+        };
+        /** AdminWeChatStatusResponse */
+        AdminWeChatStatusResponse: {
+            /** Secret Key Configured */
+            secret_key_configured: boolean;
         };
         /** ArticleBulletListBlock */
         ArticleBulletListBlock: {
@@ -7427,7 +7784,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 before?: string | null;
-                kind?: ("auth" | "user" | "source" | "keywords") | null;
+                kind?: ("auth" | "user" | "source" | "keywords" | "wechat") | null;
             };
             header?: never;
             path?: never;
@@ -7978,6 +8335,375 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_account_options_api_v1_admin_wechat_account_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatAccountOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_accounts_api_v1_admin_wechat_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatAccountListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_account_api_v1_admin_wechat_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminWeChatAccountCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_wechat_account_api_v1_admin_wechat_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminWeChatAccountUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_drafts_api_v1_admin_wechat_accounts__account_id__drafts_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatDraftListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_published_api_v1_admin_wechat_accounts__account_id__published_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatPublishedListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_account_verify_api_v1_admin_wechat_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_publish_jobs_api_v1_admin_wechat_publish_jobs_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatPublishJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_publish_job_api_v1_admin_wechat_publish_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminWeChatPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatPublishJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_publish_job_cancel_api_v1_admin_wechat_publish_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatPublishJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_status_api_v1_admin_wechat_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatStatusResponse"];
                 };
             };
             /** @description Validation Error */

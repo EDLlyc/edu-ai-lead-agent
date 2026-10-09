@@ -7079,3 +7079,90 @@ class OperatorKeywordVersionModel(Base):
             name="ck_operator_keyword_versions_sizes",
         ),
     )
+
+
+class WeChatAccountModel(Base):
+    """A WeChat Official Account bound in the 运营后台; the AppSecret is stored encrypted."""
+
+    __tablename__ = "wechat_accounts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    app_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    account_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    app_secret_sealed: Mapped[str] = mapped_column(Text, nullable=False)
+    app_secret_last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    topics: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_verify_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("app_id", name="uq_wechat_accounts_app_id"),
+        CheckConstraint("app_id ~ '^wx[0-9a-f]{16}$'", name="ck_wechat_accounts_app_id"),
+        CheckConstraint(
+            "account_fingerprint ~ '^[0-9a-f]{64}$'", name="ck_wechat_accounts_fingerprint"
+        ),
+        CheckConstraint("app_secret_sealed LIKE 'v1:%'", name="ck_wechat_accounts_sealed"),
+        CheckConstraint(
+            "jsonb_typeof(topics) = 'array' AND jsonb_array_length(topics) <= 10",
+            name="ck_wechat_accounts_topics",
+        ),
+    )
+
+
+class WeChatPublishJobModel(Base):
+    """Publishing one WeChat draft now or at a set time (freepublish), started in the 运营后台."""
+
+    __tablename__ = "wechat_publish_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wechat_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    media_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    publish_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    article_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    article_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wechat_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    cancelled_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('scheduled', 'submitting', 'publishing', 'succeeded', 'failed', "
+            "'outcome_unknown', 'cancelled')",
+            name="ck_wechat_publish_jobs_status",
+        ),
+        CheckConstraint(
+            "status NOT IN ('publishing', 'succeeded') OR publish_id IS NOT NULL",
+            name="ck_wechat_publish_jobs_publish_id",
+        ),
+        Index("ix_wechat_publish_jobs_due", "status", "scheduled_at"),
+        Index(
+            "uq_wechat_publish_jobs_open_draft",
+            "account_id",
+            "media_id",
+            unique=True,
+            postgresql_where=text("status IN ('scheduled', 'submitting', 'publishing')"),
+        ),
+    )

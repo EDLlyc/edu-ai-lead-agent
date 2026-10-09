@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
@@ -20,6 +22,7 @@ from app.api.v1.routes import (
     admin_accounts,
     admin_keywords,
     admin_sources,
+    admin_wechat,
     brand_knowledge,
     candidate_analyses,
     content_slots,
@@ -39,6 +42,7 @@ from app.application.ports.visual_retrieval import VisualEmbeddingModel
 from app.application.services.ip_asset_recognition import IpAssetRecognitionService
 from app.application.services.ip_assets import IpAssetService
 from app.application.services.visual_retrieval import VisualRetrievalService
+from app.application.services.wechat_admin import run_publish_loop_once
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
@@ -162,9 +166,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         _app.state.ip_asset_recognition_service = IpAssetRecognitionService(
             ip_asset_recognition_model
         )
+    wechat_loop: asyncio.Task[None] | None = None
+    secret = settings.admin_secret_key
+    if secret is not None and secret.get_secret_value().strip():
+        # Scheduled 公众号 publishing (and the publish status polling) of the 运营后台.
+        wechat_loop = asyncio.create_task(_wechat_admin_loop())
     try:
         yield
     finally:
+        if wechat_loop is not None:
+            wechat_loop.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await wechat_loop
         if image_client is not None:
             await image_client.aclose()
         if brand_embedding_client is not None:
@@ -174,6 +187,30 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if ip_asset_recognition_client is not None:
             await ip_asset_recognition_client.aclose()
         await engine.dispose()
+
+
+WECHAT_ADMIN_LOOP_SECONDS = 20
+
+
+async def _wechat_admin_loop() -> None:
+    while True:
+        try:
+            report = await run_publish_loop_once(
+                app.state.session_factory,
+                settings=app.state.settings,
+                http=getattr(app.state, "wechat_http", None),
+                now=datetime.now(UTC),
+            )
+            if report.submitted or report.recovered:
+                logger.info(
+                    "wechat_publish_loop",
+                    submitted=report.submitted,
+                    polled=report.polled,
+                    recovered=report.recovered,
+                )
+        except Exception:
+            logger.exception("wechat_publish_loop_failed")
+        await asyncio.sleep(WECHAT_ADMIN_LOOP_SECONDS)
 
 
 app = FastAPI(
@@ -214,6 +251,7 @@ app.include_router(admin.router, prefix="/api/v1")
 app.include_router(admin_accounts.router, prefix="/api/v1")
 app.include_router(admin_sources.router, prefix="/api/v1")
 app.include_router(admin_keywords.router, prefix="/api/v1")
+app.include_router(admin_wechat.router, prefix="/api/v1")
 
 
 @app.middleware("http")
