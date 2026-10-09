@@ -1,0 +1,12 @@
+# Overlay on the running image 5a5fb24c (= mainline a8d0af6 app). base = sha256 in the running container, new = sha256 after the overlay.
+# path | base | new
+app/api/v1/routes/admin.py | df91a5ce012efde69c51eacb3c604f2c6b30d14b78e9641bfa747a78cf0aa4c0 | 7480ab8bb80c6d0d6b279e8225de27e2df019999da4e1bca424b786ba436c1a2
+app/api/v1/routes/admin_accounts.py | absent | 4dc3af922e0c77687d2533caf58853ae9e4f4146872a93819b504d70961ce62b
+app/api/v1/routes/admin_sources.py | ba8d8c478d3dcec4d0d13b6bc410df5edf0bad8b1da82f0ef633dafcf2ce073f | 5e7fc2c062c3991e3622d73f602b828b9dbd238ad8220eabf0e2084e38e4ccb8
+app/api_main.py | b8c1828d929679ab3ec2fc5702760feafe03706416e8da2a7ec11b80e838b09e | e23f6bfde2af0bc18fa5e819d960dbe656496e1b67b32c108518d193202f96b7
+app/application/services/admin_accounts.py | absent | 58eb690f786d50d2f300b443303f55e032d564b1fb2f8a6b9b7433d8990fd47b
+app/domain/admin_auth.py | 97acc28d87fdbe5f1eade343b7af1e7b03fcfa3aaaba7613d201e6d5e0004eed | f80e1b4cee42b0ae0c81112bb44125413d6174aa8a51eac558210e0261d7f407
+app/infrastructure/db/admin_auth.py | 5018d0ecc43d2800be32cba92857248ebf302b0ae82f52f797dcc7c24a81e0da | 7bea746b7792c2dd29d62b11d6bf4cf868ac517fd13778b59d0b5b26c499d5fe
+app/infrastructure/db/source_admin.py | 2480d929041288da6d4cc51d3a118c176d168688bc1464b81279ee8cf92b7462 | ab0c0063eeeb9405de83ba57ea2793ea9d29b78ca89bf5120e3b9f06d62b2624
+app/schemas/admin.py | 8c47cedff6901710201adbd18b9877fdc93dba6b285f22d3bc8287f5e0cf570f | f93aa074ad4759bc7d745bb0377acb31d53802368f63735bb6a1a99ead0cc3a2
+app/schemas/admin_sources.py | 6b3a17b7b590085f922c632975b2509e69f0c4c59534f46b62bcd8b6f6678b27 | 2668c8a2d53fbf3e07d6ba291ceff2403502404dfed8433e7af90b039b84d10d
