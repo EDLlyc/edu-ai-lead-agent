@@ -1,28 +1,38 @@
 # 公众号文字数据统计（运营后台第 4 项）
 
-Parent `10-08-admin-console`. Planned 10/23–10/28 (3 d).
+Parent `10-08-admin-console`. Built 10-09 after items 5 and 3.
 
-## Today
+## WeChat facts (production probe, read-only)
 
-No datacube or analytics code; no read or like counts are stored.
+- Old datacube article APIs (`getarticlesummary`, `getarticletotal`, `getuserread`, …) return
+  47009 "offline".
+- `getarticletotaldetail` (one publish date per call; 61501 for a range) returns the articles
+  sent that day. Each has a `detail_list` of **cumulative** numbers per `stat_date`: read sources
+  by scene (`全部` is the total, the others overlap it), share, collection, subscribe readers,
+  delivery-read rate, finish rate, average active time.
+- `getbizsummary` (one day) gives account-wide read, share, like, 在看, comment, collection,
+  original-page and send counts.
+- The account is small: single-digit reads per article.
 
-## Scope (assuming "文字数据统计" = per-article reading data)
+## Built
 
-- A daily job (after 10:00, for yesterday) calls `datacube/getarticlesummary` and
-  `getarticletotal`, plus `getuserread` / `getusershare` for trends.
-  - Store per-article, per-day rows: read users and count, share, favourite, original-page reads.
-  - Link each row to our article by title, publish time and `msgid`.
-- Backfill the last 30 days on first run (the API allows a 1-day window per call for most
-  endpoints; respect its quotas).
-- Page:
-  - a table of our articles with reads, shares and favourites;
-  - 7/30-day trend charts;
-  - which topic type (policy / science / application) reads best.
-- Join with our own data: topic, selection score, copy version. Answers "does the AI's pick read
-  well".
+- Migration 0056 adds `wechat_article_stats`, `wechat_account_daily_stats`, and
+  `wechat_accounts.stats_synced_on/stats_sync_error`.
+  - One row per article holds the latest cumulative snapshot; one row per account day.
+- Sync:
+  - The first sync goes back 30 days. Later syncs refresh 7 publish dates and 3 account days.
+  - It runs in the API loop once per business day after 10:00.
+  - A failed sync records the reason and retries the next day.
+  - Manual sync, by any operator, is allowed at most every 5 minutes per account.
+- `GET /admin/wechat/accounts/{id}/stats?days=30` and `POST …/stats/sync`.
+- 数据 page:
+  - 7-day / 30-day tiles;
+  - a daily readers bar chart (single hue validated with the dataviz validator, hover
+    details, table view);
+  - an article table (reads, shares, saves, delivery-read rate, top read sources).
 
-## Open
+## Tests
 
-- Confirm the meaning with the owner: article reading data (above), or word counts / text
-  statistics of what we published?
-- datacube needs a 认证 account and the 数据统计 permission.
+- Integration: first sync 30 days; 全部 counted as the total; 429 on a quick re-sync; loop
+  timing (before 10:00 / already synced / next day); a failure recorded, not retried every loop.
+- Frontend tests; browser smoke against a fake WeChat; gate PASS.

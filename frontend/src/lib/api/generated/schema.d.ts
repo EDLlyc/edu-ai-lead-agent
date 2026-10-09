@@ -468,6 +468,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/wechat/accounts/{account_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wechat Stats */
+        get: operations["get_wechat_stats_api_v1_admin_wechat_accounts__account_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/accounts/{account_id}/stats/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Wechat Stats Sync */
+        post: operations["post_wechat_stats_sync_api_v1_admin_wechat_accounts__account_id__stats_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/wechat/accounts/{account_id}/verify": {
         parameters: {
             query?: never;
@@ -2444,6 +2478,61 @@ export interface components {
             /** Topics */
             topics?: string[] | null;
         };
+        /** AdminWeChatArticleStats */
+        AdminWeChatArticleStats: {
+            /** Collection User */
+            collection_user: number;
+            /** Msgid */
+            msgid: string;
+            /**
+             * Publish Date
+             * Format: date
+             */
+            publish_date: string;
+            /** Read Avg Activetime */
+            read_avg_activetime: number | null;
+            /** Read Delivery Rate */
+            read_delivery_rate: number | null;
+            /** Read Finish Rate */
+            read_finish_rate: number | null;
+            /** Read Sources */
+            read_sources: {
+                [key: string]: number;
+            };
+            /** Read User */
+            read_user: number;
+            /** Share User */
+            share_user: number;
+            /**
+             * Stat Date
+             * Format: date
+             */
+            stat_date: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string | null;
+        };
+        /** AdminWeChatDailyStats */
+        AdminWeChatDailyStats: {
+            /** Collection User */
+            collection_user: number;
+            /** Comment Count */
+            comment_count: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Like User */
+            like_user: number;
+            /** Read User */
+            read_user: number;
+            /** Share User */
+            share_user: number;
+            /** Zaikan User */
+            zaikan_user: number;
+        };
         /** AdminWeChatDraft */
         AdminWeChatDraft: {
             /** Articles */
@@ -2566,10 +2655,28 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AdminWeChatStatsResponse */
+        AdminWeChatStatsResponse: {
+            /** Articles */
+            articles: components["schemas"]["AdminWeChatArticleStats"][];
+            /** Daily */
+            daily: components["schemas"]["AdminWeChatDailyStats"][];
+            /** Sync Error */
+            sync_error: string | null;
+            /** Synced On */
+            synced_on: string | null;
+        };
         /** AdminWeChatStatusResponse */
         AdminWeChatStatusResponse: {
             /** Secret Key Configured */
             secret_key_configured: boolean;
+        };
+        /** AdminWeChatSyncResponse */
+        AdminWeChatSyncResponse: {
+            /** Articles */
+            articles: number;
+            /** Days */
+            days: number;
         };
         /** ArticleBulletListBlock */
         ArticleBulletListBlock: {
@@ -8539,6 +8646,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminWeChatPublishedListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wechat_stats_api_v1_admin_wechat_accounts__account_id__stats_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_stats_sync_api_v1_admin_wechat_accounts__account_id__stats_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatSyncResponse"];
                 };
             };
             /** @description Validation Error */

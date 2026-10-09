@@ -17,6 +17,7 @@ import {
 import { SourcesPage } from "./sources/SourcesPage";
 import { WeChatAccountsPage } from "./wechat/WeChatAccountsPage";
 import { WeChatPublishPage } from "./wechat/WeChatPublishPage";
+import { WeChatStatsPage } from "./wechat/WeChatStatsPage";
 import { wechatApi as defaultWeChatApi, type WeChatApi } from "./wechat/api";
 import {
   sourcesApi as defaultSourcesApi,
@@ -207,6 +208,8 @@ export function AdminApp({
           />
         ) : current.key === "wechat-publish" ? (
           <WeChatPublishPage api={wechatApi} onSessionExpired={expire} />
+        ) : current.key === "wechat-stats" ? (
+          <WeChatStatsPage api={wechatApi} onSessionExpired={expire} />
         ) : current.key === "wechat-accounts" ? (
           <WeChatAccountsPage api={wechatApi} onSessionExpired={expire} />
         ) : current.key === "account" ? (

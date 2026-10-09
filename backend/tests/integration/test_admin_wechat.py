@@ -14,6 +14,7 @@ import pytest_asyncio
 from app.api_main import app
 from app.application.services import wechat_admin
 from app.application.services.wechat_admin import run_publish_loop_once
+from app.application.services.wechat_stats import run_stats_loop_once
 from app.domain.admin_auth import hash_password
 from app.domain.secret_box import new_key
 from app.infrastructure.db.admin_auth import add_user
@@ -21,7 +22,9 @@ from app.infrastructure.db.models import (
     AdminAuditEventModel,
     AdminSessionModel,
     AdminUserModel,
+    WeChatAccountDailyStatsModel,
     WeChatAccountModel,
+    WeChatArticleStatsModel,
     WeChatPublishJobModel,
 )
 from httpx import ASGITransport, AsyncClient
@@ -48,6 +51,8 @@ class FakeWeChat:
     status: dict[str, dict[str, Any]] = field(default_factory=dict)
     submit_timeout: bool = False
     calls: list[str] = field(default_factory=list)
+    article_day: str = ""
+    datacube_error: int | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -86,6 +91,71 @@ class FakeWeChat:
             self.submitted.append(body["media_id"])
             self.status[publish_id] = {"publish_status": 1}
             return httpx.Response(200, json={"errcode": 0, "publish_id": publish_id})
+        if path.startswith("/datacube/") and self.datacube_error is not None:
+            return httpx.Response(200, json={"errcode": self.datacube_error, "errmsg": "no"})
+        if path == "/datacube/getarticletotaldetail":
+            if body["begin_date"] != self.article_day:
+                return httpx.Response(200, json={"list": []})
+            sources = [
+                {"scene_desc": "公众号消息", "user_count": 30},
+                {"scene_desc": "朋友圈", "user_count": 12},
+                {"scene_desc": "全部", "user_count": 40},
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "list": [
+                        {
+                            "msgid": "2247483661_1",
+                            "title": "科学营开营",
+                            "content_url": "https://mp.weixin.qq.com/s/art1",
+                            "ref_date": self.article_day,
+                            "publish_type": 0,
+                            "detail_list": [
+                                {
+                                    "stat_date": self.article_day,
+                                    "read_user_source": sources[:1],
+                                    "share_user": 1,
+                                },
+                                {
+                                    "stat_date": "2099-01-01",
+                                    "read_user_source": sources,
+                                    "share_user": 5,
+                                    "collection_user": 2,
+                                    "read_subscribe_user": 3,
+                                    "read_delivery_rate": 0.25,
+                                    "read_avg_activetime": 1.5,
+                                },
+                            ],
+                        }
+                    ]
+                },
+            )
+        if path == "/datacube/getbizsummary":
+            day = int(body["begin_date"][-2:])
+            return httpx.Response(
+                200,
+                json={
+                    "list": [
+                        {
+                            "ref_date": body["begin_date"],
+                            "detail": {
+                                "read_user": day,
+                                "share_user": 1,
+                                "like_user": 2,
+                                "zaikan_user": 0,
+                                "comment_count": 0,
+                                "collection_user": 1,
+                                "redirect_ori_page_user": 0,
+                                "send_page_count": 0,
+                                "read_user_source": [
+                                    {"scene_desc": "公众号消息", "user_count": day}
+                                ],
+                            },
+                        }
+                    ]
+                },
+            )
         if path == "/cgi-bin/freepublish/get":
             return httpx.Response(
                 200, json={"publish_id": body["publish_id"], **self.status[body["publish_id"]]}
@@ -116,6 +186,8 @@ async def wechat(integration_context: IntegrationContext) -> AsyncIterator[FakeW
     app.state.wechat_http = None
     app.state.settings = integration_context.settings
     async with integration_context.session_factory() as session:
+        await session.execute(delete(WeChatArticleStatsModel))
+        await session.execute(delete(WeChatAccountDailyStatsModel))
         await session.execute(delete(WeChatPublishJobModel))
         await session.execute(delete(WeChatAccountModel))
         await session.execute(delete(AdminAuditEventModel))
@@ -445,3 +517,76 @@ async def test_without_the_encryption_key_nothing_is_stored(
         )
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "wechat_secret_key_missing"
+
+
+async def test_reading_stats_sync_daily_and_keep_the_latest_cumulative_numbers(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    from zoneinfo import ZoneInfo
+
+    shanghai = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(UTC)
+    today = now.astimezone(shanghai).date()
+    wechat.article_day = (today - timedelta(days=3)).isoformat()
+    async with (
+        _logged_in(integration_context, "owner") as owner,
+        _logged_in(integration_context, "editor") as editor,
+    ):
+        account_id = await _bind(owner)
+        synced = await editor.post(
+            f"/api/v1/admin/wechat/accounts/{account_id}/stats/sync", headers=WRITE
+        )
+        assert synced.status_code == 200
+        assert synced.json() == {"articles": 1, "days": 30}
+        too_soon = await editor.post(
+            f"/api/v1/admin/wechat/accounts/{account_id}/stats/sync", headers=WRITE
+        )
+        assert too_soon.status_code == 429
+
+        stats = (await editor.get(f"/api/v1/admin/wechat/accounts/{account_id}/stats")).json()
+        assert stats["synced_on"] == today.isoformat()
+        assert stats["sync_error"] is None
+        assert len(stats["daily"]) == 30
+        assert stats["daily"][-1]["date"] == (today - timedelta(days=1)).isoformat()
+        article = stats["articles"][0]
+        # The 全部 scene is the total; the other scenes overlap it.
+        assert article["read_user"] == 40
+        assert article["share_user"] == 5
+        assert article["read_delivery_rate"] == 0.25
+        assert article["stat_date"] == "2099-01-01"
+        assert article["read_sources"]["朋友圈"] == 12
+
+        loop = {"settings": app.state.settings, "http": app.state.wechat_http}
+        calls_before = len(wechat.calls)
+        at_nine = datetime.combine(today, datetime.min.time(), shanghai).replace(hour=9)
+        assert (
+            await run_stats_loop_once(integration_context.session_factory, now=at_nine, **loop) == 0
+        )
+        at_eleven = at_nine.replace(hour=11)
+        assert (
+            await run_stats_loop_once(integration_context.session_factory, now=at_eleven, **loop)
+            == 0
+        )
+        assert len(wechat.calls) == calls_before
+        tomorrow = at_eleven + timedelta(days=1)
+        assert (
+            await run_stats_loop_once(integration_context.session_factory, now=tomorrow, **loop)
+            == 1
+        )
+
+        # A failing account records the reason and retries the next day, not every loop.
+        wechat.datacube_error = 48001
+        day_after = tomorrow + timedelta(days=1)
+        assert (
+            await run_stats_loop_once(integration_context.session_factory, now=day_after, **loop)
+            == 0
+        )
+        stats = (await editor.get(f"/api/v1/admin/wechat/accounts/{account_id}/stats")).json()
+        assert "没有这个接口的权限" in stats["sync_error"]
+        calls_before = len(wechat.calls)
+        assert (
+            await run_stats_loop_once(integration_context.session_factory, now=day_after, **loop)
+            == 0
+        )
+        assert len(wechat.calls) == calls_before
+        wechat.datacube_error = None

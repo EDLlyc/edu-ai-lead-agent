@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -126,3 +126,40 @@ class AdminWeChatPublishJob(BaseModel):
 
 class AdminWeChatPublishJobListResponse(BaseModel):
     items: list[AdminWeChatPublishJob]
+
+
+class AdminWeChatDailyStats(BaseModel):
+    date: date
+    read_user: int
+    share_user: int
+    like_user: int
+    zaikan_user: int
+    comment_count: int
+    collection_user: int
+
+
+class AdminWeChatArticleStats(BaseModel):
+    msgid: str
+    title: str
+    url: str | None
+    publish_date: date
+    stat_date: date
+    read_user: int
+    share_user: int
+    collection_user: int
+    read_delivery_rate: float | None
+    read_finish_rate: float | None
+    read_avg_activetime: float | None
+    read_sources: dict[str, int]
+
+
+class AdminWeChatStatsResponse(BaseModel):
+    synced_on: date | None
+    sync_error: str | None
+    daily: list[AdminWeChatDailyStats]
+    articles: list[AdminWeChatArticleStats]
+
+
+class AdminWeChatSyncResponse(BaseModel):
+    articles: int
+    days: int

@@ -73,9 +73,7 @@ def upgrade() -> None:
             name="ck_wechat_publish_jobs_publish_id",
         ),
     )
-    op.create_index(
-        "ix_wechat_publish_jobs_due", "wechat_publish_jobs", ["status", "scheduled_at"]
-    )
+    op.create_index("ix_wechat_publish_jobs_due", "wechat_publish_jobs", ["status", "scheduled_at"])
     op.create_index(
         "uq_wechat_publish_jobs_open_draft",
         "wechat_publish_jobs",

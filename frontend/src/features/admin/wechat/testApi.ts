@@ -73,6 +73,15 @@ export function fakeWeChatApi(overrides: Partial<WeChatApi> = {}) {
     jobs: vi.fn(() => Promise.resolve<readonly PublishJob[]>([])),
     publish: vi.fn(() => Promise.resolve(job())),
     cancel: vi.fn(() => Promise.resolve(job({ status: "cancelled" }))),
+    stats: vi.fn(() =>
+      Promise.resolve({
+        synced_on: "2026-10-09",
+        sync_error: null,
+        daily: [],
+        articles: [],
+      }),
+    ),
+    syncStats: vi.fn(() => Promise.resolve({ articles: 1, days: 30 })),
     ...overrides,
   } satisfies WeChatApi;
 }

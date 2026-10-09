@@ -7098,6 +7098,9 @@ class WeChatAccountModel(Base):
         DateTime(timezone=True), nullable=True
     )
     last_verify_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Business date (Asia/Shanghai) of the last successful 数据 sync; null until the first.
+    stats_synced_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    stats_sync_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_by: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -7165,4 +7168,64 @@ class WeChatPublishJobModel(Base):
             unique=True,
             postgresql_where=text("status IN ('scheduled', 'submitting', 'publishing')"),
         ),
+    )
+
+
+class WeChatArticleStatsModel(Base):
+    """Latest cumulative reading numbers of one published article (getarticletotaldetail)."""
+
+    __tablename__ = "wechat_article_stats"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wechat_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    msgid: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    publish_date: Mapped[date] = mapped_column(Date, nullable=False)
+    stat_date: Mapped[date] = mapped_column(Date, nullable=False)
+    read_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    share_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    collection_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    read_subscribe_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    read_delivery_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    read_finish_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    read_avg_activetime: Mapped[float | None] = mapped_column(Float, nullable=True)
+    read_sources: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "msgid", name="uq_wechat_article_stats_account_msgid"),
+        Index("ix_wechat_article_stats_account_publish", "account_id", "publish_date"),
+    )
+
+
+class WeChatAccountDailyStatsModel(Base):
+    """One day of account-wide numbers (getbizsummary)."""
+
+    __tablename__ = "wechat_account_daily_stats"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wechat_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    ref_date: Mapped[date] = mapped_column(Date, nullable=False)
+    read_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    share_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    like_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    zaikan_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    collection_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    redirect_ori_page_user: Mapped[int] = mapped_column(Integer, nullable=False)
+    send_page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    read_sources: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "ref_date", name="uq_wechat_account_daily_stats_day"),
     )

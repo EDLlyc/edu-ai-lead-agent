@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, cast
 from uuid import UUID
 
@@ -26,7 +26,9 @@ from app.application.services.wechat_admin import (
     verify_account,
     wechat_call_error,
 )
+from app.application.services.wechat_stats import account_stats, business_today, manual_sync
 from app.core.config import Settings
+from app.core.errors import NotFoundError
 from app.infrastructure.db.models import WeChatAccountModel, WeChatPublishJobModel
 from app.infrastructure.wechat_official_account.admin_client import WeChatAdminError
 from app.schemas.admin_wechat import (
@@ -36,6 +38,8 @@ from app.schemas.admin_wechat import (
     AdminWeChatAccountOptionsResponse,
     AdminWeChatAccountResponse,
     AdminWeChatAccountUpdateRequest,
+    AdminWeChatArticleStats,
+    AdminWeChatDailyStats,
     AdminWeChatDraft,
     AdminWeChatDraftArticle,
     AdminWeChatDraftListResponse,
@@ -45,7 +49,9 @@ from app.schemas.admin_wechat import (
     AdminWeChatPublishJob,
     AdminWeChatPublishJobListResponse,
     AdminWeChatPublishRequest,
+    AdminWeChatStatsResponse,
     AdminWeChatStatusResponse,
+    AdminWeChatSyncResponse,
 )
 
 router = APIRouter(prefix="/admin/wechat", tags=["admin"], dependencies=[Depends(admin_guard)])
@@ -295,3 +301,66 @@ async def post_wechat_publish_job_cancel(
 ) -> AdminWeChatPublishJob:
     job = await cancel_job(session, principal=operator, job_id=job_id, now=datetime.now(UTC))
     return await _job(session, job)
+
+
+@router.get("/accounts/{account_id}/stats", response_model=AdminWeChatStatsResponse)
+async def get_wechat_stats(
+    account_id: UUID,
+    _operator: Operator,
+    session: Session,
+    request: Request,
+    days: Annotated[int, Query(ge=7, le=90)] = 30,
+) -> AdminWeChatStatsResponse:
+    account = await session.get(WeChatAccountModel, account_id)
+    if account is None:
+        raise NotFoundError("wechat account")
+    since = business_today(_settings(request), datetime.now(UTC)) - timedelta(days=days)
+    daily, articles = await account_stats(session, account_id=account_id, since=since)
+    return AdminWeChatStatsResponse(
+        synced_on=account.stats_synced_on,
+        sync_error=account.stats_sync_error,
+        daily=[
+            AdminWeChatDailyStats(
+                date=row.ref_date,
+                read_user=row.read_user,
+                share_user=row.share_user,
+                like_user=row.like_user,
+                zaikan_user=row.zaikan_user,
+                comment_count=row.comment_count,
+                collection_user=row.collection_user,
+            )
+            for row in daily
+        ],
+        articles=[
+            AdminWeChatArticleStats(
+                msgid=row.msgid,
+                title=row.title,
+                url=row.url,
+                publish_date=row.publish_date,
+                stat_date=row.stat_date,
+                read_user=row.read_user,
+                share_user=row.share_user,
+                collection_user=row.collection_user,
+                read_delivery_rate=row.read_delivery_rate,
+                read_finish_rate=row.read_finish_rate,
+                read_avg_activetime=row.read_avg_activetime,
+                read_sources={str(k): int(v) for k, v in row.read_sources.items()},
+            )
+            for row in articles
+        ],
+    )
+
+
+@router.post("/accounts/{account_id}/stats/sync", response_model=AdminWeChatSyncResponse)
+async def post_wechat_stats_sync(
+    account_id: UUID, operator: Operator, session: Session, request: Request
+) -> AdminWeChatSyncResponse:
+    report = await manual_sync(
+        session,
+        settings=_settings(request),
+        http=_http(request),
+        principal=operator,
+        account_id=account_id,
+        now=datetime.now(UTC),
+    )
+    return AdminWeChatSyncResponse(articles=report.articles, days=report.days)

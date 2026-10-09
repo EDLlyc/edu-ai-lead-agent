@@ -13,6 +13,9 @@ export type WeChatAccountOption =
 export type WeChatDraft = components["schemas"]["AdminWeChatDraft"];
 export type WeChatPublished = components["schemas"]["AdminWeChatPublished"];
 export type PublishJob = components["schemas"]["AdminWeChatPublishJob"];
+export type WeChatStats = components["schemas"]["AdminWeChatStatsResponse"];
+export type DailyStats = components["schemas"]["AdminWeChatDailyStats"];
+export type ArticleStats = components["schemas"]["AdminWeChatArticleStats"];
 
 export interface WeChatApi {
   readonly status: () => Promise<{ readonly secretKeyConfigured: boolean }>;
@@ -56,6 +59,10 @@ export interface WeChatApi {
     readonly scheduledAt: string | null;
   }) => Promise<PublishJob>;
   readonly cancel: (jobId: string) => Promise<PublishJob>;
+  readonly stats: (accountId: string, days: number) => Promise<WeChatStats>;
+  readonly syncStats: (
+    accountId: string,
+  ) => Promise<{ readonly articles: number; readonly days: number }>;
 }
 
 function check<T>(
@@ -182,6 +189,23 @@ export const wechatApi: WeChatApi = {
       }),
     );
     return check(result, "取消失败");
+  },
+  async stats(accountId, days) {
+    const result = await reach(() =>
+      adminClient.GET("/api/v1/admin/wechat/accounts/{account_id}/stats", {
+        params: { path: { account_id: accountId }, query: { days } },
+      }),
+    );
+    return check(result, "读取数据失败");
+  },
+  async syncStats(accountId) {
+    const result = await reach(() =>
+      adminClient.POST(
+        "/api/v1/admin/wechat/accounts/{account_id}/stats/sync",
+        account(accountId),
+      ),
+    );
+    return check(result, "同步失败");
   },
 };
 

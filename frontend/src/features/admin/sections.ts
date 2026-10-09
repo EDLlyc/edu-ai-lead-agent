@@ -54,11 +54,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "数据",
     group: "公众号",
     role: "editor",
-    plan: {
-      item: 4,
-      dates: "10/23 – 10/28",
-      summary: "每篇文章的阅读、点赞、分享、收藏，按天汇总。",
-    },
+    plan: null,
   },
   {
     key: "wechat-accounts",

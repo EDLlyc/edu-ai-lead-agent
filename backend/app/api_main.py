@@ -43,6 +43,7 @@ from app.application.services.ip_asset_recognition import IpAssetRecognitionServ
 from app.application.services.ip_assets import IpAssetService
 from app.application.services.visual_retrieval import VisualRetrievalService
 from app.application.services.wechat_admin import run_publish_loop_once
+from app.application.services.wechat_stats import run_stats_loop_once
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
@@ -196,6 +197,12 @@ async def _wechat_admin_loop() -> None:
     while True:
         try:
             report = await run_publish_loop_once(
+                app.state.session_factory,
+                settings=app.state.settings,
+                http=getattr(app.state, "wechat_http", None),
+                now=datetime.now(UTC),
+            )
+            await run_stats_loop_once(
                 app.state.session_factory,
                 settings=app.state.settings,
                 http=getattr(app.state, "wechat_http", None),

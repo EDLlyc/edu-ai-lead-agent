@@ -1746,6 +1746,151 @@
         "title": "AdminWeChatAccountUpdateRequest",
         "type": "object"
       },
+      "AdminWeChatArticleStats": {
+        "properties": {
+          "collection_user": {
+            "title": "Collection User",
+            "type": "integer"
+          },
+          "msgid": {
+            "title": "Msgid",
+            "type": "string"
+          },
+          "publish_date": {
+            "format": "date",
+            "title": "Publish Date",
+            "type": "string"
+          },
+          "read_avg_activetime": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Avg Activetime"
+          },
+          "read_delivery_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Delivery Rate"
+          },
+          "read_finish_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Finish Rate"
+          },
+          "read_sources": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Read Sources",
+            "type": "object"
+          },
+          "read_user": {
+            "title": "Read User",
+            "type": "integer"
+          },
+          "share_user": {
+            "title": "Share User",
+            "type": "integer"
+          },
+          "stat_date": {
+            "format": "date",
+            "title": "Stat Date",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "msgid",
+          "title",
+          "url",
+          "publish_date",
+          "stat_date",
+          "read_user",
+          "share_user",
+          "collection_user",
+          "read_delivery_rate",
+          "read_finish_rate",
+          "read_avg_activetime",
+          "read_sources"
+        ],
+        "title": "AdminWeChatArticleStats",
+        "type": "object"
+      },
+      "AdminWeChatDailyStats": {
+        "properties": {
+          "collection_user": {
+            "title": "Collection User",
+            "type": "integer"
+          },
+          "comment_count": {
+            "title": "Comment Count",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "like_user": {
+            "title": "Like User",
+            "type": "integer"
+          },
+          "read_user": {
+            "title": "Read User",
+            "type": "integer"
+          },
+          "share_user": {
+            "title": "Share User",
+            "type": "integer"
+          },
+          "zaikan_user": {
+            "title": "Zaikan User",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "read_user",
+          "share_user",
+          "like_user",
+          "zaikan_user",
+          "comment_count",
+          "collection_user"
+        ],
+        "title": "AdminWeChatDailyStats",
+        "type": "object"
+      },
       "AdminWeChatDraft": {
         "properties": {
           "articles": {
@@ -2067,6 +2212,55 @@
         "title": "AdminWeChatPublishedListResponse",
         "type": "object"
       },
+      "AdminWeChatStatsResponse": {
+        "properties": {
+          "articles": {
+            "items": {
+              "$ref": "#/components/schemas/AdminWeChatArticleStats"
+            },
+            "title": "Articles",
+            "type": "array"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/AdminWeChatDailyStats"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "sync_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Error"
+          },
+          "synced_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced On"
+          }
+        },
+        "required": [
+          "synced_on",
+          "sync_error",
+          "daily",
+          "articles"
+        ],
+        "title": "AdminWeChatStatsResponse",
+        "type": "object"
+      },
       "AdminWeChatStatusResponse": {
         "properties": {
           "secret_key_configured": {
@@ -2078,6 +2272,24 @@
           "secret_key_configured"
         ],
         "title": "AdminWeChatStatusResponse",
+        "type": "object"
+      },
+      "AdminWeChatSyncResponse": {
+        "properties": {
+          "articles": {
+            "title": "Articles",
+            "type": "integer"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "articles",
+          "days"
+        ],
+        "title": "AdminWeChatSyncResponse",
         "type": "object"
       },
       "ArticleBulletListBlock": {
@@ -17338,6 +17550,136 @@
           }
         },
         "summary": "Get Wechat Published",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/wechat/accounts/{account_id}/stats": {
+      "get": {
+        "operationId": "get_wechat_stats_api_v1_admin_wechat_accounts__account_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 7,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWeChatStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Wechat Stats",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/wechat/accounts/{account_id}/stats/sync": {
+      "post": {
+        "operationId": "post_wechat_stats_sync_api_v1_admin_wechat_accounts__account_id__stats_sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWeChatSyncResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Wechat Stats Sync",
         "tags": [
           "admin"
         ]
