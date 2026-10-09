@@ -38,7 +38,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select, update
 
 from .conftest import IntegrationContext
-from .test_content_slot_human_picks import _add_rejected_candidate, _scheduled_run_id
+from .test_content_slot_human_picks import (
+    _add_rejected_candidate,
+    _purge_human_picks,  # noqa: F401  autouse: later migration tests refuse leftover picks
+    _scheduled_run_id,
+)
 from .test_wecom_slot_delivery_concurrency import _seed_slot_delivery_lane
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]

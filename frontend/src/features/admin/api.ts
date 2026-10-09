@@ -19,8 +19,21 @@ export interface AdminApi {
   readonly me: () => Promise<AdminMe | null>;
   readonly login: (username: string, password: string) => Promise<AdminMe>;
   readonly logout: () => Promise<void>;
-  readonly auditEvents: () => Promise<readonly AdminAuditEvent[]>;
+  readonly auditEvents: (
+    query?: AuditQuery,
+  ) => Promise<readonly AdminAuditEvent[]>;
+  /** Resolves with how many other sessions ended; rejects with a plain message. */
+  readonly changePassword: (current: string, next: string) => Promise<number>;
 }
+
+export type AuditKind = "auth" | "user" | "source" | "keywords";
+export interface AuditQuery {
+  readonly kind?: AuditKind;
+  /** Only events before this time (paging back). */
+  readonly before?: string;
+}
+
+export const AUDIT_PAGE_SIZE = 50;
 
 // Same origin on purpose: the dev server (and later the reverse proxy) forwards /api/v1/admin to
 // the API, so the SameSite=Strict session cookie needs no credentialed CORS.
@@ -66,14 +79,30 @@ export const adminApi: AdminApi = {
   async logout() {
     await reach(() => adminClient.POST("/api/v1/admin/auth/logout"));
   },
-  async auditEvents() {
+  async auditEvents(query = {}) {
     const { data, response } = await reach(() =>
       adminClient.GET("/api/v1/admin/audit-events", {
-        params: { query: { limit: 100 } },
+        params: {
+          query: {
+            limit: AUDIT_PAGE_SIZE,
+            ...(query.kind === undefined ? {} : { kind: query.kind }),
+            ...(query.before === undefined ? {} : { before: query.before }),
+          },
+        },
       }),
     );
     if (response.status === 401) throw new AdminSessionExpiredError();
     if (data === undefined) throw new Error("读取操作记录失败，请重试");
     return data.items;
+  },
+  async changePassword(current, next) {
+    const { data, error, response } = await reach(() =>
+      adminClient.POST("/api/v1/admin/auth/password", {
+        body: { current_password: current, new_password: next },
+      }),
+    );
+    if (response.status === 401) throw new AdminSessionExpiredError();
+    if (data === undefined) throw new Error(serverMessage(error, "修改失败"));
+    return data.other_sessions_ended;
   },
 };

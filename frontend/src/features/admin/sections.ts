@@ -9,6 +9,8 @@ export type AdminSectionKey =
   | "layout-templates"
   | "poster-styles"
   | "models"
+  | "accounts"
+  | "account"
   | "audit";
 
 export interface AdminSection {
@@ -114,6 +116,20 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "操作记录",
     group: "系统",
     role: "owner",
+    plan: null,
+  },
+  {
+    key: "accounts",
+    title: "账号管理",
+    group: "系统",
+    role: "owner",
+    plan: null,
+  },
+  {
+    key: "account",
+    title: "我的账号",
+    group: "系统",
+    role: "editor",
     plan: null,
   },
 ];

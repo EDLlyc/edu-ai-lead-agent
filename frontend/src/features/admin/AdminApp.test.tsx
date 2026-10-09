@@ -21,6 +21,7 @@ const NO_SOURCES: SourcesApi = {
   update: () => Promise.reject(new Error("unused")),
   setEnabled: () => Promise.reject(new Error("unused")),
   archive: () => Promise.reject(new Error("unused")),
+  articles: () => Promise.resolve([]),
 };
 
 const OWNER: AdminMe = {
@@ -72,6 +73,7 @@ function api(overrides: Partial<AdminApi> = {}) {
     login: vi.fn(() => Promise.resolve(OWNER)),
     logout: vi.fn(() => Promise.resolve()),
     auditEvents: vi.fn(() => Promise.resolve(EVENTS)),
+    changePassword: vi.fn(() => Promise.resolve(0)),
     ...overrides,
   } satisfies AdminApi;
 }
@@ -141,6 +143,7 @@ describe("运营后台", () => {
       "数据待上线",
       "排版模板待上线",
       "海报风格待上线",
+      "我的账号",
     ]);
     // A link to an owner-only page falls back to the first allowed section.
     expect(screen.getByText(/当前账号不能打开这个页面/)).toBeInTheDocument();
@@ -157,7 +160,7 @@ describe("运营后台", () => {
     render(<AdminApp api={calls} sourcesApi={NO_SOURCES} />);
 
     const menu = await screen.findByRole("navigation", { name: "后台菜单" });
-    expect(within(menu).getAllByRole("link")).toHaveLength(9);
+    expect(within(menu).getAllByRole("link")).toHaveLength(11);
     await user.click(within(menu).getByRole("link", { name: /模型配置/ }));
     expect(window.location.pathname).toBe("/admin/models");
     expect(screen.getByText(/key 只显示末 4 位/)).toBeInTheDocument();
@@ -218,7 +221,7 @@ describe("admin sections", () => {
     expect(sectionFromPath("/admin/keywords/")).toBe("keywords");
     expect(sectionFromPath("/admin")).toBeNull();
     expect(sectionFromPath("/admin/unknown")).toBeNull();
-    expect(visibleSections("owner")).toHaveLength(9);
+    expect(visibleSections("owner")).toHaveLength(11);
     expect(
       visibleSections("editor").map((section) => section.key),
     ).not.toContain("audit");

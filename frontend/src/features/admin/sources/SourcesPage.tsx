@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import styles from "../Admin.module.css";
 import { AdminSessionExpiredError } from "../api";
 import {
   sourcesApi as defaultApi,
   type AdminSource,
+  type SourceArticle,
   type SourcesApi,
 } from "./api";
 import { SourceEditor } from "./SourceEditor";
-import { TIER_LABELS, kindLabel, latestJobLabel } from "./labels";
+import {
+  TIER_LABELS,
+  formatDate,
+  formatTime,
+  kindLabel,
+  latestJobLabel,
+} from "./labels";
 
 type Editing = { readonly source: AdminSource | null } | null;
 type Pending = {
@@ -36,6 +43,10 @@ export function SourcesPage({
   const [editing, setEditing] = useState<Editing>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);
+  const [openArticles, setOpenArticles] = useState<{
+    readonly id: string;
+    readonly items: readonly SourceArticle[] | null;
+  } | null>(null);
   const [message, setMessage] = useState<{
     readonly kind: "ok" | "error";
     readonly text: string;
@@ -100,6 +111,28 @@ export function SourcesPage({
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const toggleArticles = async (id: string) => {
+    if (openArticles?.id === id) {
+      setOpenArticles(null);
+      return;
+    }
+    setOpenArticles({ id, items: null });
+    try {
+      const items = await api.articles(id);
+      setOpenArticles((current) =>
+        current?.id === id ? { id, items } : current,
+      );
+    } catch (error) {
+      setOpenArticles(null);
+      if (!handleError(error)) {
+        setMessage({
+          kind: "error",
+          text: error instanceof Error ? error.message : "读取失败",
+        });
+      }
     }
   };
 
@@ -172,92 +205,110 @@ export function SourcesPage({
           </thead>
           <tbody>
             {sources.map((source) => (
-              <tr key={source.id} data-enabled={source.enabled}>
-                <td>
-                  <a
-                    href={source.entry_url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    {source.display_name}
-                  </a>
-                </td>
-                <td>{kindLabel(source)}</td>
-                <td>{TIER_LABELS[source.tier]}</td>
-                <td>{latestJobLabel(source)}</td>
-                <td>{source.new_last_7_days}</td>
-                <td>
-                  {source.archived_at !== null
-                    ? "已删除"
-                    : source.enabled
-                      ? "打开"
-                      : "关闭"}
-                </td>
-                <td>
-                  {pending?.id === source.id ? (
-                    <span
-                      className={styles.confirm}
-                      role="group"
-                      aria-label="确认操作"
+              <Fragment key={source.id}>
+                <tr data-enabled={source.enabled}>
+                  <td>
+                    <a
+                      href={source.entry_url}
+                      target="_blank"
+                      rel="noreferrer noopener"
                     >
-                      {CONFIRM_TEXT[pending.action]}
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        disabled={busy}
-                        onClick={() => {
-                          void confirm(pending);
-                        }}
+                      {source.display_name}
+                    </a>
+                  </td>
+                  <td>{kindLabel(source)}</td>
+                  <td>{TIER_LABELS[source.tier]}</td>
+                  <td>{latestJobLabel(source)}</td>
+                  <td>{source.new_last_7_days}</td>
+                  <td>
+                    {source.archived_at !== null
+                      ? "已删除"
+                      : source.enabled
+                        ? "打开"
+                        : "关闭"}
+                  </td>
+                  <td>
+                    {pending?.id === source.id ? (
+                      <span
+                        className={styles.confirm}
+                        role="group"
+                        aria-label="确认操作"
                       >
-                        确认
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setPending(null)}
-                      >
-                        取消
-                      </button>
-                    </span>
-                  ) : source.archived_at !== null ? null : (
-                    <span className={styles.rowActions}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPending({
-                            id: source.id,
-                            action: source.enabled ? "disable" : "enable",
-                          })
-                        }
-                      >
-                        {source.enabled ? "关闭" : "打开"}
-                      </button>
-                      {source.managed_by === "operator" ? (
-                        <>
-                          <button
-                            type="button"
-                            disabled={editing !== null}
-                            onClick={() => {
-                              setMessage(null);
-                              setEditing({ source });
-                            }}
-                          >
-                            修改
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPending({ id: source.id, action: "archive" })
-                            }
-                          >
-                            删除
-                          </button>
-                        </>
-                      ) : null}
-                    </span>
-                  )}
-                </td>
-              </tr>
+                        {CONFIRM_TEXT[pending.action]}
+                        <button
+                          type="button"
+                          className={styles.primary}
+                          disabled={busy}
+                          onClick={() => {
+                            void confirm(pending);
+                          }}
+                        >
+                          确认
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setPending(null)}
+                        >
+                          取消
+                        </button>
+                      </span>
+                    ) : source.archived_at !== null ? null : (
+                      <span className={styles.rowActions}>
+                        <button
+                          type="button"
+                          aria-expanded={openArticles?.id === source.id}
+                          onClick={() => {
+                            void toggleArticles(source.id);
+                          }}
+                        >
+                          最近文章
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPending({
+                              id: source.id,
+                              action: source.enabled ? "disable" : "enable",
+                            })
+                          }
+                        >
+                          {source.enabled ? "关闭" : "打开"}
+                        </button>
+                        {source.managed_by === "operator" ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={editing !== null}
+                              onClick={() => {
+                                setMessage(null);
+                                setEditing({ source });
+                              }}
+                            >
+                              修改
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPending({ id: source.id, action: "archive" })
+                              }
+                            >
+                              删除
+                            </button>
+                          </>
+                        ) : null}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+                {openArticles?.id === source.id ? (
+                  <tr className={styles.articlesRow}>
+                    <td colSpan={7}>
+                      <ArticleList items={openArticles.items} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -271,5 +322,29 @@ export function SourcesPage({
         显示已删除的
       </label>
     </section>
+  );
+}
+
+function ArticleList({
+  items,
+}: {
+  readonly items: readonly SourceArticle[] | null;
+}) {
+  if (items === null) return <p role="status">正在读取…</p>;
+  if (items.length === 0) return <p>还没有收录过文章。</p>;
+  return (
+    <ol className={styles.articles} aria-label="最近收录的文章">
+      {items.map((item) => (
+        <li key={item.url}>
+          <a href={item.url} target="_blank" rel="noreferrer noopener">
+            {item.title}
+          </a>
+          <span>
+            发布 {formatDate(item.published_at)} · 收录{" "}
+            {formatTime(item.fetched_at)}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }

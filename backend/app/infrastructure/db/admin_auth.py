@@ -65,11 +65,17 @@ async def add_audit_event(
 
 
 async def list_audit_events(
-    session: AsyncSession, *, limit: int, before: datetime | None = None
+    session: AsyncSession,
+    *,
+    limit: int,
+    before: datetime | None = None,
+    action_prefix: str | None = None,
 ) -> Sequence[AdminAuditEventModel]:
     statement = select(AdminAuditEventModel)
     if before is not None:
         statement = statement.where(AdminAuditEventModel.occurred_at < before)
+    if action_prefix is not None:
+        statement = statement.where(AdminAuditEventModel.action.startswith(action_prefix))
     statement = statement.order_by(
         AdminAuditEventModel.occurred_at.desc(), AdminAuditEventModel.id.desc()
     ).limit(limit)
@@ -153,15 +159,22 @@ async def load_live_session(
     return row[0], row[1]
 
 
-async def revoke_user_sessions(session: AsyncSession, *, user_id: UUID, now: datetime) -> int:
+async def revoke_user_sessions(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    now: datetime,
+    keep_session_id: UUID | None = None,
+) -> int:
+    conditions = [
+        AdminSessionModel.user_id == user_id,
+        AdminSessionModel.revoked_at.is_(None),
+        AdminSessionModel.expires_at > now,
+    ]
+    if keep_session_id is not None:
+        conditions.append(AdminSessionModel.id != keep_session_id)
     result = await session.execute(
-        update(AdminSessionModel)
-        .where(
-            AdminSessionModel.user_id == user_id,
-            AdminSessionModel.revoked_at.is_(None),
-            AdminSessionModel.expires_at > now,
-        )
-        .values(revoked_at=now)
+        update(AdminSessionModel).where(*conditions).values(revoked_at=now)
     )
     return int(getattr(result, "rowcount", 0) or 0)
 
@@ -181,10 +194,22 @@ async def count_live_sessions(session: AsyncSession, *, user_id: UUID, now: date
     )
 
 
+async def count_active_owners(session: AsyncSession) -> int:
+    return int(
+        await session.scalar(
+            select(func.count())
+            .select_from(AdminUserModel)
+            .where(AdminUserModel.role == "owner", AdminUserModel.active.is_(True))
+        )
+        or 0
+    )
+
+
 __all__ = [
     "add_audit_event",
     "add_session",
     "add_user",
+    "count_active_owners",
     "count_live_sessions",
     "list_audit_events",
     "list_users",

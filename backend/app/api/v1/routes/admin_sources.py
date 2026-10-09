@@ -21,15 +21,23 @@ from app.application.services.source_admin import (
     update_operator_source,
 )
 from app.core.config import Settings
+from app.core.errors import NotFoundError
 from app.domain.source_admin import (
     GENERIC_CONNECTOR_KEYS,
     OperatorSourceDraft,
     build_operator_source_draft,
 )
 from app.infrastructure.db.admin_auth import add_audit_event
-from app.infrastructure.db.source_admin import AdminSourceRow, list_admin_sources
+from app.infrastructure.db.models import SourceModel
+from app.infrastructure.db.source_admin import (
+    AdminSourceRow,
+    list_admin_sources,
+    recent_source_articles,
+)
 from app.infrastructure.ingestion.fetcher import SafeHttpFetcher
 from app.schemas.admin_sources import (
+    AdminSourceArticle,
+    AdminSourceArticleListResponse,
     AdminSourceConfig,
     AdminSourceDraftRequest,
     AdminSourceLatestJob,
@@ -244,3 +252,25 @@ async def delete_admin_source(
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@router.get("/{source_id}/articles", response_model=AdminSourceArticleListResponse)
+async def get_admin_source_articles(
+    source_id: UUID,
+    _principal: Annotated[AdminPrincipal, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=30)] = 10,
+) -> AdminSourceArticleListResponse:
+    if await session.get(SourceModel, source_id) is None:
+        raise NotFoundError("source")
+    rows = await recent_source_articles(session, source_id, limit=limit)
+    items = [
+        AdminSourceArticle(
+            title=row.title,
+            url=row.canonical_url,
+            published_at=row.published_at,
+            fetched_at=row.first_fetched_at,
+        )
+        for row in rows
+    ]
+    return AdminSourceArticleListResponse(items=items, count=len(items))

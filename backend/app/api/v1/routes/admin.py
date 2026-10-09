@@ -9,13 +9,14 @@ this prefix and use `require_admin` / `require_owner`.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_dependencies import admin_guard, require_admin, require_owner
 from app.api.dependencies import get_session
+from app.application.services.admin_accounts import change_own_password
 from app.application.services.admin_auth import AdminPrincipal, login_admin, logout_admin
 from app.core.config import Settings
 from app.domain.admin_auth import SESSION_COOKIE_NAME, SESSION_LIFETIME
@@ -25,7 +26,12 @@ from app.schemas.admin import (
     AdminAuditEventResponse,
     AdminLoginRequest,
     AdminMeResponse,
+    AdminPasswordChangedResponse,
+    AdminPasswordChangeRequest,
 )
+
+# 操作记录 filter: one kind of action at a time.
+AUDIT_KINDS = {"auth": "auth.", "user": "user.", "source": "source.", "keywords": "keywords."}
 
 COOKIE_PATH = "/api/v1/admin"
 
@@ -106,8 +112,14 @@ async def get_admin_audit_events(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     before: datetime | None = None,
+    kind: Literal["auth", "user", "source", "keywords"] | None = None,
 ) -> AdminAuditEventListResponse:
-    rows = await list_audit_events(session, limit=limit, before=before)
+    rows = await list_audit_events(
+        session,
+        limit=limit,
+        before=before,
+        action_prefix=None if kind is None else AUDIT_KINDS[kind],
+    )
     items = [
         AdminAuditEventResponse(
             id=row.id,
@@ -121,3 +133,19 @@ async def get_admin_audit_events(
         for row in rows
     ]
     return AdminAuditEventListResponse(items=items, count=len(items))
+
+
+@router.post("/auth/password", response_model=AdminPasswordChangedResponse)
+async def post_admin_password(
+    body: AdminPasswordChangeRequest,
+    principal: Annotated[AdminPrincipal, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminPasswordChangedResponse:
+    ended = await change_own_password(
+        session,
+        principal=principal,
+        current_password=body.current_password,
+        new_password=body.new_password,
+        now=datetime.now(UTC),
+    )
+    return AdminPasswordChangedResponse(other_sessions_ended=ended)

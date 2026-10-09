@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app.api.v1.routes import (
     acquisition_runs,
     admin,
+    admin_accounts,
     admin_keywords,
     admin_sources,
     brand_knowledge,
@@ -210,6 +211,7 @@ app.include_router(material_packages.router, prefix="/api/v1")
 app.include_router(official_account_local.router, prefix="/api/v1")
 app.include_router(wecom_deliveries.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(admin_accounts.router, prefix="/api/v1")
 app.include_router(admin_sources.router, prefix="/api/v1")
 app.include_router(admin_keywords.router, prefix="/api/v1")
 

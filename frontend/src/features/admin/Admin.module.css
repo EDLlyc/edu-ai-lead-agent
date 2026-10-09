@@ -526,6 +526,91 @@
   font-size: 1.05rem;
 }
 
+/* 账号 */
+.issued {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fff7e0;
+  border: 1px solid #f2d27a;
+  border-radius: 0.75rem;
+}
+
+.issued p {
+  margin: 0;
+}
+
+.issued > button {
+  justify-self: start;
+}
+
+.password {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.password code {
+  padding: 0.35rem 0.7rem;
+  background: #fff;
+  border: 1px solid #e3c766;
+  border-radius: 0.4rem;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  user-select: all;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.25rem;
+  margin: 0 0 1.25rem;
+}
+
+.facts dt {
+  color: #5b6b70;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.filters button[aria-pressed="true"] {
+  color: #fff;
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.more {
+  margin-top: 0.75rem;
+}
+
+.articlesRow td {
+  background: #f5f8f6;
+}
+
+.articles {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.articles span {
+  margin-left: 0.6rem;
+  color: #5b6b70;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 720px) {
   .shell {
     grid-template-areas:

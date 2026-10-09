@@ -12,6 +12,7 @@ export type SourceConfig = components["schemas"]["AdminSourceConfig"];
 export type SourceDraft = components["schemas"]["AdminSourceDraftRequest"];
 export type SourcePreview = components["schemas"]["AdminSourcePreviewResponse"];
 export type PreviewSample = components["schemas"]["AdminSourcePreviewSample"];
+export type SourceArticle = components["schemas"]["AdminSourceArticle"];
 
 /** Everything the 新闻源 section asks the API; injected so tests never touch the network. */
 export interface SourcesApi {
@@ -24,6 +25,7 @@ export interface SourcesApi {
   readonly update: (id: string, draft: SourceDraft) => Promise<AdminSource>;
   readonly setEnabled: (id: string, enabled: boolean) => Promise<AdminSource>;
   readonly archive: (id: string) => Promise<void>;
+  readonly articles: (id: string) => Promise<readonly SourceArticle[]>;
 }
 
 function check<T>(
@@ -92,5 +94,13 @@ export const sourcesApi: SourcesApi = {
     if (!result.response.ok) {
       throw new Error(serverMessage(result.error, "归档失败"));
     }
+  },
+  async articles(id) {
+    const result = await reach(() =>
+      adminClient.GET("/api/v1/admin/sources/{source_id}/articles", {
+        params: { path: { source_id: id }, query: { limit: 10 } },
+      }),
+    );
+    return check(result, "读取最近文章失败").items;
   },
 };

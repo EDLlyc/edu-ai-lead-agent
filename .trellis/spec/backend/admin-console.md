@@ -47,6 +47,23 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - Secrets (WeChat app secret, model keys) are encrypted at rest. They are write-only from the
   browser and displayed as `••••1234`.
 
+## Accounts and passwords (10-09 polish)
+
+- **Accounts page** (owner): `/api/v1/admin/accounts` for list, create, PATCH (display name and
+  role), `reset-password`, `disable` and `enable`.
+  - Create and reset return a generated `initial_password` once (14 characters, no look-alike
+    characters). Only the hash is stored.
+  - Guards: an owner cannot disable or demote themselves; the last active owner cannot go.
+    Usernames are never reused, because disabled accounts keep theirs.
+- **My password** (`POST /admin/auth/password`, any role):
+  - The current password is required. A wrong one counts toward the 5-in-a-row lockout and is
+    audited as `user.password_change_failed`.
+  - The new password must differ from the current one.
+  - The user's other sessions end (`keep_session_id`); this one stays.
+- **Audit filter**: `GET /admin/audit-events?kind=auth|user|source|keywords&before=…` (pages of 50).
+- **Source articles**: `GET /admin/sources/{id}/articles` returns the latest accepted candidates
+  (title, canonical URL, published, first fetched).
+
 ## 新闻源 (item 1)
 
 - **Ownership**: `sources.managed_by` is `seed` (code, `SOURCE_SEEDS`) or `operator`.

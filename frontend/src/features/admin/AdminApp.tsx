@@ -2,6 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AdminLoginPage } from "./AdminLoginPage";
 import { adminApi, type AdminApi, type AdminMe } from "./api";
+import { AccountsPage } from "./accounts/AccountsPage";
+import { MyAccountPage } from "./accounts/MyAccountPage";
+import {
+  accountsApi as defaultAccountsApi,
+  type AccountsApi,
+} from "./accounts/api";
 import { AuditLogPage } from "./AuditLogPage";
 import { KeywordsPage } from "./keywords/KeywordsPage";
 import {
@@ -34,10 +40,12 @@ export function AdminApp({
   api = adminApi,
   sourcesApi = defaultSourcesApi,
   keywordsApi = defaultKeywordsApi,
+  accountsApi = defaultAccountsApi,
 }: {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
   readonly keywordsApi?: KeywordsApi;
+  readonly accountsApi?: AccountsApi;
 }) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
   const [path, setPath] = useState(() => window.location.pathname);
@@ -186,6 +194,14 @@ export function AdminApp({
           <SourcesPage api={sourcesApi} onSessionExpired={expire} />
         ) : current.key === "keywords" ? (
           <KeywordsPage api={keywordsApi} onSessionExpired={expire} />
+        ) : current.key === "accounts" ? (
+          <AccountsPage
+            api={accountsApi}
+            me={me.username}
+            onSessionExpired={expire}
+          />
+        ) : current.key === "account" ? (
+          <MyAccountPage api={api} me={me} onSessionExpired={expire} />
         ) : (
           <PlannedSection section={current} />
         )}

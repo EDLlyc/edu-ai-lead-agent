@@ -87,3 +87,15 @@ class AdminSourcePreviewResponse(BaseModel):
     problem: str | None
     links: list[AdminSourcePreviewLink]
     samples: list[AdminSourcePreviewSample]
+
+
+class AdminSourceArticle(BaseModel):
+    title: str
+    url: str
+    published_at: datetime | None
+    fetched_at: datetime
+
+
+class AdminSourceArticleListResponse(BaseModel):
+    items: list[AdminSourceArticle]
+    count: int

@@ -107,6 +107,14 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+# Initial passwords handed to a person: no look-alike characters (0/O, 1/l/I).
+_INITIAL_PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+
+
+def generate_initial_password(length: int = 14) -> str:
+    return "".join(secrets.choice(_INITIAL_PASSWORD_ALPHABET) for _ in range(length))
+
+
 # Checked against when the username is unknown, so both failures cost the same time.
 _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
@@ -159,6 +167,7 @@ __all__ = [
     "burn_password_check",
     "check_display_name",
     "check_new_password",
+    "generate_initial_password",
     "hash_password",
     "hash_session_token",
     "is_locked",

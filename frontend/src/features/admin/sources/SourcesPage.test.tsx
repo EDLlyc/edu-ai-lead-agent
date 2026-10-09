@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AdminSessionExpiredError } from "../api";
 import type {
   AdminSource,
+  SourceArticle,
   SourceDraft,
   SourcePreview,
   SourcesApi,
@@ -122,6 +123,16 @@ function api(overrides: Partial<SourcesApi> = {}) {
       Promise.resolve({ ...(id === SEED.id ? SEED : OPERATOR), enabled }),
     ),
     archive: vi.fn(() => Promise.resolve()),
+    articles: vi.fn(() =>
+      Promise.resolve<readonly SourceArticle[]>([
+        {
+          title: "人工智能教育走进中小学课堂",
+          url: "https://edu.gmw.cn/2026-10/08/content_1.htm",
+          published_at: "2026-10-08T00:00:00Z",
+          fetched_at: "2026-10-08T00:05:00Z",
+        },
+      ]),
+    ),
     ...overrides,
   } satisfies SourcesApi;
 }
@@ -131,8 +142,8 @@ describe("新闻源", () => {
     const view = render(<SourcesPage api={api()} onSessionExpired={vi.fn()} />);
     const rows = await screen.findAllByRole("row");
     expect(rows.slice(1).map((row) => row.textContent)).toEqual([
-      "光明网教育内置B 可信10/08 08:05 · 新增 3 · 过滤 718打开关闭",
-      "示例教育网网页B 可信还没抓过0关闭打开修改删除",
+      "光明网教育内置B 可信10/08 08:05 · 新增 3 · 过滤 718打开最近文章关闭",
+      "示例教育网网页B 可信还没抓过0关闭最近文章打开修改删除",
     ]);
     expect(screen.getByText(/现在打开了 1 个/)).toBeInTheDocument();
     expect(within(rows[1]!).queryByRole("button", { name: "修改" })).toBeNull();
@@ -272,6 +283,24 @@ describe("新闻源", () => {
     await waitFor(() =>
       expect(calls.archive).toHaveBeenCalledWith(OPERATOR.id),
     );
+  });
+
+  it("opens a source's latest articles in place", async () => {
+    const user = userEvent.setup();
+    const calls = api();
+    render(<SourcesPage api={calls} onSessionExpired={vi.fn()} />);
+    const seedRow = (await screen.findAllByRole("row"))[1]!;
+    const toggle = within(seedRow).getByRole("button", { name: "最近文章" });
+    await user.click(toggle);
+    const list = await screen.findByRole("list", { name: "最近收录的文章" });
+    expect(
+      within(list).getByRole("link", { name: "人工智能教育走进中小学课堂" }),
+    ).toHaveAttribute("href", "https://edu.gmw.cn/2026-10/08/content_1.htm");
+    expect(list).toHaveTextContent("发布 2026/10/08 · 收录 10/08 08:05");
+    expect(calls.articles).toHaveBeenCalledWith(SEED.id);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(toggle);
+    expect(screen.queryByRole("list", { name: "最近收录的文章" })).toBeNull();
   });
 
   it("goes back to the login page when the session has ended", async () => {

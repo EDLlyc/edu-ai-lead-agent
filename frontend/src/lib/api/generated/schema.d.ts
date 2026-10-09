@@ -55,6 +55,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Accounts */
+        get: operations["get_admin_accounts_api_v1_admin_accounts_get"];
+        put?: never;
+        /** Post Admin Account */
+        post: operations["post_admin_account_api_v1_admin_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Admin Account */
+        patch: operations["patch_admin_account_api_v1_admin_accounts__username__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{username}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Account Disable */
+        post: operations["post_admin_account_disable_api_v1_admin_accounts__username__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{username}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Account Enable */
+        post: operations["post_admin_account_enable_api_v1_admin_accounts__username__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{username}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Account Reset */
+        post: operations["post_admin_account_reset_api_v1_admin_accounts__username__reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/audit-events": {
         parameters: {
             query?: never;
@@ -117,6 +203,23 @@ export interface paths {
         get: operations["get_admin_me_api_v1_admin_auth_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Admin Password */
+        post: operations["post_admin_password_api_v1_admin_auth_password_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -226,6 +329,23 @@ export interface paths {
         head?: never;
         /** Patch Admin Source */
         patch: operations["patch_admin_source_api_v1_admin_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/sources/{source_id}/articles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Source Articles */
+        get: operations["get_admin_source_articles_api_v1_admin_sources__source_id__articles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/sources/{source_id}/disable": {
@@ -1681,6 +1801,66 @@ export interface components {
             /** Unchanged Count */
             unchanged_count: number;
         };
+        /** AdminAccountCreateRequest */
+        AdminAccountCreateRequest: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "editor";
+            /** Username */
+            username: string;
+        };
+        /** AdminAccountListResponse */
+        AdminAccountListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminAccountResponse"][];
+        };
+        /** AdminAccountResponse */
+        AdminAccountResponse: {
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Live Sessions */
+            live_sessions: number;
+            /** Locked */
+            locked: boolean;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "editor";
+            /** Username */
+            username: string;
+        };
+        /** AdminAccountUpdateRequest */
+        AdminAccountUpdateRequest: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Role */
+            role?: ("owner" | "editor") | null;
+        };
+        /**
+         * AdminAccountWithPasswordResponse
+         * @description A created or reset account; `initial_password` is shown once and never again.
+         */
+        AdminAccountWithPasswordResponse: {
+            account: components["schemas"]["AdminAccountResponse"];
+            /** Initial Password */
+            initial_password: string;
+        };
         /** AdminAuditEventListResponse */
         AdminAuditEventListResponse: {
             /** Count */
@@ -1851,6 +2031,39 @@ export interface components {
             role: "owner" | "editor";
             /** Username */
             username: string;
+        };
+        /** AdminPasswordChangeRequest */
+        AdminPasswordChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /** AdminPasswordChangedResponse */
+        AdminPasswordChangedResponse: {
+            /** Other Sessions Ended */
+            other_sessions_ended: number;
+        };
+        /** AdminSourceArticle */
+        AdminSourceArticle: {
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Published At */
+            published_at: string | null;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /** AdminSourceArticleListResponse */
+        AdminSourceArticleListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AdminSourceArticle"][];
         };
         /** AdminSourceConfig */
         AdminSourceConfig: {
@@ -7007,11 +7220,214 @@ export interface operations {
             };
         };
     };
+    get_admin_accounts_api_v1_admin_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_account_api_v1_admin_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAccountCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountWithPasswordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_admin_account_api_v1_admin_accounts__username__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAccountUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_account_disable_api_v1_admin_accounts__username__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_account_enable_api_v1_admin_accounts__username__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_account_reset_api_v1_admin_accounts__username__reset_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountWithPasswordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_admin_audit_events_api_v1_admin_audit_events_get: {
         parameters: {
             query?: {
                 limit?: number;
                 before?: string | null;
+                kind?: ("auth" | "user" | "source" | "keywords") | null;
             };
             header?: never;
             path?: never;
@@ -7121,6 +7537,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_password_api_v1_admin_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPasswordChangedResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7426,6 +7877,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_source_articles_api_v1_admin_sources__source_id__articles_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSourceArticleListResponse"];
                 };
             };
             /** @description Validation Error */

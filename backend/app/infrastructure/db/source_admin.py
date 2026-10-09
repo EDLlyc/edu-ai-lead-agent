@@ -23,7 +23,12 @@ from app.domain.source_admin import (
     OperatorSourceDraft,
     operator_version_fingerprint,
 )
-from app.infrastructure.db.models import AcquisitionJobModel, SourceModel, SourceVersionModel
+from app.infrastructure.db.models import (
+    AcquisitionJobModel,
+    EvidenceCandidateModel,
+    SourceModel,
+    SourceVersionModel,
+)
 
 _TERMINAL_JOB_STATUSES = (JobStatus.SUCCEEDED.value, JobStatus.FAILED.value)
 
@@ -257,6 +262,23 @@ async def add_operator_source(
     return source, version
 
 
+async def recent_source_articles(
+    session: AsyncSession, source_id: UUID, *, limit: int
+) -> list[EvidenceCandidateModel]:
+    """The articles this source contributed most recently (accepted candidates only)."""
+
+    return list(
+        (
+            await session.scalars(
+                select(EvidenceCandidateModel)
+                .where(EvidenceCandidateModel.source_id == source_id)
+                .order_by(EvidenceCandidateModel.first_fetched_at.desc())
+                .limit(limit)
+            )
+        ).all()
+    )
+
+
 __all__ = [
     "AdminSourceRow",
     "LatestJob",
@@ -264,4 +286,5 @@ __all__ = [
     "ensure_operator_version",
     "list_admin_sources",
     "load_source_for_update",
+    "recent_source_articles",
 ]
