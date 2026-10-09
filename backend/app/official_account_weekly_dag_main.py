@@ -116,7 +116,7 @@ async def _run(args: argparse.Namespace) -> int:
             await status_engine.dispose()
     if args.command == "worker" and not (args.once or args.drain):
         # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
-        start_model_key_watch(settings)
+        start_model_key_watch(settings, service="official-account-weekly-dag-worker")
     if settings.official_account_single_enabled and args.command != "status":
         if args.command != "worker":
             raise ValueError("single mode forbids legacy weekly admission/replay")

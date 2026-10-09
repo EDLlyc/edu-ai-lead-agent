@@ -54,3 +54,11 @@ for the teacher's reference layouts (the open question above).
   no choice gives byte-identical content.
 - Integration: list / preview / 404 / 422 / write guard / audit; the worker lookup by fingerprint.
 - Frontend tests (axe without frames); browser smoke incl. the CSP and a 390 px viewport; gate PASS.
+
+## Production gap (2026-10-09)
+
+The draft worker (`wechat-official-account-draft-worker`) runs the 09-28 image `83a41e41`, which
+does not apply templates. Choices can be stored once this branch is deployed, but they take
+effect only after that worker is upgraded. That is a separate release of the 公众号 pipeline: its
+image lineage differs from `mainline`, so it needs its own diff and smoke. The page says so in a
+notice. Remove the notice in that release.

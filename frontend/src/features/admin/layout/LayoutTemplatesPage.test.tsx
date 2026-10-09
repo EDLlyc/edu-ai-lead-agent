@@ -56,6 +56,7 @@ describe("排版模板", () => {
       await screen.findByText("小赛蓝（默认）", { selector: "p strong" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /小赛蓝/ })).toBeChecked();
+    expect(screen.getByText(/现在还不会生效/)).toBeInTheDocument();
     const frame = await screen.findByTitle("排版预览：小赛蓝（默认）");
     expect(frame).toHaveAttribute("sandbox", "");
     expect(frame.getAttribute("srcdoc")).toContain(

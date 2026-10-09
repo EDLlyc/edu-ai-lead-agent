@@ -138,6 +138,9 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
   after `get_settings()` and must finish its current job on SIGTERM; otherwise a rotation will not
   reach it until the next deploy.
 - Every save/restore/use-env makes one probe request with that key first and refuses on failure.
+- Watched processes report the versions they loaded to `model_key_consumers` every minute. The
+  page derives "已生效" from those reports, never from the API's own state. A service listed in
+  `MODEL_KEY_SERVICES` that does not report is shown as not connected (env keys).
 
 ## Frontend
 

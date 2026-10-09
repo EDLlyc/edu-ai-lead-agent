@@ -17,14 +17,27 @@ class AdminModelProvider(BaseModel):
     version: int | None
     updated_by: str | None
     updated_at: datetime | None
-    # The version this API process loaded at start; null before any console version or when the
-    # console keys are off. Equal to `version` once services have restarted with it.
-    loaded_version: int | None
+
+
+class AdminModelKeyConsumer(BaseModel):
+    """A production service that holds model keys, and what it reported."""
+
+    service: str
+    label: str
+    # False: no report in the last 5 minutes. The service then runs an image without the watch
+    # (or is down) and uses its environment keys.
+    reporting: bool
+    # Newest version per provider it loaded at start ({} = none stored yet); null when that read
+    # failed and it fell back to the environment.
+    versions: dict[str, int] | None
+    started_at: datetime | None
+    seen_at: datetime | None
 
 
 class AdminModelProvidersResponse(BaseModel):
     secret_key_configured: bool
     providers: list[AdminModelProvider]
+    consumers: list[AdminModelKeyConsumer]
 
 
 class AdminModelKeyRequest(BaseModel):

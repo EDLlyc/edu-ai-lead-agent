@@ -1032,6 +1032,71 @@
         "title": "AdminMeResponse",
         "type": "object"
       },
+      "AdminModelKeyConsumer": {
+        "description": "A production service that holds model keys, and what it reported.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reporting": {
+            "title": "Reporting",
+            "type": "boolean"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "versions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versions"
+          }
+        },
+        "required": [
+          "service",
+          "label",
+          "reporting",
+          "versions",
+          "started_at",
+          "seen_at"
+        ],
+        "title": "AdminModelKeyConsumer",
+        "type": "object"
+      },
       "AdminModelKeyHistoryResponse": {
         "properties": {
           "items": {
@@ -1228,17 +1293,6 @@
             ],
             "title": "Key Hint"
           },
-          "loaded_version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Loaded Version"
-          },
           "models": {
             "items": {
               "type": "string"
@@ -1308,14 +1362,20 @@
           "key_hint",
           "version",
           "updated_by",
-          "updated_at",
-          "loaded_version"
+          "updated_at"
         ],
         "title": "AdminModelProvider",
         "type": "object"
       },
       "AdminModelProvidersResponse": {
         "properties": {
+          "consumers": {
+            "items": {
+              "$ref": "#/components/schemas/AdminModelKeyConsumer"
+            },
+            "title": "Consumers",
+            "type": "array"
+          },
           "providers": {
             "items": {
               "$ref": "#/components/schemas/AdminModelProvider"
@@ -1330,7 +1390,8 @@
         },
         "required": [
           "secret_key_configured",
-          "providers"
+          "providers",
+          "consumers"
         ],
         "title": "AdminModelProvidersResponse",
         "type": "object"

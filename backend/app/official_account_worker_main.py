@@ -126,7 +126,7 @@ async def run_worker() -> None:
     settings = get_settings()
     configure_logging(json_output=settings.app_env != "development")
     # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
-    start_model_key_watch(settings)
+    start_model_key_watch(settings, service="official-account-local-worker")
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGINT, signal.SIGTERM):

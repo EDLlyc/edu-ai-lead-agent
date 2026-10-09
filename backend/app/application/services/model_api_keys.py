@@ -9,7 +9,7 @@ version up when they start (see `app.infrastructure.model_api_keys_overlay`).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import monotonic
 from uuid import uuid4
 
@@ -23,6 +23,7 @@ from app.application.services.admin_auth import AdminPrincipal
 from app.core.config import Settings
 from app.core.errors import AppError, NotFoundError
 from app.domain.model_api_keys import (
+    MODEL_KEY_SERVICES,
     ModelKeyProvider,
     model_key_provider,
     sealed_key_purpose,
@@ -31,7 +32,7 @@ from app.domain.model_api_keys import (
 from app.domain.secret_box import SecretBoxError, last4, open_sealed, parse_key, seal
 from app.infrastructure.ai.model_key_probe import ProbeResult, probe_model_key
 from app.infrastructure.db.admin_auth import add_audit_event
-from app.infrastructure.db.models import ModelApiKeyModel
+from app.infrastructure.db.models import ModelApiKeyModel, ModelKeyConsumerModel
 
 TEST_GAP_SECONDS = 3.0
 _LAST_TEST: dict[str, float] = {}
@@ -76,6 +77,27 @@ async def latest_versions(session: AsyncSession) -> dict[str, ModelApiKeyModel]:
         )
     ).all()
     return {row.provider: row for row in rows}
+
+
+CONSUMER_STALE_AFTER = timedelta(minutes=5)
+
+
+async def key_consumers(
+    session: AsyncSession, *, now: datetime
+) -> list[tuple[str, str, ModelKeyConsumerModel | None]]:
+    """Each production service that holds model keys, with its newest live report (if any)."""
+
+    rows = (
+        await session.scalars(
+            select(ModelKeyConsumerModel)
+            .where(ModelKeyConsumerModel.seen_at >= now - CONSUMER_STALE_AFTER)
+            .order_by(ModelKeyConsumerModel.seen_at.desc())
+        )
+    ).all()
+    newest: dict[str, ModelKeyConsumerModel] = {}
+    for row in rows:
+        newest.setdefault(row.service, row)
+    return [(service, label, newest.get(service)) for service, label in MODEL_KEY_SERVICES]
 
 
 async def key_history(session: AsyncSession, provider_id: str) -> list[ModelApiKeyModel]:
@@ -299,6 +321,7 @@ def _env_key(env_keys: Mapping[str, SecretStr | None], provider_id: str) -> str:
 
 __all__ = [
     "ModelKeyRejected",
+    "key_consumers",
     "key_history",
     "latest_versions",
     "model_secret_key",

@@ -10,11 +10,13 @@ import {
 export type ModelProvider = components["schemas"]["AdminModelProvider"];
 export type ModelKeyVersion = components["schemas"]["AdminModelKeyVersion"];
 export type ModelKeyTest = components["schemas"]["AdminModelKeyTestResponse"];
+export type ModelKeyConsumer = components["schemas"]["AdminModelKeyConsumer"];
 
 export interface ModelsApi {
   readonly list: () => Promise<{
     readonly secretKeyConfigured: boolean;
     readonly providers: readonly ModelProvider[];
+    readonly consumers: readonly ModelKeyConsumer[];
   }>;
   readonly test: (providerId: string, apiKey: string) => Promise<ModelKeyTest>;
   readonly save: (
@@ -54,6 +56,7 @@ export const modelsApi: ModelsApi = {
     return {
       secretKeyConfigured: data.secret_key_configured,
       providers: data.providers,
+      consumers: data.consumers,
     };
   },
   async test(providerId, apiKey) {

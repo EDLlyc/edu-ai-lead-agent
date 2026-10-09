@@ -5,10 +5,11 @@ provider with one short synchronous query (the event loop may not exist yet) and
 keys with `MODEL_SECRET_KEY`. Without that key, or on any failure, the environment keys stay, so
 the console can never stop a process from starting.
 
-Long-running services also call `start_model_key_watch`. A daemon thread compares the newest
-versions with the ones this process loaded; on a change it sends the process its own SIGTERM.
-Every service finishes its current job on SIGTERM, then exits, and Docker
-(`restart: unless-stopped`) starts it again with the new key.
+Long-running services also call `start_model_key_watch`. Once a minute a daemon thread reports
+the versions this process loaded (`model_key_consumers`, shown on the 模型配置 page) and compares
+them with the newest ones. On a change it sends the process its own SIGTERM, but not before the
+process has run 2 minutes. Every service finishes its current job on SIGTERM, then exits, and
+Docker (`restart: unless-stopped`) starts it again with the new key.
 """
 
 from __future__ import annotations
@@ -17,8 +18,10 @@ import os
 import random
 import re
 import signal
+import socket
 import threading
 import time
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -45,7 +48,16 @@ _LATEST_SQL = (
     "FROM model_api_keys ORDER BY provider, version DESC"
 )
 
+_BEAT_SQL = (
+    "INSERT INTO model_key_consumers (service, host, versions, started_at, seen_at) "
+    "VALUES (%s, %s, %s, %s, now()) ON CONFLICT (service, host) DO UPDATE SET "
+    "versions = EXCLUDED.versions, started_at = EXCLUDED.started_at, seen_at = now()"
+)
+# A recreated container gets a new host name; forget the old rows after a day.
+_PRUNE_SQL = "DELETE FROM model_key_consumers WHERE seen_at < now() - interval '1 day'"
+
 _started_at = time.monotonic()
+_started_wall = datetime.now(UTC)
 # Newest version per provider as read at start; None when that read failed.
 _loaded_versions: dict[str, int] | None = None
 _watch_started = False
@@ -110,29 +122,49 @@ def keys_changed(loaded: dict[str, int] | None, latest: dict[str, int]) -> bool:
     return loaded != latest
 
 
-def start_model_key_watch(settings: Settings) -> bool:
-    """Restart this long-running process (via SIGTERM) after an owner rotates a model key."""
+def start_model_key_watch(settings: Settings, *, service: str) -> bool:
+    """Report the loaded versions, and restart this process (SIGTERM) after a key rotation."""
 
     global _watch_started
     if _watch_started or _configured_key(settings) is None:
         return False
     _watch_started = True
-    threading.Thread(target=_watch, args=(settings,), name="model-key-watch", daemon=True).start()
+    threading.Thread(
+        target=_watch, args=(settings, service), name="model-key-watch", daemon=True
+    ).start()
     return True
 
 
-def _watch(settings: Settings) -> None:
-    uptime = time.monotonic() - _started_at
-    time.sleep(
-        max(0.0, WATCH_MIN_UPTIME_SECONDS - uptime) + random.uniform(0, WATCH_JITTER_SECONDS)
-    )
+def beat_and_read(settings: Settings, service: str, host: str) -> dict[str, int]:
+    """Write this process's heartbeat, then read the newest version per provider."""
+
+    import psycopg
+    from psycopg.types.json import Jsonb
+
+    with psycopg.connect(_sync_url(settings), connect_timeout=5, autocommit=True) as connection:
+        try:
+            versions = None if _loaded_versions is None else Jsonb(_loaded_versions)
+            connection.execute(_BEAT_SQL, (service[:60], host[:100], versions, _started_wall))
+            connection.execute(_PRUNE_SQL)
+        except psycopg.Error:
+            # The page loses this row; the restart below still works.
+            logger.warning("console_model_key_heartbeat_failed", service=service)
+        rows = connection.execute(_LATEST_SQL).fetchall()
+    return {str(provider): int(version) for provider, version, _sealed in rows}
+
+
+def _watch(settings: Settings, service: str) -> None:
+    host = socket.gethostname()
     while True:
         try:
-            latest = {p: v for p, (v, _sealed) in read_latest_versions(settings).items()}
+            latest: dict[str, int] | None = beat_and_read(settings, service, host)
         except Exception:
             latest = None
         if latest is not None and keys_changed(_loaded_versions, latest):
-            logger.info("console_model_keys_changed_restarting", versions=latest)
+            # Never restart a process in its first minutes; spread the services out a little.
+            remaining = WATCH_MIN_UPTIME_SECONDS - (time.monotonic() - _started_at)
+            time.sleep(max(0.0, remaining) + random.uniform(0, WATCH_JITTER_SECONDS))
+            logger.info("console_model_keys_changed_restarting", service=service, versions=latest)
             os.kill(os.getpid(), signal.SIGTERM)
             return
         time.sleep(WATCH_POLL_SECONDS)
@@ -153,6 +185,7 @@ def loaded_versions() -> dict[str, int] | None:
 
 
 __all__ = [
+    "beat_and_read",
     "environment_model_keys",
     "keys_changed",
     "loaded_versions",

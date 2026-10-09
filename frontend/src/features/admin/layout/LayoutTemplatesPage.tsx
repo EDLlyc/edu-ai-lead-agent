@@ -144,6 +144,12 @@ export function LayoutTemplatesPage({
       <p className={styles.lede}>
         系统自动生成的公众号草稿按这里选的模板配色。只换颜色：版式、文字和图片都不变，顶部和底部的横幅图片也保持原样。换模板后，从下一篇草稿开始生效，已经生成的草稿不变。
       </p>
+      {/* Production's draft worker still runs the 2026-09-28 image, which does not apply
+          templates. Remove this notice in the release that upgrades it. */}
+      <p className={styles.notice}>
+        现在还不会生效：自动生成公众号草稿的服务还在 9 月 28
+        日的版本上，等它升级后，这里选的模板才会用上。可以先预览、先选好。
+      </p>
       {account === null && templates !== null ? (
         <p className={styles.notice} role="status">
           还没有可用的公众号，可以先预览；请管理员在「公众号 ·

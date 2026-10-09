@@ -42,6 +42,18 @@ MODEL_KEY_PROVIDERS: tuple[ModelKeyProvider, ...] = (
 
 _BY_ID = {provider.id: provider for provider in MODEL_KEY_PROVIDERS}
 
+# The production services that hold model keys, with the label the 模型配置 page shows. Each
+# calls `start_model_key_watch` and reports what it loaded; one that never reports still runs an
+# image without the watch and keeps its environment keys.
+MODEL_KEY_SERVICES: tuple[tuple[str, str], ...] = (
+    ("acquisition-api", "接口服务"),
+    ("content-worker", "选题与文案"),
+    ("wecom-infographic-producer", "朋友圈长图"),
+    ("official-account-local-worker", "公众号文章生成"),
+    ("official-account-weekly-dag-worker", "公众号每日流水线"),
+    ("governance-worker", "新闻治理"),
+)
+
 
 def model_key_provider(provider_id: str) -> ModelKeyProvider | None:
     return _BY_ID.get(provider_id)
@@ -59,6 +71,7 @@ def valid_api_key(value: str) -> bool:
 
 __all__ = [
     "MODEL_KEY_PROVIDERS",
+    "MODEL_KEY_SERVICES",
     "ModelKeyProvider",
     "model_key_provider",
     "sealed_key_purpose",

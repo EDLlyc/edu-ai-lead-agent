@@ -232,7 +232,7 @@ async def test_additive_head_and_populated_downgrade_guard(integration_context):
     await admit(integration_context, sha256(uuid4().bytes).hexdigest())
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20261009_0058"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20261009_0059"
         )
         assert await session.scalar(select(Row.id).limit(1)) is not None
     revision = ScriptDirectory.from_config(Config("backend/alembic.ini")).get_revision(

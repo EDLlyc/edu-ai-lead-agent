@@ -16,6 +16,7 @@ from app.api.admin_dependencies import admin_guard, require_owner
 from app.api.dependencies import get_session
 from app.application.services.admin_auth import AdminPrincipal
 from app.application.services.model_api_keys import (
+    key_consumers,
     key_history,
     latest_versions,
     restore_version,
@@ -27,8 +28,9 @@ from app.core.config import Settings
 from app.domain.model_api_keys import MODEL_KEY_PROVIDERS, ModelKeyProvider
 from app.domain.secret_box import last4
 from app.infrastructure.db.models import ModelApiKeyModel
-from app.infrastructure.model_api_keys_overlay import environment_model_keys, loaded_versions
+from app.infrastructure.model_api_keys_overlay import environment_model_keys
 from app.schemas.admin_models import (
+    AdminModelKeyConsumer,
     AdminModelKeyHistoryResponse,
     AdminModelKeyRequest,
     AdminModelKeyRestoreRequest,
@@ -99,7 +101,6 @@ def _provider_view(
         source, hint = "env", f"••••{last4(env_value)}"
     else:
         source, hint = "none", None
-    loaded = loaded_versions()
     return AdminModelProvider(
         id=provider.id,
         name=provider.name,
@@ -111,7 +112,6 @@ def _provider_view(
         version=row.version if row else None,
         updated_by=row.created_by if row else None,
         updated_at=row.created_at if row else None,
-        loaded_version=None if loaded is None else loaded.get(provider.id),
     )
 
 
@@ -129,10 +129,22 @@ async def get_model_providers(
     _owner: Owner, session: Session, request: Request
 ) -> AdminModelProvidersResponse:
     configured = _settings(request).model_secret_key
+    consumers = await key_consumers(session, now=datetime.now(UTC))
     return AdminModelProvidersResponse(
         secret_key_configured=configured is not None
         and bool(configured.get_secret_value().strip()),
         providers=list((await _providers(session, request)).values()),
+        consumers=[
+            AdminModelKeyConsumer(
+                service=service,
+                label=label,
+                reporting=row is not None,
+                versions=None if row is None or row.versions is None else dict(row.versions),
+                started_at=row.started_at if row else None,
+                seen_at=row.seen_at if row else None,
+            )
+            for service, label, row in consumers
+        ],
     )
 
 

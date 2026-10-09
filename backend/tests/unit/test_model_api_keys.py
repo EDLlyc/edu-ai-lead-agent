@@ -104,7 +104,7 @@ def test_without_the_model_secret_key_nothing_is_read(fresh_overlay, monkeypatch
     monkeypatch.setattr(fresh_overlay, "read_latest_versions", unexpected)
     settings = _settings()
     assert fresh_overlay.with_console_model_keys(settings) is settings
-    assert fresh_overlay.start_model_key_watch(settings) is False
+    assert fresh_overlay.start_model_key_watch(settings, service="content-worker") is False
 
 
 def test_stored_keys_replace_env_keys_and_bad_ones_are_skipped(fresh_overlay, monkeypatch):
@@ -146,11 +146,14 @@ def test_keys_changed():
     assert overlay.keys_changed({}, {"comfly": 1})
 
 
-def test_the_watch_sends_sigterm_once_the_versions_change(fresh_overlay, monkeypatch):
+def test_the_watch_reports_then_sends_sigterm_after_a_change(fresh_overlay, monkeypatch):
     monkeypatch.setattr(fresh_overlay, "_loaded_versions", {"zhipu": 1})
-    reads = iter([{"zhipu": (1, "v1:x")}, OSError("down"), {"zhipu": (2, "v1:y")}])
+    monkeypatch.setattr(fresh_overlay, "_started_at", fresh_overlay.time.monotonic() - 1_000)
+    reads = iter([{"zhipu": 1}, OSError("down"), {"zhipu": 2}])
+    beats: list[tuple[str, str]] = []
 
-    def read(_settings):
+    def beat(_settings, service, host):
+        beats.append((service, host))
         value = next(reads)
         if isinstance(value, Exception):
             raise value
@@ -158,10 +161,25 @@ def test_the_watch_sends_sigterm_once_the_versions_change(fresh_overlay, monkeyp
 
     sleeps: list[float] = []
     kills: list[tuple[int, int]] = []
-    monkeypatch.setattr(fresh_overlay, "read_latest_versions", read)
+    monkeypatch.setattr(fresh_overlay, "beat_and_read", beat)
+    monkeypatch.setattr(fresh_overlay.random, "uniform", lambda _a, _b: 0.0)
     monkeypatch.setattr(fresh_overlay.time, "sleep", sleeps.append)
     monkeypatch.setattr(fresh_overlay.os, "kill", lambda pid, sig: kills.append((pid, sig)))
-    fresh_overlay._watch(_settings(model_secret_key=SecretStr(new_key())))
+    fresh_overlay._watch(_settings(model_secret_key=SecretStr(new_key())), "content-worker")
     assert kills == [(fresh_overlay.os.getpid(), signal.SIGTERM)]
-    # A first wait (uptime + jitter), then one poll interval per unchanged or failed read.
-    assert sleeps[1:] == [overlay.WATCH_POLL_SECONDS, overlay.WATCH_POLL_SECONDS]
+    assert [service for service, _host in beats] == ["content-worker"] * 3
+    # Unchanged, then a failed read: one poll interval each; the change waits out no uptime.
+    assert sleeps == [overlay.WATCH_POLL_SECONDS, overlay.WATCH_POLL_SECONDS, 0.0]
+
+
+def test_a_young_process_waits_before_restarting(fresh_overlay, monkeypatch):
+    monkeypatch.setattr(fresh_overlay, "_loaded_versions", {})
+    monkeypatch.setattr(fresh_overlay, "_started_at", fresh_overlay.time.monotonic())
+    monkeypatch.setattr(fresh_overlay, "beat_and_read", lambda *_args: {"comfly": 1})
+    monkeypatch.setattr(fresh_overlay.random, "uniform", lambda _a, _b: 5.0)
+    sleeps: list[float] = []
+    monkeypatch.setattr(fresh_overlay.time, "sleep", sleeps.append)
+    monkeypatch.setattr(fresh_overlay.os, "kill", lambda pid, sig: None)
+    fresh_overlay._watch(_settings(model_secret_key=SecretStr(new_key())), "governance-worker")
+    assert len(sleeps) == 1
+    assert overlay.WATCH_MIN_UPTIME_SECONDS + 4 < sleeps[0] <= overlay.WATCH_MIN_UPTIME_SECONDS + 5

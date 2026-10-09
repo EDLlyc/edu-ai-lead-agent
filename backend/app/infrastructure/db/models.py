@@ -7158,6 +7158,18 @@ class ModelApiKeyModel(Base):
     )
 
 
+class ModelKeyConsumerModel(Base):
+    """A long-running process reporting the model key versions it loaded (heartbeat)."""
+
+    __tablename__ = "model_key_consumers"
+
+    service: Mapped[str] = mapped_column(String(60), primary_key=True)
+    host: Mapped[str] = mapped_column(String(100), primary_key=True)
+    versions: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class WeChatPublishJobModel(Base):
     """Publishing one WeChat draft now or at a set time (freepublish), started in the 运营后台."""
 

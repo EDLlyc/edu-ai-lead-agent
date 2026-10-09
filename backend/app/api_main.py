@@ -85,7 +85,7 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
-    start_model_key_watch(settings)
+    start_model_key_watch(settings, service="acquisition-api")
     image_client: httpx.AsyncClient | None = None
     brand_embedding_client: httpx.AsyncClient | None = None
     visual_embedding_client: httpx.AsyncClient | None = None

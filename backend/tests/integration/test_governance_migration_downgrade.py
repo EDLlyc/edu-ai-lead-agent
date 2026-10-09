@@ -36,7 +36,7 @@ async def test_current_head_keeps_v5_forward_only_guard(integration_context):
     async with integration_context.engine.connect() as connection:
         assert (
             await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "20261009_0058"
+            == "20261009_0059"
         )
 
 

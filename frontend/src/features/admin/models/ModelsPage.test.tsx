@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ModelKeyVersion, ModelProvider, ModelsApi } from "./api";
+import type {
+  ModelKeyConsumer,
+  ModelKeyVersion,
+  ModelProvider,
+  ModelsApi,
+} from "./api";
 import { ModelsPage } from "./ModelsPage";
 
 const ZHIPU: ModelProvider = {
@@ -17,7 +22,6 @@ const ZHIPU: ModelProvider = {
   version: null,
   updated_by: null,
   updated_at: null,
-  loaded_version: null,
 };
 const COMFLY: ModelProvider = {
   ...ZHIPU,
@@ -31,8 +35,33 @@ const COMFLY: ModelProvider = {
   version: 2,
   updated_by: "liyuchen",
   updated_at: "2026-10-09T02:00:00Z",
-  loaded_version: 2,
 };
+
+function consumer(
+  service: string,
+  label: string,
+  versions: Record<string, number> | null,
+): ModelKeyConsumer {
+  return {
+    service,
+    label,
+    reporting: true,
+    versions,
+    started_at: "2026-10-09T01:00:00Z",
+    seen_at: "2026-10-09T03:00:00Z",
+  };
+}
+// Two services report Comfly v2; one still runs the old image and does not report.
+const CONSUMERS: readonly ModelKeyConsumer[] = [
+  consumer("acquisition-api", "接口服务", { comfly: 2 }),
+  consumer("content-worker", "选题与文案", { comfly: 2 }),
+  {
+    ...consumer("governance-worker", "新闻治理", null),
+    reporting: false,
+    started_at: null,
+    seen_at: null,
+  },
+];
 const HISTORY: readonly ModelKeyVersion[] = [
   {
     version: 2,
@@ -64,6 +93,7 @@ function fakeApi(overrides: Partial<ModelsApi> = {}) {
       Promise.resolve({
         secretKeyConfigured: true,
         providers: [ZHIPU, COMFLY],
+        consumers: CONSUMERS,
       }),
     ),
     test: vi.fn((_id: string, key: string) =>
@@ -105,7 +135,20 @@ describe("模型配置", () => {
     expect(zhipu).toHaveTextContent("glm-5.2（固定）");
     const comfly = screen.getByRole("listitem", { name: /Comfly/ });
     expect(comfly).toHaveTextContent("后台保存的第 2 版");
-    expect(comfly).toHaveTextContent("已生效");
+    expect(comfly).toHaveTextContent(
+      "已在 2/2 个服务生效；1 个服务未接入，仍用服务器配置的 key",
+    );
+    expect(zhipu).toHaveTextContent("使用中；1 个服务未接入");
+    expect(
+      screen.getByText(/有 1 个服务还没接入（还在旧版本上）：新闻治理/),
+    ).toBeInTheDocument();
+    const services = screen.getByRole("table", { name: /各服务正在用的 key/ });
+    expect(
+      within(services).getByRole("row", { name: /选题与文案/ }),
+    ).toHaveTextContent("选题与文案服务器配置第 2 版");
+    expect(
+      within(services).getByRole("row", { name: /新闻治理/ }),
+    ).toHaveTextContent("未接入：还在旧版本上");
     expect((await axe(view.container)).violations).toEqual([]);
 
     await user.click(within(zhipu).getByRole("button", { name: "更换 key" }));
@@ -131,7 +174,14 @@ describe("模型配置", () => {
     expect(api.save).toHaveBeenCalledWith("zhipu", "good-key-1111", "学校账号");
     expect(await screen.findByText(/已保存第 1 版 key/)).toBeInTheDocument();
     expect(zhipu).toHaveTextContent("••••1111 · 后台保存的第 1 版");
-    expect(zhipu).toHaveTextContent("等待服务重启后生效（约 2 分钟）");
+    expect(zhipu).toHaveTextContent(
+      "已在 0/2 个服务生效；2 个等待重启（约 2 分钟）",
+    );
+    expect(
+      within(
+        screen.getByRole("table", { name: /各服务正在用的 key/ }),
+      ).getByRole("row", { name: /接口服务/ }),
+    ).toHaveTextContent("服务器配置（等待重启）");
   });
 
   it("restores an older version and goes back to the server key", async () => {
@@ -170,7 +220,11 @@ describe("模型配置", () => {
       <ModelsPage
         api={fakeApi({
           list: vi.fn(() =>
-            Promise.resolve({ secretKeyConfigured: false, providers: [ZHIPU] }),
+            Promise.resolve({
+              secretKeyConfigured: false,
+              providers: [ZHIPU],
+              consumers: [],
+            }),
           ),
         })}
         onSessionExpired={vi.fn()}

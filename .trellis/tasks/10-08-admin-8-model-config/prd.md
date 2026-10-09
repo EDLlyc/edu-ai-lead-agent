@@ -123,3 +123,19 @@ Decisions:
   - a worker-shaped process stopped itself 1 s after the save, and a fresh one loaded ••••1111;
   - the API stopped itself 133 s after start.
 - Predeploy gate PASS.
+
+## Follow-up (2026-10-09): honest per-service status
+
+Production finding: only six services run the 10-08 image. The 公众号 pipeline, governance and two
+schedulers still run the 09-28 image (`83a41e41`). Three of those hold the 智谱 key:
+official-account-local-worker, weekly-dag-worker and governance-worker. Until they are upgraded,
+they ignore console keys.
+
+- Migration 0059 `model_key_consumers`: every watched process upserts (service, host, versions
+  it loaded, started_at, seen_at) once a minute and at start. Rows older than a day are pruned.
+- `GET /admin/models` returns `consumers`: the six expected services (`MODEL_KEY_SERVICES`) and
+  whether each reported in the last 5 minutes.
+- The page shows, per provider, "已在 x/y 个服务生效", how many wait for a restart and how many
+  are not connected. It also has a per-service table, and a notice naming the services that are
+  not connected: keep the server's old key valid until they are upgraded.
+- The watch now waits out the 2-minute minimum uptime only when a change is found.

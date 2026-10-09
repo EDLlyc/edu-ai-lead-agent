@@ -2416,6 +2416,26 @@ export interface components {
             /** Username */
             username: string;
         };
+        /**
+         * AdminModelKeyConsumer
+         * @description A production service that holds model keys, and what it reported.
+         */
+        AdminModelKeyConsumer: {
+            /** Label */
+            label: string;
+            /** Reporting */
+            reporting: boolean;
+            /** Seen At */
+            seen_at: string | null;
+            /** Service */
+            service: string;
+            /** Started At */
+            started_at: string | null;
+            /** Versions */
+            versions: {
+                [key: string]: number;
+            } | null;
+        };
         /** AdminModelKeyHistoryResponse */
         AdminModelKeyHistoryResponse: {
             /** Items */
@@ -2477,8 +2497,6 @@ export interface components {
             id: string;
             /** Key Hint */
             key_hint: string | null;
-            /** Loaded Version */
-            loaded_version: number | null;
             /** Models */
             models: string[];
             /** Name */
@@ -2499,6 +2517,8 @@ export interface components {
         };
         /** AdminModelProvidersResponse */
         AdminModelProvidersResponse: {
+            /** Consumers */
+            consumers: components["schemas"]["AdminModelKeyConsumer"][];
             /** Providers */
             providers: components["schemas"]["AdminModelProvider"][];
             /** Secret Key Configured */

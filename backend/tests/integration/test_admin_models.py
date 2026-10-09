@@ -20,6 +20,7 @@ from app.infrastructure.db.models import (
     AdminSessionModel,
     AdminUserModel,
     ModelApiKeyModel,
+    ModelKeyConsumerModel,
 )
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
@@ -67,6 +68,7 @@ async def models(integration_context: IntegrationContext, monkeypatch) -> AsyncI
     app.state.settings = integration_context.settings
     async with integration_context.session_factory() as session:
         await session.execute(delete(ModelApiKeyModel))
+        await session.execute(delete(ModelKeyConsumerModel))
         await session.execute(delete(AdminAuditEventModel))
         await session.execute(delete(AdminSessionModel))
         await session.execute(delete(AdminUserModel))
@@ -208,6 +210,19 @@ async def test_a_worker_starts_with_the_console_key(
     applied = overlay.with_console_model_keys(settings)
     assert applied.ai_platform_api_key.get_secret_value() == GOOD_2
     assert overlay.loaded_versions() == {"zhipu": 1}
+
+    # It reports what it loaded; the page shows which services have switched.
+    assert overlay.beat_and_read(settings, "content-worker", "host-a") == {"zhipu": 1}
+    assert overlay.beat_and_read(settings, "content-worker", "host-a") == {"zhipu": 1}
+    async with _logged_in(integration_context, "owner") as owner:
+        consumers = (await owner.get("/api/v1/admin/models")).json()["consumers"]
+    by_service = {item["service"]: item for item in consumers}
+    assert len(consumers) == 6
+    assert by_service["content-worker"]["reporting"] is True
+    assert by_service["content-worker"]["versions"] == {"zhipu": 1}
+    assert by_service["content-worker"]["label"] == "选题与文案"
+    assert by_service["governance-worker"]["reporting"] is False
+    assert by_service["governance-worker"]["versions"] is None
     # Another MODEL_SECRET_KEY cannot open it: the environment key stays.
     other = settings.model_copy(update={"model_secret_key": SecretStr(new_key())})
     assert overlay.with_console_model_keys(other).ai_platform_api_key.get_secret_value() == ENV_KEY

@@ -5,6 +5,7 @@ import { AdminSessionExpiredError } from "../api";
 import { formatTime } from "../sources/labels";
 import {
   modelsApi as defaultApi,
+  type ModelKeyConsumer,
   type ModelKeyTest,
   type ModelKeyVersion,
   type ModelProvider,
@@ -23,10 +24,41 @@ function sourceText(provider: ModelProvider): string {
   return "未配置";
 }
 
-function pending(provider: ModelProvider): boolean {
-  return (
-    provider.version !== null && provider.loaded_version !== provider.version
+/** The version a service loaded for this provider; null = its environment key. */
+function loadedVersion(
+  consumer: ModelKeyConsumer,
+  providerId: string,
+): number | null {
+  return consumer.versions?.[providerId] ?? null;
+}
+
+function waitingServices(
+  provider: ModelProvider,
+  consumers: readonly ModelKeyConsumer[],
+): readonly ModelKeyConsumer[] {
+  return consumers.filter(
+    (consumer) =>
+      consumer.reporting &&
+      loadedVersion(consumer, provider.id) !== provider.version,
   );
+}
+
+function effectText(
+  provider: ModelProvider,
+  consumers: readonly ModelKeyConsumer[],
+): string {
+  if (provider.source === "none") return "—";
+  const reporting = consumers.filter((consumer) => consumer.reporting);
+  const waiting = waitingServices(provider, consumers).length;
+  const absent = consumers.length - reporting.length;
+  const parts = [
+    provider.version === null && waiting === 0
+      ? "使用中"
+      : `已在 ${reporting.length - waiting}/${reporting.length} 个服务生效`,
+  ];
+  if (waiting > 0) parts.push(`${waiting} 个等待重启（约 2 分钟）`);
+  if (absent > 0) parts.push(`${absent} 个服务未接入，仍用服务器配置的 key`);
+  return parts.join("；");
 }
 
 /** 运营后台 · 系统 · 模型配置 (owner only): rotate model keys, tested first. */
@@ -41,6 +73,7 @@ export function ModelsPage({
   const [providers, setProviders] = useState<readonly ModelProvider[] | null>(
     null,
   );
+  const [consumers, setConsumers] = useState<readonly ModelKeyConsumer[]>([]);
   const [reloads, setReloads] = useState(0);
   const [message, setMessage] = useState<Message | null>(null);
 
@@ -65,6 +98,7 @@ export function ModelsPage({
         if (cancelled) return;
         setConfigured(loaded.secretKeyConfigured);
         setProviders(loaded.providers);
+        setConsumers(loaded.consumers);
       },
       (error: unknown) => {
         if (!cancelled) fail(error);
@@ -76,7 +110,11 @@ export function ModelsPage({
   }, [api, fail, reloads]);
 
   // The services restart about two minutes after a change; refresh until they report it.
-  const waiting = providers?.some(pending) ?? false;
+  const waiting =
+    providers?.some(
+      (provider) => waitingServices(provider, consumers).length > 0,
+    ) ?? false;
+  const absent = consumers.filter((consumer) => !consumer.reporting);
   useEffect(() => {
     if (!waiting) return;
     const timer = window.setInterval(() => {
@@ -119,32 +157,96 @@ export function ModelsPage({
           {message.text}
         </p>
       )}
+      {providers === null || absent.length === 0 ? null : (
+        <p className={styles.notice}>
+          有 {absent.length} 个服务还没接入（还在旧版本上）：
+          {absent.map((consumer) => consumer.label).join("、")}
+          。它们一直用服务器配置的 key，所以服务器上原来的 key 先别作废。
+        </p>
+      )}
       {providers === null ? (
         message?.kind === "error" ? null : (
           <p role="status">正在读取…</p>
         )
       ) : (
-        <ul className={styles.cards}>
-          {providers.map((provider) => (
-            <ProviderCard
-              key={provider.id}
-              api={api}
-              provider={provider}
-              canChange={configured === true}
-              onChanged={changed}
-              onError={fail}
-              onClear={() => setMessage(null)}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className={styles.cards}>
+            {providers.map((provider) => (
+              <ProviderCard
+                key={provider.id}
+                api={api}
+                provider={provider}
+                effect={effectText(provider, consumers)}
+                canChange={configured === true}
+                onChanged={changed}
+                onError={fail}
+                onClear={() => setMessage(null)}
+              />
+            ))}
+          </ul>
+          <ConsumerTable providers={providers} consumers={consumers} />
+        </>
       )}
     </section>
+  );
+}
+
+function ConsumerTable({
+  providers,
+  consumers,
+}: {
+  readonly providers: readonly ModelProvider[];
+  readonly consumers: readonly ModelKeyConsumer[];
+}) {
+  const cell = (consumer: ModelKeyConsumer, provider: ModelProvider) => {
+    if (consumer.versions === null) return "读取失败，用服务器配置";
+    const version = loadedVersion(consumer, provider.id);
+    const text = version === null ? "服务器配置" : `第 ${version} 版`;
+    return version === provider.version ? text : `${text}（等待重启）`;
+  };
+  return (
+    <table className={styles.table}>
+      <caption className={styles.hint}>
+        各服务正在用的 key（每分钟报到一次）
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">服务</th>
+          {providers.map((provider) => (
+            <th key={provider.id} scope="col">
+              {provider.name}
+            </th>
+          ))}
+          <th scope="col">最近报到</th>
+        </tr>
+      </thead>
+      <tbody>
+        {consumers.map((consumer) => (
+          <tr key={consumer.service}>
+            <th scope="row">{consumer.label}</th>
+            {consumer.reporting ? (
+              providers.map((provider) => (
+                <td key={provider.id}>{cell(consumer, provider)}</td>
+              ))
+            ) : (
+              <td colSpan={providers.length}>
+                未接入：还在旧版本上，用服务器配置的 key
+              </td>
+            )}
+            <td>
+              {consumer.seen_at === null ? "—" : formatTime(consumer.seen_at)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 function ProviderCard({
   api,
   provider,
+  effect,
   canChange,
   onChanged,
   onError,
@@ -152,6 +254,7 @@ function ProviderCard({
 }: {
   readonly api: ModelsApi;
   readonly provider: ModelProvider;
+  readonly effect: string;
   readonly canChange: boolean;
   readonly onChanged: (saved: ModelProvider, text: string) => void;
   readonly onError: (error: unknown) => void;
@@ -211,15 +314,7 @@ function ProviderCard({
             : `，${provider.updated_by} 于 ${formatTime(provider.updated_at)} 设置`}
         </dd>
         <dt>生效情况</dt>
-        <dd>
-          {provider.source === "none"
-            ? "—"
-            : provider.version === null
-              ? "使用中"
-              : pending(provider)
-                ? "等待服务重启后生效（约 2 分钟）"
-                : "已生效"}
-        </dd>
+        <dd>{effect}</dd>
         <dt>接口地址</dt>
         <dd>
           <code>{provider.base_url ?? "未配置"}</code>（固定）

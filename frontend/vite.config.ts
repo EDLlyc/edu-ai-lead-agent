@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath, URL } from "node:url";
 
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const previewRoot = fileURLToPath(
   new URL("../output/preview", import.meta.url),
@@ -110,6 +110,8 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     environment: "jsdom",
+    // e2e/ holds Playwright specs (`npm run test:e2e`), not unit tests.
+    exclude: [...configDefaults.exclude, "e2e/**"],
     setupFiles: "./src/test/setup.ts",
     css: true,
     coverage: {
