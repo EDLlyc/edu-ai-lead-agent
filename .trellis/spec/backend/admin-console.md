@@ -116,6 +116,15 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
   - Blocking more than 30 % needs `confirm_wide_block` (422 `keyword_block_too_wide`).
 - **Exhibit**: maps the new veto code to `other_rule`.
 
+## 排版模板 (item 6)
+
+- Templates are colour maps over the V2 renderer (`official_account_layout_templates.py`). The
+  default is the identity, so drafts stay byte-identical until an operator picks another.
+- If the renderer gains a colour, add it to `RENDERER_COLOURS` and every template. The sample
+  test (`app/assets/official_account_layout_sample.html`) fails until then.
+- `wechat_accounts.layout_template_id` is read by the single-edition consumer by account
+  fingerprint. The choice is pinned per edition in the draft journal, so retries never change it.
+
 ## Frontend
 
 `frontend/src/features/admin/`:

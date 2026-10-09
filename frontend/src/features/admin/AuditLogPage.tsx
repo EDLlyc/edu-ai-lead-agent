@@ -30,6 +30,7 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "wechat_account.bound": "绑定公众号",
   "wechat_account.updated": "修改公众号",
   "wechat_account.verified": "验证公众号",
+  "wechat_account.layout_template_set": "更换排版模板",
   "wechat.publish_requested": "立即发布",
   "wechat.publish_scheduled": "定时发布",
   "wechat.publish_submitted": "已提交给微信",
@@ -118,6 +119,8 @@ function describe(event: AdminAuditEvent): string {
     parts.push(`改了：${fields.join("、")}`);
   }
   if (typeof detail.version === "number") parts.push(`第 ${detail.version} 版`);
+  if (typeof detail.template === "string")
+    parts.push(`改用：${detail.template}`);
   if (
     typeof detail.scheduled_at === "string" &&
     event.action === "wechat.publish_scheduled"

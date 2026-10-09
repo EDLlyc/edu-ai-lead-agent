@@ -451,6 +451,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/wechat/accounts/{account_id}/layout-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Account Layout Template */
+        put: operations["put_account_layout_template_api_v1_admin_wechat_accounts__account_id__layout_template_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/wechat/accounts/{account_id}/published": {
         parameters: {
             query?: never;
@@ -513,6 +530,40 @@ export interface paths {
         put?: never;
         /** Post Wechat Account Verify */
         post: operations["post_wechat_account_verify_api_v1_admin_wechat_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/layout-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Layout Templates */
+        get: operations["get_layout_templates_api_v1_admin_wechat_layout_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/layout-templates/{template_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Layout Template Preview */
+        get: operations["get_layout_template_preview_api_v1_admin_wechat_layout_templates__template_id__preview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2196,6 +2247,48 @@ export interface components {
             current: components["schemas"]["AdminKeywordVersionResponse"] | null;
             /** History */
             history: components["schemas"]["AdminKeywordHistoryItem"][];
+        };
+        /** AdminLayoutAccount */
+        AdminLayoutAccount: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Layout Template Id */
+            layout_template_id: string;
+            /** Name */
+            name: string;
+        };
+        /** AdminLayoutPreviewResponse */
+        AdminLayoutPreviewResponse: {
+            /** Html */
+            html: string;
+        };
+        /** AdminLayoutTemplate */
+        AdminLayoutTemplate: {
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Swatches */
+            swatches: string[];
+        };
+        /** AdminLayoutTemplateSetRequest */
+        AdminLayoutTemplateSetRequest: {
+            /** Template Id */
+            template_id: string;
+        };
+        /** AdminLayoutTemplatesResponse */
+        AdminLayoutTemplatesResponse: {
+            /** Accounts */
+            accounts: components["schemas"]["AdminLayoutAccount"][];
+            /** Templates */
+            templates: components["schemas"]["AdminLayoutTemplate"][];
         };
         /** AdminLoginRequest */
         AdminLoginRequest: {
@@ -8624,6 +8717,43 @@ export interface operations {
             };
         };
     };
+    put_account_layout_template_api_v1_admin_wechat_accounts__account_id__layout_template_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLayoutTemplateSetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLayoutAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_wechat_published_api_v1_admin_wechat_accounts__account_id__published_get: {
         parameters: {
             query?: {
@@ -8747,6 +8877,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminWeChatAccountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_layout_templates_api_v1_admin_wechat_layout_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLayoutTemplatesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_layout_template_preview_api_v1_admin_wechat_layout_templates__template_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLayoutPreviewResponse"];
                 };
             };
             /** @description Validation Error */

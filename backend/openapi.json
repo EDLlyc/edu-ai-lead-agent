@@ -863,6 +863,119 @@
         "title": "AdminKeywordsResponse",
         "type": "object"
       },
+      "AdminLayoutAccount": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "layout_template_id": {
+            "title": "Layout Template Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "layout_template_id"
+        ],
+        "title": "AdminLayoutAccount",
+        "type": "object"
+      },
+      "AdminLayoutPreviewResponse": {
+        "properties": {
+          "html": {
+            "title": "Html",
+            "type": "string"
+          }
+        },
+        "required": [
+          "html"
+        ],
+        "title": "AdminLayoutPreviewResponse",
+        "type": "object"
+      },
+      "AdminLayoutTemplate": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "swatches": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Swatches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "swatches",
+          "is_default"
+        ],
+        "title": "AdminLayoutTemplate",
+        "type": "object"
+      },
+      "AdminLayoutTemplateSetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "template_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id"
+        ],
+        "title": "AdminLayoutTemplateSetRequest",
+        "type": "object"
+      },
+      "AdminLayoutTemplatesResponse": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AdminLayoutAccount"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/AdminLayoutTemplate"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates",
+          "accounts"
+        ],
+        "title": "AdminLayoutTemplatesResponse",
+        "type": "object"
+      },
       "AdminLoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -17484,6 +17597,75 @@
         ]
       }
     },
+    "/api/v1/admin/wechat/accounts/{account_id}/layout-template": {
+      "put": {
+        "operationId": "put_account_layout_template_api_v1_admin_wechat_accounts__account_id__layout_template_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLayoutTemplateSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLayoutAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Account Layout Template",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/wechat/accounts/{account_id}/published": {
       "get": {
         "operationId": "get_wechat_published_api_v1_admin_wechat_accounts__account_id__published_get",
@@ -17739,6 +17921,113 @@
           }
         },
         "summary": "Post Wechat Account Verify",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/wechat/layout-templates": {
+      "get": {
+        "operationId": "get_layout_templates_api_v1_admin_wechat_layout_templates_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLayoutTemplatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Layout Templates",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/wechat/layout-templates/{template_id}/preview": {
+      "get": {
+        "operationId": "get_layout_template_preview_api_v1_admin_wechat_layout_templates__template_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLayoutPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Layout Template Preview",
         "tags": [
           "admin"
         ]

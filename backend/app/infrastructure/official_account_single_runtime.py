@@ -153,6 +153,9 @@ async def run_single_runtime(settings: Settings, *, plane: str, once: bool = Fal
             from app.domain.wechat_official_account_draft_jobs import (
                 wechat_draft_account_fingerprint,
             )
+            from app.infrastructure.db.wechat_layout_templates import (
+                layout_template_for_account,
+            )
             from app.infrastructure.wechat_official_account.client import (
                 WeChatOfficialAccountHttpClient,
             )
@@ -227,6 +230,9 @@ async def run_single_runtime(settings: Settings, *, plane: str, once: bool = Fal
                                     prepared=prepared,
                                     journal=journal,
                                     client=client,
+                                    layout_template_id=await layout_template_for_account(
+                                        sessions, account
+                                    ),
                                 )
                     except (ManualDraftError, ValueError, OSError):
                         await repository.invalidate_history(account, now=datetime.now(UTC))

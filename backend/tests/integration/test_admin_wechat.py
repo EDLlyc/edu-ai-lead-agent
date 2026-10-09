@@ -590,3 +590,73 @@ async def test_reading_stats_sync_daily_and_keep_the_latest_cumulative_numbers(
         )
         assert len(wechat.calls) == calls_before
         wechat.datacube_error = None
+
+
+async def test_an_editor_picks_the_layout_template_the_draft_worker_uses(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    async with (
+        _logged_in(integration_context, "owner") as owner,
+        _logged_in(integration_context, "editor") as editor,
+    ):
+        account_id = await _bind(owner)
+        listed = (await editor.get("/api/v1/admin/wechat/layout-templates")).json()
+        assert [t["id"] for t in listed["templates"]] == [
+            "xiaosai-blue",
+            "jade-green",
+            "warm-orange",
+            "ink",
+        ]
+        assert listed["templates"][0]["is_default"] is True
+        assert all(len(t["swatches"]) == 4 for t in listed["templates"])
+        assert listed["accounts"] == [
+            {"id": account_id, "name": "赛先生", "layout_template_id": "xiaosai-blue"}
+        ]
+
+        preview = await editor.get("/api/v1/admin/wechat/layout-templates/jade-green/preview")
+        assert preview.status_code == 200
+        assert "#0B7A64" in preview.json()["html"]
+        assert "#0D57C8" not in preview.json()["html"]
+        missing = await editor.get("/api/v1/admin/wechat/layout-templates/nope/preview")
+        assert missing.status_code == 404
+
+        unknown = await editor.put(
+            f"/api/v1/admin/wechat/accounts/{account_id}/layout-template",
+            json={"template_id": "nope"},
+            headers=WRITE,
+        )
+        assert unknown.status_code == 422
+        unguarded = await editor.put(
+            f"/api/v1/admin/wechat/accounts/{account_id}/layout-template",
+            json={"template_id": "jade-green"},
+        )
+        assert unguarded.status_code == 403
+        chosen = await editor.put(
+            f"/api/v1/admin/wechat/accounts/{account_id}/layout-template",
+            json={"template_id": "jade-green"},
+            headers=WRITE,
+        )
+        assert chosen.status_code == 200
+        assert chosen.json()["layout_template_id"] == "jade-green"
+
+    # The draft worker finds the choice by its account fingerprint.
+    from app.domain.wechat_official_account_draft_jobs import wechat_draft_account_fingerprint
+    from app.infrastructure.db.wechat_layout_templates import layout_template_for_account
+
+    sessions = integration_context.session_factory
+    assert (
+        await layout_template_for_account(sessions, wechat_draft_account_fingerprint(APP_ID))
+        == "jade-green"
+    )
+    assert await layout_template_for_account(sessions, "f" * 64) is None
+    async with sessions() as session:
+        audit = (
+            await session.scalars(
+                select(AdminAuditEventModel).where(
+                    AdminAuditEventModel.action == "wechat_account.layout_template_set"
+                )
+            )
+        ).all()
+    assert [event.detail for event in audit] == [
+        {"name": "赛先生", "from": "xiaosai-blue", "to": "jade-green", "template": "青绿"}
+    ]

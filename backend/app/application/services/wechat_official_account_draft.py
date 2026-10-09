@@ -48,6 +48,7 @@ from app.application.services.official_account_strict_prepared import (
 )
 from app.application.services.official_account_weekly_edition import load_finalized_v2_child
 from app.domain.official_account_editor_handoff import CONTEXT_RIGHTS_NOTICE_TEXT
+from app.domain.official_account_layout_templates import apply_layout_template
 from app.domain.official_account_strict_layout import (
     STRICT_LAYOUT_PROJECTION_V2_VERSION,
     strict_escaped_upload_url,
@@ -185,12 +186,14 @@ class WeChatOfficialAccountDraftOnlyService:
         client: WeChatOfficialAccountDraftClient,
         max_image_bytes: int = WECHAT_MP_MAX_IMAGE_BYTES,
         clock: Callable[[], datetime] | None = None,
+        layout_template_id: str | None = None,
     ) -> None:
         self._client = client
         self._preparer = WeChatOfficialAccountDraftPreparer(
             max_image_bytes=max_image_bytes,
         )
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._layout_template_id = layout_template_id
 
     async def create_draft(self, source: WeChatDraftLocalSource) -> WeChatDraftReceipt:
         prepared = self.prepare(source)
@@ -241,7 +244,10 @@ class WeChatOfficialAccountDraftOnlyService:
         *,
         created_at: datetime,
     ) -> WeChatDraftReceipt:
-        rewritten = _hide_generated_context_rights_notice(prepared.body_html)
+        rewritten = apply_layout_template(
+            _hide_generated_context_rights_notice(prepared.body_html),
+            self._layout_template_id,
+        )
         if prepared.visual_pipeline_version is not None:
             if prepared.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS:
                 raise WeChatMpDraftPreparationError()

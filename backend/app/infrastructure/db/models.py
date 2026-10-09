@@ -7101,12 +7101,20 @@ class WeChatAccountModel(Base):
     # Business date (Asia/Shanghai) of the last successful 数据 sync; null until the first.
     stats_synced_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     stats_sync_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 排版模板 applied to drafts the pipeline uploads for this account (see
+    # app.domain.official_account_layout_templates); the default is the renderer's own colours.
+    layout_template_id: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default=text("'xiaosai-blue'")
+    )
     created_by: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("app_id", name="uq_wechat_accounts_app_id"),
+        CheckConstraint(
+            "layout_template_id ~ '^[a-z0-9-]{1,40}$'", name="ck_wechat_accounts_layout_template"
+        ),
         CheckConstraint("app_id ~ '^wx[0-9a-f]{16}$'", name="ck_wechat_accounts_app_id"),
         CheckConstraint(
             "account_fingerprint ~ '^[0-9a-f]{64}$'", name="ck_wechat_accounts_fingerprint"

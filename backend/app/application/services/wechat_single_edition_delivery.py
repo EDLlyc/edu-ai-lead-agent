@@ -27,6 +27,7 @@ from app.application.services.wechat_official_account_draft import (
     WeChatOfficialAccountDraftOnlyService,
     WeChatPreparedDraft,
 )
+from app.domain.official_account_layout_templates import LAYOUT_TEMPLATE_VERSION, layout_template
 from app.domain.official_account_strict_layout import strict_escaped_upload_url
 
 
@@ -198,6 +199,25 @@ class JournaledSingleDraftClient:
         return WeChatDraftCreated(_media_id(await self._step("add", asdict(article), send)))
 
 
+def _pinned_layout(journal: ManualDraftJournal, edition: SingleEdition, chosen: str | None) -> str:
+    """The 排版模板 of an edition is fixed at its first delivery attempt.
+
+    Every write intent records the article body, so a retry with another template would read
+    as a changed binding; an operator switching templates only affects later editions.
+    """
+
+    name = f"single-{edition.id.hex}-layout.json"
+    pinned = journal.read(name)
+    if pinned is not None:
+        template = pinned.get("template")
+        require(isinstance(template, str), "single_layout_pin_changed")
+        assert isinstance(template, str)
+        return template
+    template = layout_template(chosen).id
+    journal.write(name, {"template": template, "version": LAYOUT_TEMPLATE_VERSION})
+    return template
+
+
 async def deliver_single(
     *,
     repository: SingleEditionRepository,
@@ -206,6 +226,7 @@ async def deliver_single(
     journal: ManualDraftJournal,
     client: WeChatOfficialAccountDraftClient,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    layout_template_id: str | None = None,
 ) -> None:
     async def authorize() -> bool:
         return await repository.heartbeat(edition, now=clock(), lease_seconds=300)
@@ -225,7 +246,9 @@ async def deliver_single(
             clock=clock,
         )
         receipt = await WeChatOfficialAccountDraftOnlyService(
-            client=observed, clock=clock
+            client=observed,
+            clock=clock,
+            layout_template_id=_pinned_layout(journal, edition, layout_template_id),
         ).create_prepared(prepared)
         await repository.save(
             replace(

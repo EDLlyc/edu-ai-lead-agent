@@ -10,6 +10,8 @@ import {
 } from "./accounts/api";
 import { AuditLogPage } from "./AuditLogPage";
 import { KeywordsPage } from "./keywords/KeywordsPage";
+import { LayoutTemplatesPage } from "./layout/LayoutTemplatesPage";
+import { layoutApi as defaultLayoutApi, type LayoutApi } from "./layout/api";
 import {
   keywordsApi as defaultKeywordsApi,
   type KeywordsApi,
@@ -46,12 +48,14 @@ export function AdminApp({
   keywordsApi = defaultKeywordsApi,
   accountsApi = defaultAccountsApi,
   wechatApi = defaultWeChatApi,
+  layoutApi = defaultLayoutApi,
 }: {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
   readonly keywordsApi?: KeywordsApi;
   readonly accountsApi?: AccountsApi;
   readonly wechatApi?: WeChatApi;
+  readonly layoutApi?: LayoutApi;
 }) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
   const [path, setPath] = useState(() => window.location.pathname);
@@ -212,6 +216,8 @@ export function AdminApp({
           <WeChatStatsPage api={wechatApi} onSessionExpired={expire} />
         ) : current.key === "wechat-accounts" ? (
           <WeChatAccountsPage api={wechatApi} onSessionExpired={expire} />
+        ) : current.key === "layout-templates" ? (
+          <LayoutTemplatesPage api={layoutApi} onSessionExpired={expire} />
         ) : current.key === "account" ? (
           <MyAccountPage api={api} me={me} onSessionExpired={expire} />
         ) : (

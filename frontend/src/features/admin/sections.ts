@@ -68,11 +68,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "排版模板",
     group: "公众号",
     role: "editor",
-    plan: {
-      item: 6,
-      dates: "11/3 – 11/5",
-      summary: "选择公众号文章的排版样式，先预览再启用。",
-    },
+    plan: null,
   },
   {
     key: "poster-styles",

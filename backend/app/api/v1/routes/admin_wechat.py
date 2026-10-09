@@ -1,4 +1,4 @@
-"""运营后台 · 公众号: accounts (owner), drafts, published list and publish jobs (editor)."""
+"""运营后台 · 公众号: accounts (owner); drafts, publishing, stats and 排版模板 (editor)."""
 
 from __future__ import annotations
 
@@ -26,12 +26,26 @@ from app.application.services.wechat_admin import (
     verify_account,
     wechat_call_error,
 )
+from app.application.services.wechat_layout_templates import (
+    layout_preview,
+    list_account_layouts,
+    set_layout_template,
+)
 from app.application.services.wechat_stats import account_stats, business_today, manual_sync
 from app.core.config import Settings
 from app.core.errors import NotFoundError
+from app.domain.official_account_layout_templates import (
+    DEFAULT_LAYOUT_TEMPLATE_ID,
+    LAYOUT_TEMPLATES,
+)
 from app.infrastructure.db.models import WeChatAccountModel, WeChatPublishJobModel
 from app.infrastructure.wechat_official_account.admin_client import WeChatAdminError
 from app.schemas.admin_wechat import (
+    AdminLayoutAccount,
+    AdminLayoutPreviewResponse,
+    AdminLayoutTemplate,
+    AdminLayoutTemplateSetRequest,
+    AdminLayoutTemplatesResponse,
     AdminWeChatAccountCreateRequest,
     AdminWeChatAccountListResponse,
     AdminWeChatAccountOption,
@@ -257,7 +271,7 @@ async def _job(session: AsyncSession, job: WeChatPublishJobModel) -> AdminWeChat
         media_id=job.media_id,
         title=job.title,
         scheduled_at=job.scheduled_at,
-        status=job.status,  # type: ignore[arg-type]
+        status=job.status,
         article_url=job.article_url,
         error=job.error,
         created_by=job.created_by,
@@ -364,3 +378,50 @@ async def post_wechat_stats_sync(
         now=datetime.now(UTC),
     )
     return AdminWeChatSyncResponse(articles=report.articles, days=report.days)
+
+
+def _layout_account(row: WeChatAccountModel) -> AdminLayoutAccount:
+    return AdminLayoutAccount(id=row.id, name=row.name, layout_template_id=row.layout_template_id)
+
+
+@router.get("/layout-templates", response_model=AdminLayoutTemplatesResponse)
+async def get_layout_templates(
+    _operator: Operator, session: Session
+) -> AdminLayoutTemplatesResponse:
+    return AdminLayoutTemplatesResponse(
+        templates=[
+            AdminLayoutTemplate(
+                id=template.id,
+                name=template.name,
+                description=template.description,
+                swatches=list(template.swatches),
+                is_default=template.id == DEFAULT_LAYOUT_TEMPLATE_ID,
+            )
+            for template in LAYOUT_TEMPLATES
+        ],
+        accounts=[_layout_account(row) for row in await list_account_layouts(session)],
+    )
+
+
+@router.get("/layout-templates/{template_id}/preview", response_model=AdminLayoutPreviewResponse)
+async def get_layout_template_preview(
+    template_id: str, _operator: Operator
+) -> AdminLayoutPreviewResponse:
+    return AdminLayoutPreviewResponse(html=layout_preview(template_id))
+
+
+@router.put("/accounts/{account_id}/layout-template", response_model=AdminLayoutAccount)
+async def put_account_layout_template(
+    account_id: UUID,
+    body: AdminLayoutTemplateSetRequest,
+    operator: Operator,
+    session: Session,
+) -> AdminLayoutAccount:
+    row = await set_layout_template(
+        session,
+        principal=operator,
+        account_id=account_id,
+        template_id=body.template_id,
+        now=datetime.now(UTC),
+    )
+    return _layout_account(row)

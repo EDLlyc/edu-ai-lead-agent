@@ -163,3 +163,32 @@ class AdminWeChatStatsResponse(BaseModel):
 class AdminWeChatSyncResponse(BaseModel):
     articles: int
     days: int
+
+
+class AdminLayoutTemplate(BaseModel):
+    id: str
+    name: str
+    description: str
+    swatches: list[str]
+    is_default: bool
+
+
+class AdminLayoutAccount(BaseModel):
+    id: UUID
+    name: str
+    layout_template_id: str
+
+
+class AdminLayoutTemplatesResponse(BaseModel):
+    templates: list[AdminLayoutTemplate]
+    accounts: list[AdminLayoutAccount]
+
+
+class AdminLayoutPreviewResponse(BaseModel):
+    html: str
+
+
+class AdminLayoutTemplateSetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: str = Field(min_length=1, max_length=40)
