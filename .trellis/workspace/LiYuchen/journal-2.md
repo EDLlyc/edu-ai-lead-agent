@@ -279,3 +279,39 @@ Deployed login/audit, 新闻源, 关键词 to production at 17:28 CST on the own
 
 - Create the first owner account on production (owner picks the username)
 - Domain: company domain is ICP-filed; need the name, DNS access, Tencent access filing check, office IP; install nginx + cert
+
+
+## Session 95: 运营后台 items 6 (排版模板) and 8 (模型配置)
+
+**Date**: 2026-10-09
+**Task**: 运营后台 items 6 (排版模板) and 8 (模型配置)
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+Per-account colour schemes for pipeline drafts; model key rotation with probe-first and self-restart. Both on the branch, not deployed.
+
+### Main Changes
+
+- Item 6: 4 colour templates over V2 (default identity), migration 0057, pinned per edition in the draft journal, editor page with sandboxed preview
+- Item 8: model_api_keys (0058) + MODEL_SECRET_KEY, get_settings overlay (fail-open), SIGTERM watch in API + 5 workers, owner page with test/save/history/restore
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c364814` | (see git log) |
+| `a6d6c5d` | (see git log) |
+
+### Testing
+
+- [OK] Unit + integration + frontend green; browser smokes (CSP, 390px, worker self-stop and reload); predeploy gate PASS
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Combined deploy of polish + items 3/4/5/6/8: ADMIN_SECRET_KEY + MODEL_SECRET_KEY in server .env and compose, migrations 0055-0058, regenerate the rollout bundle; owner go-ahead, outside slot hours
+- Item 7 海报风格 waits for the teacher's samples

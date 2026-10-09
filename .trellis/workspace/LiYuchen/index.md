@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 94
-- **Last Active**: 2026-10-08
+- **Total Sessions**: 95
+- **Last Active**: 2026-10-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~281 | Active |
+| `journal-2.md` | ~317 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 95 | 2026-10-09 | 运营后台 items 6 (排版模板) and 8 (模型配置) | `c364814`, `a6d6c5d` | `feat/admin-console-20261008` |
 | 94 | 2026-10-08 | 运营后台第 0-2 项上线 | `e6b3a5b` | `feat/admin-console-20261008` |
 | 93 | 2026-10-08 | 运营后台第 2 项：关键词后台增删改 | `ac5f076` | `feat/admin-console-20261008` |
 | 92 | 2026-10-08 | 运营后台第 1 项：新闻源后台增删改 | `0b1c33c` | `feat/admin-console-20261008` |
