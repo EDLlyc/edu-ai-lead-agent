@@ -1,5 +1,8 @@
 # Rollout: 运营后台 polish (accounts, own password, source articles, audit filters)
 
+**Superseded (2026-10-09):** never deployed. Its files ship in the combined release
+`../../10-09-admin-release-2/rollout/` (9eaaaf3, migrations 0055–0059). Do not use this bundle.
+
 Overlay of 10 backend files from `feat/admin-console-20261008` @ 0854380 on the running image
 `5a5fb24c`. There is no migration and the DB stays at `20261008_0054`. Gate: `predeploy gate PASS @ a8d0af6+dirty`
 (the tree committed as b554f6d). The offline smoke passed on the branch.
