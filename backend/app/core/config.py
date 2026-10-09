@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Encrypts secrets entered in the 运营后台 (WeChat AppSecret). url-safe base64 of 32 bytes;
     # unset means the WeChat account pages refuse to store anything.
     admin_secret_key: SecretStr | None = None
+    # Encrypts model API keys entered in the 运营后台 (模型配置). Separate from the WeChat key so
+    # the workers that need model keys never hold a key that opens WeChat AppSecrets. Unset means
+    # every process uses the keys from its environment, as before.
+    model_secret_key: SecretStr | None = None
 
     database_url: SecretStr = SecretStr(
         "postgresql+asyncpg://edu_ai:edu_ai_local_change_me@127.0.0.1:5432/edu_ai"
@@ -1314,4 +1318,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Model keys rotated in the 运营后台 replace the environment ones; any failure keeps env.
+    from app.infrastructure.model_api_keys_overlay import with_console_model_keys
+
+    return with_console_model_keys(Settings())

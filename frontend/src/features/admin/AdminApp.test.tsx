@@ -161,9 +161,9 @@ describe("运营后台", () => {
 
     const menu = await screen.findByRole("navigation", { name: "后台菜单" });
     expect(within(menu).getAllByRole("link")).toHaveLength(11);
-    await user.click(within(menu).getByRole("link", { name: /模型配置/ }));
-    expect(window.location.pathname).toBe("/admin/models");
-    expect(screen.getByText(/key 只显示末 4 位/)).toBeInTheDocument();
+    await user.click(within(menu).getByRole("link", { name: /海报风格/ }));
+    expect(window.location.pathname).toBe("/admin/poster-styles");
+    expect(screen.getByText(/先出样图/)).toBeInTheDocument();
 
     await user.click(within(menu).getByRole("link", { name: "操作记录" }));
     expect(window.location.pathname).toBe("/admin/audit");

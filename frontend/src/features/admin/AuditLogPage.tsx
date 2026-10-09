@@ -31,6 +31,9 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "wechat_account.updated": "修改公众号",
   "wechat_account.verified": "验证公众号",
   "wechat_account.layout_template_set": "更换排版模板",
+  "model_key.rotated": "更换模型 key",
+  "model_key.restored": "恢复模型 key",
+  "model_key.env_restored": "模型 key 改回服务器配置",
   "wechat.publish_requested": "立即发布",
   "wechat.publish_scheduled": "定时发布",
   "wechat.publish_submitted": "已提交给微信",
@@ -60,6 +63,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   credentials: "更换 AppSecret",
 };
 
+const PROVIDER_NAMES: Readonly<Record<string, string>> = {
+  zhipu: "智谱",
+  comfly: "Comfly",
+  "alibaba-visual": "阿里云百炼",
+};
+
 const ROLE_NAMES: Readonly<Record<string, string>> = {
   owner: "管理员",
   editor: "编辑",
@@ -75,6 +84,7 @@ const KINDS: readonly {
   { kind: "source", label: "新闻源" },
   { kind: "keywords", label: "关键词" },
   { kind: "wechat", label: "公众号" },
+  { kind: "model", label: "模型" },
 ];
 
 const REASON_LABELS: Readonly<Record<string, string>> = {
@@ -107,6 +117,8 @@ function describe(event: AdminAuditEvent): string {
     parts.push(`「${detail.name}」`);
   } else if (typeof detail.display_name === "string") {
     parts.push(`「${detail.display_name}」`);
+  } else if (typeof detail.provider === "string") {
+    parts.push(PROVIDER_NAMES[detail.provider] ?? detail.provider);
   } else if (typeof detail.entry_url === "string") {
     parts.push(detail.entry_url);
   } else if (event.target_id !== null) {
@@ -119,6 +131,9 @@ function describe(event: AdminAuditEvent): string {
     parts.push(`改了：${fields.join("、")}`);
   }
   if (typeof detail.version === "number") parts.push(`第 ${detail.version} 版`);
+  if (typeof detail.restored_from === "number") {
+    parts.push(`恢复自第 ${detail.restored_from} 版`);
+  }
   if (typeof detail.template === "string")
     parts.push(`改用：${detail.template}`);
   if (

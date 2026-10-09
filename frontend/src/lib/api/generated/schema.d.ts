@@ -278,6 +278,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Model Providers */
+        get: operations["get_model_providers_api_v1_admin_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{provider_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Model Key History */
+        get: operations["get_model_key_history_api_v1_admin_models__provider_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{provider_id}/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Model Key */
+        post: operations["post_model_key_api_v1_admin_models__provider_id__keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{provider_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Model Key Restore */
+        post: operations["post_model_key_restore_api_v1_admin_models__provider_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{provider_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Model Key Test */
+        post: operations["post_model_key_test_api_v1_admin_models__provider_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{provider_id}/use-env": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Model Key Use Env */
+        post: operations["post_model_key_use_env_api_v1_admin_models__provider_id__use_env_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sources": {
         parameters: {
             query?: never;
@@ -2313,6 +2415,94 @@ export interface components {
             role: "owner" | "editor";
             /** Username */
             username: string;
+        };
+        /** AdminModelKeyHistoryResponse */
+        AdminModelKeyHistoryResponse: {
+            /** Items */
+            items: components["schemas"]["AdminModelKeyVersion"][];
+        };
+        /** AdminModelKeyRequest */
+        AdminModelKeyRequest: {
+            /** Api Key */
+            api_key: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** AdminModelKeyRestoreRequest */
+        AdminModelKeyRestoreRequest: {
+            /** Version */
+            version: number;
+        };
+        /** AdminModelKeyTestResponse */
+        AdminModelKeyTestResponse: {
+            /** Latency Ms */
+            latency_ms: number;
+            /** Message */
+            message: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /** AdminModelKeyVersion */
+        AdminModelKeyVersion: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Current */
+            current: boolean;
+            /** Key Hint */
+            key_hint: string | null;
+            /** Note */
+            note: string | null;
+            /** Probe Latency Ms */
+            probe_latency_ms: number | null;
+            /** Restored From */
+            restored_from: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "console" | "env";
+            /** Version */
+            version: number;
+        };
+        /** AdminModelProvider */
+        AdminModelProvider: {
+            /** Base Url */
+            base_url: string | null;
+            /** Id */
+            id: string;
+            /** Key Hint */
+            key_hint: string | null;
+            /** Loaded Version */
+            loaded_version: number | null;
+            /** Models */
+            models: string[];
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "console" | "env" | "none";
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            /** Used For */
+            used_for: string;
+            /** Version */
+            version: number | null;
+        };
+        /** AdminModelProvidersResponse */
+        AdminModelProvidersResponse: {
+            /** Providers */
+            providers: components["schemas"]["AdminModelProvider"][];
+            /** Secret Key Configured */
+            secret_key_configured: boolean;
         };
         /** AdminPasswordChangeRequest */
         AdminPasswordChangeRequest: {
@@ -7984,7 +8174,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 before?: string | null;
-                kind?: ("auth" | "user" | "source" | "keywords" | "wechat") | null;
+                kind?: ("auth" | "user" | "source" | "keywords" | "wechat" | "model") | null;
             };
             header?: never;
             path?: never;
@@ -8263,6 +8453,214 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminKeywordVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_model_providers_api_v1_admin_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelProvidersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_model_key_history_api_v1_admin_models__provider_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelKeyHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_model_key_api_v1_admin_models__provider_id__keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_model_key_restore_api_v1_admin_models__provider_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelKeyRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_model_key_test_api_v1_admin_models__provider_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelKeyTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_model_key_use_env_api_v1_admin_models__provider_id__use_env_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelProvider"];
                 };
             };
             /** @description Validation Error */

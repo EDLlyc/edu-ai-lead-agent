@@ -11,6 +11,8 @@ import {
 import { AuditLogPage } from "./AuditLogPage";
 import { KeywordsPage } from "./keywords/KeywordsPage";
 import { LayoutTemplatesPage } from "./layout/LayoutTemplatesPage";
+import { ModelsPage } from "./models/ModelsPage";
+import { modelsApi as defaultModelsApi, type ModelsApi } from "./models/api";
 import { layoutApi as defaultLayoutApi, type LayoutApi } from "./layout/api";
 import {
   keywordsApi as defaultKeywordsApi,
@@ -49,6 +51,7 @@ export function AdminApp({
   accountsApi = defaultAccountsApi,
   wechatApi = defaultWeChatApi,
   layoutApi = defaultLayoutApi,
+  modelsApi = defaultModelsApi,
 }: {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
@@ -56,6 +59,7 @@ export function AdminApp({
   readonly accountsApi?: AccountsApi;
   readonly wechatApi?: WeChatApi;
   readonly layoutApi?: LayoutApi;
+  readonly modelsApi?: ModelsApi;
 }) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
   const [path, setPath] = useState(() => window.location.pathname);
@@ -218,6 +222,8 @@ export function AdminApp({
           <WeChatAccountsPage api={wechatApi} onSessionExpired={expire} />
         ) : current.key === "layout-templates" ? (
           <LayoutTemplatesPage api={layoutApi} onSessionExpired={expire} />
+        ) : current.key === "models" ? (
+          <ModelsPage api={modelsApi} onSessionExpired={expire} />
         ) : current.key === "account" ? (
           <MyAccountPage api={api} me={me} onSessionExpired={expire} />
         ) : (

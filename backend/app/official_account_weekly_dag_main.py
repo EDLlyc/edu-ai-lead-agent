@@ -33,6 +33,7 @@ from app.infrastructure.db.official_account_weekly_dag import (
     PostgresOfficialAccountWeeklyDagRepository,
 )
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.model_api_keys_overlay import start_model_key_watch
 from app.infrastructure.official_account_media import OfficialAccountLocalMediaResolver
 from app.infrastructure.official_account_runtime import official_account_identity_from_settings
 from app.infrastructure.official_account_weekly_dag_governance import (
@@ -113,6 +114,9 @@ async def _run(args: argparse.Namespace) -> int:
             return 0
         finally:
             await status_engine.dispose()
+    if args.command == "worker" and not (args.once or args.drain):
+        # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
+        start_model_key_watch(settings)
     if settings.official_account_single_enabled and args.command != "status":
         if args.command != "worker":
             raise ValueError("single mode forbids legacy weekly admission/replay")

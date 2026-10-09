@@ -21,6 +21,7 @@ from app.api.v1.routes import (
     admin,
     admin_accounts,
     admin_keywords,
+    admin_models,
     admin_sources,
     admin_wechat,
     brand_knowledge,
@@ -60,6 +61,7 @@ from app.infrastructure.ai.visual_embedding import (
 from app.infrastructure.db.ip_assets import PostgresIpAssetRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.visual_retrieval import PostgresVisualIndexRepository
+from app.infrastructure.model_api_keys_overlay import start_model_key_watch
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 from app.infrastructure.storage.minio_ip_asset_store import MinioIpAssetStore
@@ -82,6 +84,8 @@ class HealthResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
+    start_model_key_watch(settings)
     image_client: httpx.AsyncClient | None = None
     brand_embedding_client: httpx.AsyncClient | None = None
     visual_embedding_client: httpx.AsyncClient | None = None
@@ -259,6 +263,7 @@ app.include_router(admin_accounts.router, prefix="/api/v1")
 app.include_router(admin_sources.router, prefix="/api/v1")
 app.include_router(admin_keywords.router, prefix="/api/v1")
 app.include_router(admin_wechat.router, prefix="/api/v1")
+app.include_router(admin_models.router, prefix="/api/v1")
 
 
 @app.middleware("http")

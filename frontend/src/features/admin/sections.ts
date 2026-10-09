@@ -86,12 +86,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     title: "模型配置",
     group: "系统",
     role: "owner",
-    plan: {
-      item: 8,
-      dates: "11/11 – 11/16",
-      summary:
-        "配置大模型的接口地址和 API key，保存前先测试能否连通；key 只显示末 4 位。",
-    },
+    plan: null,
   },
   {
     key: "audit",

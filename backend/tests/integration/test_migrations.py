@@ -250,7 +250,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20261009_0057"
+    assert revision == "20261009_0058"
     assert isinstance(columns["ip_asset_generation_jobs"]["prompt"]["type"], Text)
     assert {
         "sources",

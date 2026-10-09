@@ -37,6 +37,7 @@ AUDIT_KINDS = {
     "source": "source.",
     "keywords": "keywords.",
     "wechat": "wechat",
+    "model": "model_key.",
 }
 
 COOKIE_PATH = "/api/v1/admin"
@@ -118,7 +119,7 @@ async def get_admin_audit_events(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     before: datetime | None = None,
-    kind: Literal["auth", "user", "source", "keywords", "wechat"] | None = None,
+    kind: Literal["auth", "user", "source", "keywords", "wechat", "model"] | None = None,
 ) -> AdminAuditEventListResponse:
     rows = await list_audit_events(
         session,

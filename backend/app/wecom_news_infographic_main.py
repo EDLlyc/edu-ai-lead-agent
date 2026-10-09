@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.ai.news_infographic import local_infographic_models
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.model_api_keys_overlay import start_model_key_watch
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 
 logger = structlog.get_logger()
@@ -23,6 +24,8 @@ logger = structlog.get_logger()
 async def run_producer() -> None:
     settings = get_settings()
     configure_logging(json_output=settings.app_env != "development")
+    # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
+    start_model_key_watch(settings)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGINT, signal.SIGTERM):

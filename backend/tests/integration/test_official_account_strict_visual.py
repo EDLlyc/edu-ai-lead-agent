@@ -1081,7 +1081,7 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         async with context.session_factory() as session:
             assert (
                 await session.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261009_0057"
+                == "20261009_0058"
             )
     assert await executor.execute_next("normal-strict-repeat") is False
     assert len(generator.calls) == 5 and len(auditor.calls) == 6

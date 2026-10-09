@@ -7127,6 +7127,37 @@ class WeChatAccountModel(Base):
     )
 
 
+class ModelApiKeyModel(Base):
+    """One version of a model provider key rotated in the 运营后台; the newest one is in force."""
+
+    __tablename__ = "model_api_keys"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Null: use the environment key.
+    key_sealed: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    restored_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    probe_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("provider", "version", name="uq_model_api_keys_provider_version"),
+        CheckConstraint(
+            "provider IN ('zhipu', 'comfly', 'alibaba-visual')", name="ck_model_api_keys_provider"
+        ),
+        CheckConstraint("version >= 1", name="ck_model_api_keys_version"),
+        CheckConstraint(
+            "(key_sealed IS NULL AND key_last4 IS NULL) "
+            "OR (key_sealed LIKE 'v1:%' AND key_last4 IS NOT NULL)",
+            name="ck_model_api_keys_sealed",
+        ),
+    )
+
+
 class WeChatPublishJobModel(Base):
     """Publishing one WeChat draft now or at a set time (freepublish), started in the 运营后台."""
 

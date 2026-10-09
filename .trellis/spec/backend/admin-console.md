@@ -125,6 +125,20 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - `wechat_accounts.layout_template_id` is read by the single-edition consumer by account
   fingerprint. The choice is pinned per edition in the draft journal, so retries never change it.
 
+## 模型配置 (item 8)
+
+- Only keys rotate (智谱, Comfly, 阿里云百炼). URLs and model names are pinned by validation and the
+  strict visual policy.
+- `model_api_keys` is append-only; the newest version per provider is in force (null sealed key =
+  the env key). `MODEL_SECRET_KEY` is separate from `ADMIN_SECRET_KEY` (least privilege for
+  workers).
+- `get_settings()` overlays the newest keys once per process; any failure keeps env. Never
+  construct provider clients from a different source of keys.
+- A new long-running service that uses model keys must call `start_model_key_watch(settings)`
+  after `get_settings()` and must finish its current job on SIGTERM; otherwise a rotation will not
+  reach it until the next deploy.
+- Every save/restore/use-env makes one probe request with that key first and refuses on failure.
+
 ## Frontend
 
 `frontend/src/features/admin/`:

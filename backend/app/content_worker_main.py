@@ -59,6 +59,7 @@ from app.infrastructure.db.governance_checkpointer import PostgresGovernanceChec
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
 from app.infrastructure.db.visual_retrieval import PostgresVisualIndexRepository
+from app.infrastructure.model_api_keys_overlay import start_model_key_watch
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 
@@ -74,6 +75,8 @@ def _brand_ingestion_provider_enabled(settings: Settings) -> bool:
 async def run_content_worker() -> None:
     settings = get_settings()
     configure_logging(json_output=settings.app_env != "development")
+    # Restart (SIGTERM, then Docker) after an owner rotates a model key in the 运营后台.
+    start_model_key_watch(settings)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGINT, signal.SIGTERM):

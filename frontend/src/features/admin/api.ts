@@ -26,7 +26,8 @@ export interface AdminApi {
   readonly changePassword: (current: string, next: string) => Promise<number>;
 }
 
-export type AuditKind = "auth" | "user" | "source" | "keywords" | "wechat";
+export type AuditKind =
+  "auth" | "user" | "source" | "keywords" | "wechat" | "model";
 export interface AuditQuery {
   readonly kind?: AuditKind;
   /** Only events before this time (paging back). */

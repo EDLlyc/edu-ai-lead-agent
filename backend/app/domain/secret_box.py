@@ -1,9 +1,9 @@
-"""Encrypt operator-entered secrets (WeChat AppSecret, later model API keys) at rest.
+"""Encrypt operator-entered secrets (WeChat AppSecret, model API keys) at rest.
 
-AES-256-GCM with a key that lives only in the server environment (`ADMIN_SECRET_KEY`, url-safe
-base64 of 32 bytes). The stored form is `v1:<base64(nonce | ciphertext | tag)>`. The associated
-data names what the secret belongs to (for example `wechat_app_secret:<app_id>`), so a ciphertext
-copied onto another row fails to decrypt.
+AES-256-GCM with a key that lives only in the server environment: `ADMIN_SECRET_KEY` for WeChat,
+`MODEL_SECRET_KEY` for model keys (url-safe base64 of 32 bytes). The stored form is
+`v1:<base64(nonce | ciphertext | tag)>`. The associated data names what the secret belongs to (for
+example `wechat_app_secret:<app_id>`), so a ciphertext copied onto another row fails to decrypt.
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ def parse_key(value: str) -> bytes:
     try:
         key = base64.urlsafe_b64decode(value.strip() + "=" * (-len(value.strip()) % 4))
     except (binascii.Error, ValueError) as error:
-        raise SecretBoxError("ADMIN_SECRET_KEY must be url-safe base64") from error
+        raise SecretBoxError("the secret key must be url-safe base64") from error
     if len(key) != 32:
-        raise SecretBoxError("ADMIN_SECRET_KEY must decode to 32 bytes")
+        raise SecretBoxError("the secret key must decode to 32 bytes")
     return key
 
 
