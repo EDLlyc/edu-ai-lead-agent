@@ -388,3 +388,24 @@ Per-account colour schemes for pipeline drafts; model key rotation with probe-fi
 ### Next Steps
 
 - 用户审核 http://127.0.0.1:5181/admin/ 只读模拟预览；单独批准生产切换后，按归档任务rollout执行实际镜像构建、迁移、后端先行部署与前端替换。
+
+
+## Session 98: Admin usability: mobile layout, unsaved guards and pagination
+
+**Date**: 2026-10-10
+**Task**: Admin usability: mobile layout, unsaved guards and pagination
+**Branch**: `feat/admin-usability-20261010`
+
+### Summary
+
+Completed U1-U6 frontend usability improvements in isolated admin worktree. Full frontend 50 files/345 tests, lint/types/changed formatting, generated API parity, OpenAPI check, admin demo+production and main builds passed. Independent review fixed stale actionable drafts on account/tab round trips and input edits during pending save. Final built browser 30 responsive checks and 9 grouped interaction flows passed; refreshed read-only mock preview5181 with API18102, no password. Production5180/services unchanged. Candidate hashes and backend0061 prerequisite documented in archived task. Preserve existing frontend/node_modules symlink; overview and production rollout remain outside this batch.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3eeedc6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
