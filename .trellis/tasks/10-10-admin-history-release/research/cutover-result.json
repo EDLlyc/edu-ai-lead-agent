@@ -1,0 +1,78 @@
+{
+  "finished_at": "2026-10-10T13:40:01.490366+08:00",
+  "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+  "backup": "/var/backups/edu-ai/admin-history-20261010T053904Z",
+  "schema": "20261010_0061",
+  "counts": {
+    "schema": "20261010_0061",
+    "acquisition_running": 0,
+    "slots_active": 0,
+    "copy_running": 0,
+    "infographic_active": 0,
+    "delivery_running": 0,
+    "sources_enabled": 10,
+    "seeds_enabled": 10,
+    "stored_model_keys": 0,
+    "wechat_accounts": 1,
+    "publish_jobs": 0,
+    "open_publish_jobs": 0,
+    "occupied_conflicts": 0
+  },
+  "http": {
+    "/healthz": 200,
+    "/api/v1/admin/auth/me": 401,
+    "/api/v1/admin/models": 401,
+    "/api/v1/admin/wechat/publish-jobs": 401,
+    "/api/v1/admin/accounts": 401
+  },
+  "services": {
+    "edu-ai-lead-agent-acquisition-api-1": {
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "running": true,
+      "restarts": 0
+    },
+    "edu-ai-lead-agent-acquisition-worker-1": {
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "running": true,
+      "restarts": 0
+    },
+    "edu-ai-lead-agent-content-scheduler-1": {
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "running": true,
+      "restarts": 0
+    },
+    "edu-ai-lead-agent-content-worker-1": {
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "running": true,
+      "restarts": 0
+    },
+    "edu-ai-lead-agent-wecom-infographic-producer-1": {
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "running": true,
+      "restarts": 0
+    },
+    "edu-ai-lead-agent-wecom-dispatcher-1": {
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "running": true,
+      "restarts": 0
+    }
+  },
+  "untouched": [
+    "edu-ai-lead-agent-official-account-weekly-dag-worker-1",
+    "edu-ai-lead-agent-wechat-official-account-draft-worker-1",
+    "edu-ai-lead-agent-official-account-weekly-scheduler-1",
+    "edu-ai-lead-agent-official-account-local-worker-1",
+    "edu-ai-lead-agent-governance-scheduler-1",
+    "edu-ai-lead-agent-governance-worker-1",
+    "edu-ai-lead-agent-acquisition-scheduler-1",
+    "edu-ai-lead-agent-minio-init-1",
+    "edu-ai-lead-agent-postgres-1",
+    "edu-ai-lead-agent-minio-1"
+  ],
+  "frontend": {
+    "admin/index.html": "ee1d2dff250945f43f3a5fc3c065397f10c6bc24fc19f9b58b4a926bd3bea5c6",
+    "assets/index-BZMCvWiq.js": "f626cc909e452cd7996b26333a24708c12363e34046766b785678244e97360f8",
+    "assets/index-DFicJJbO.css": "30ed2d06f2cd27c1ad1bd1a4741d38a30c39e8ea6d435853c73d1c5c96d4f568"
+  },
+  "previous_frontend": "/var/www/edu-ai-admin.before-20261010T053904Z"
+}

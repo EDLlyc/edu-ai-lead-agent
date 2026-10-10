@@ -1,0 +1,112 @@
+{
+  "at": "2026-10-10T05:40:12.785421+00:00",
+  "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+  "contracts": {
+    "method": "isolated-process role projection; read-only DB transactions; real HTTP auth rejection checked separately",
+    "consumers": [
+      {
+        "service": "acquisition-api",
+        "reporting": true,
+        "load_errors": {},
+        "seen_at": "2026-10-10T05:39:52.390419Z"
+      },
+      {
+        "service": "content-worker",
+        "reporting": true,
+        "load_errors": {},
+        "seen_at": "2026-10-10T05:39:49.949765Z"
+      },
+      {
+        "service": "wecom-infographic-producer",
+        "reporting": true,
+        "load_errors": {},
+        "seen_at": "2026-10-10T05:39:46.910173Z"
+      },
+      {
+        "service": "official-account-local-worker",
+        "reporting": false,
+        "load_errors": null,
+        "seen_at": null
+      },
+      {
+        "service": "official-account-weekly-dag-worker",
+        "reporting": false,
+        "load_errors": null,
+        "seen_at": null
+      },
+      {
+        "service": "governance-worker",
+        "reporting": false,
+        "load_errors": null,
+        "seen_at": null
+      }
+    ],
+    "account_count": 1,
+    "statistics": [
+      {
+        "range_start": "2026-09-10",
+        "range_end": "2026-10-09",
+        "missing_days": 0,
+        "known_days": 30
+      }
+    ],
+    "job_page": {
+      "total": 0,
+      "offset": 0,
+      "limit": 20,
+      "business_timezone": "Asia/Shanghai"
+    },
+    "invalid_queries_rejected": 4,
+    "role_projection_checks": "owner reads/editor refusal PASS"
+  },
+  "services": {
+    "acquisition-api": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "tracebacks": 0,
+      "model_overlay_errors": 0,
+      "heartbeat_errors": 0
+    },
+    "acquisition-worker": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "tracebacks": 0,
+      "model_overlay_errors": 0,
+      "heartbeat_errors": 0
+    },
+    "content-scheduler": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "tracebacks": 0,
+      "model_overlay_errors": 0,
+      "heartbeat_errors": 0
+    },
+    "content-worker": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "tracebacks": 0,
+      "model_overlay_errors": 0,
+      "heartbeat_errors": 0
+    },
+    "wecom-infographic-producer": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "tracebacks": 0,
+      "model_overlay_errors": 0,
+      "heartbeat_errors": 0
+    },
+    "wecom-dispatcher": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "tracebacks": 0,
+      "model_overlay_errors": 0,
+      "heartbeat_errors": 0
+    }
+  }
+}

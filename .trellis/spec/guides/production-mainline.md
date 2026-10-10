@@ -10,7 +10,8 @@
 - The production database follows mainline's migration chain (…0048 → 0049 wecom_news_infographics →
   0050 infographic_advisory → 0051 human_pick_lanes → 0052 admin_console → 0053 operator_sources →
   0054 operator_keywords → 0055 wechat_accounts_publish → 0056 wechat_stats →
-  0057 wechat_layout_template → 0058 model_api_keys → 0059 model_key_consumers).
+  0057 wechat_layout_template → 0058 model_api_keys → 0059 model_key_consumers →
+  0060 wechat_publish_occupancy → 0061 model_key_load_errors).
   New migrations go on top of it.
 
 ## Deploying
@@ -28,6 +29,36 @@
   `docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env up -d --no-deps …`.
 - Avoid restarting workers while an acquisition, copy or long-image job is running.
 - Several sessions may deploy: tell the others the new digest and build only `FROM` the running one.
+
+## Live since 2026-10-10 13:40 (image `sha256:da052082…`, admin history + reliability/usability)
+
+- User approved the history fixes and combined deployment with “好的，请你处理”. The same six
+  services now run `offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7`:
+  acquisition-api, acquisition-worker, content-scheduler, content-worker,
+  wecom-infographic-producer and wecom-dispatcher. This is the verified 24e96708 base plus the
+  12 backend files pinned to application source `0a68c7d`; no dependency or secret changes.
+- Schema is `20261010_0061`. The migrations protect unknown publication results from duplicate
+  draft submission and add model-load diagnostics. Audit request races/labels, publication-history
+  pagination/status/date filters, prior recovery/statistics fixes and mobile/editing improvements
+  are included. Ten enabled seeds, one account, zero stored keys and zero publish jobs were preserved.
+- Source predeploy gate: 10 passed / 0 failed / 1 private-asset skip; frontend 371 tests and 63
+  PostgreSQL admin integration cases PASS. All six services are healthy with zero restarts and
+  no startup tracebacks/overlay/heartbeat errors. The three key consumers report fresh successful
+  load diagnostics. Role-protected read contracts were checked in an isolated read-only process;
+  real HTTP rejects unauthenticated requests. No real publication/model probe was used.
+- The seven legacy services, cron images, credentials and environment/Compose configuration are
+  unchanged. Template-worker application and public HTTPS remain pending. Production preview
+  `http://127.0.0.1:5180/admin/` serves the verified production-labeled bundle through a refreshed
+  SSH tunnel; the separate read-only demo is at port 5181. Both were checked in a real browser.
+- Backup: `/var/backups/edu-ai/admin-history-20261010T053904Z` (verified custom-format DB dump,
+  root-only configs, frontend, sanitized receipts). Previous frontend is at
+  `/var/www/edu-ai-admin.before-20261010T053904Z`. Roll back only the six image pins and matching
+  frontend, keeping schema 0061. If unknown/reconciled publication history exists or its check
+  fails, keep the API stopped, restore only the five workers, and resolve with compatible code
+  before allowing publication. Never downgrade or erase history to force rollback.
+- Evidence: task `10-10-admin-history-release` (archived after completion), `result.md`,
+  `research/` and `rollout/`. Its launcher mounts the offline smoke under `/app` so Python resolves
+  the image's application package; an external root-level script path can import the wrong package.
 
 ## Live since 2026-10-10 10:03 (image `sha256:24e96708…`, 运营后台 release 2)
 

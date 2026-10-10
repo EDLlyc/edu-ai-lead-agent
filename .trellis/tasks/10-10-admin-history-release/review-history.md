@@ -1,7 +1,7 @@
 # Independent history / combined-release review
 
-Status: application review and rollout-script review passed; live execution remains the root
-coordinator's pending release work. Reviewed against H1–H6 and the task check manifest. No remote commands,
+Status: application review and rollout-script review passed. Root subsequently completed the
+source gate, candidate smoke, live cutover and postchecks; see `result.md` and `research/` receipts. Reviewed against H1–H6 and the task check manifest. No remote commands,
 production writes, publication requests, model probes, commits, or preview changes are performed
 by this reviewer. Application implementers and the root coordinator own their respective files.
 

@@ -1,0 +1,19 @@
+{
+  "sha256": "e8455996bd1e49a2a21ad575ab18201dfd59a28d7e760aaf020acde5d2e3b088",
+  "bytes": 101876511,
+  "quiescent_counts": {
+    "schema": "20261009_0059",
+    "acquisition_running": 0,
+    "slots_active": 0,
+    "copy_running": 0,
+    "infographic_active": 0,
+    "delivery_running": 0,
+    "sources_enabled": 10,
+    "seeds_enabled": 10,
+    "stored_model_keys": 0,
+    "wechat_accounts": 1,
+    "publish_jobs": 0,
+    "open_publish_jobs": 0,
+    "occupied_conflicts": 0
+  }
+}

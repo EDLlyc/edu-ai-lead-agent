@@ -57,3 +57,9 @@ re-enabling API publication. Existing unknown/reconciled history is never silent
 
 Template-worker upgrade, public HTTPS, other legacy services/cron images and real model probes are
 outside this release. An updated mainline may only be fast-forwarded after successful deployment.
+
+## Completed execution
+
+Deployed 2026-10-10 13:40 CST from source `0a68c7d`, image `sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7`. See `../result.md` and `../research/*-result.json`. `build-candidate.py` records image identity and runs the offline check. Mount its check at `/app/.admin-history-smoke.py`: mounting at `/smoke.py` put the wrong import directory first and caused a pre-cutover `ModuleNotFoundError`; correcting the launcher passed without any application-source/image-input change. No production environment is supplied to that smoke.
+
+`check-preview.mjs` verifies the refreshed local production preview and the separate demo without logging in or sending writes. Temporary paths in that evidence helper describe this execution; regenerate them for a later release. The previous local SSH tunnel had exited, so it was replaced with keepalive settings before the preview checks.

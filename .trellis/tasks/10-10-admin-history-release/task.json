@@ -15,12 +15,12 @@
   "branch": "fix/admin-history-release-20261010",
   "base_branch": "feat/admin-usability-20261010",
   "worktree_path": "/root/projects/edu-ai-lead-agent/.trellis/worktrees/admin-console-20261008",
-  "commit": null,
+  "commit": "0a68c7df32de101eb5296ce6a873b3ea716022ee",
   "pr_url": null,
   "subtasks": [],
   "children": [],
   "parent": "10-08-admin-console",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Deployed 2026-10-10 13:40 CST; image da052082; schema 0061; final source gate and cutover/postcheck/preview receipts recorded.",
   "meta": {}
 }
