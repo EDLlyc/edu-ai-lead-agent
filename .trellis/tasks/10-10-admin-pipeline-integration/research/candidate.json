@@ -1,0 +1,33 @@
+{
+  "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+  "source_commit": "f062b8221c387ecd44d6e7529832f50331d1508d",
+  "legacy_image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+  "frontend": {
+    "admin/index.html": "5b855f8faa890f50d8c8b3505644c6a7aa81694ac34d612991ec7b62d3822358",
+    "assets/index-DFicJJbO.css": "30ed2d06f2cd27c1ad1bd1a4741d38a30c39e8ea6d435853c73d1c5c96d4f568",
+    "assets/index-nkmbpK0L.js": "4643eb59fd18e57f192851eb0bf48e497ed3c9a6953365307190266fa8a3615a"
+  },
+  "manifest": "manifest.json",
+  "offline_smoke": {
+    "fixtures": [
+      "legacy-settings-defaults-and-validators",
+      "encrypted-key-valid-invalid-env-restore-cache",
+      "template-selected-retry-pin",
+      "pretemplate-default-ack-after-expiry",
+      "malformed-pin-no-provider"
+    ],
+    "imported_entrypoints": [
+      "app.official_account_worker_main",
+      "app.official_account_weekly_dag_main",
+      "app.governance_worker_main",
+      "app.wechat_official_account_draft_main"
+    ],
+    "legacy_image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+    "overlay_files": 12,
+    "provider_calls": 0,
+    "source_commit": "f062b8221c387ecd44d6e7529832f50331d1508d",
+    "status": "PASS",
+    "verified_app_files": 312,
+    "verified_total_files": 364
+  }
+}

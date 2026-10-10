@@ -1,6 +1,128 @@
 {
-  "at": "2026-10-10T06:05:57.646843+00:00",
+  "at": "2026-10-10T06:27:27.993199+00:00",
   "containers": {
+    "edu-ai-lead-agent-official-account-weekly-dag-worker-1": {
+      "id": "b6f34b551130270c37abbf3cf996ed6f599bc2a3e75afe4e732af23976ed94d3",
+      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:27:02.091315027Z",
+      "command": [
+        "python",
+        "-m",
+        "app.official_account_weekly_dag_main",
+        "--handler-mode",
+        "production",
+        "worker",
+        "--concurrency",
+        "3",
+        "--lease-seconds",
+        "900",
+        "--poll-seconds",
+        "2"
+      ],
+      "restart_policy": "unless-stopped",
+      "key_presence": {
+        "MODEL_SECRET_KEY": false,
+        "ADMIN_SECRET_KEY": false,
+        "AI_PLATFORM_API_KEY": true,
+        "COMFLY_API_KEY": false,
+        "VISUAL_EMBEDDING_API_KEY": false
+      },
+      "mounts": [
+        {
+          "source": "/var/lib/docker/volumes/edu-ai-lead-agent_official_account_weekly_dag_output/_data",
+          "destination": "/app/output",
+          "rw": true
+        },
+        {
+          "source": "/opt/edu-ai-lead-agent/private/brand-materials",
+          "destination": "/app/private/brand-materials",
+          "rw": false
+        }
+      ]
+    },
+    "edu-ai-lead-agent-wechat-official-account-draft-worker-1": {
+      "id": "2e5bd394298ceb5c746cf0c662d149585e9ee4a928d8c059dbb838b45e55b483",
+      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:27:02.08191469Z",
+      "command": [
+        "python",
+        "-m",
+        "app.wechat_official_account_draft_main",
+        "worker"
+      ],
+      "restart_policy": "unless-stopped",
+      "key_presence": {
+        "MODEL_SECRET_KEY": false,
+        "ADMIN_SECRET_KEY": false,
+        "AI_PLATFORM_API_KEY": false,
+        "COMFLY_API_KEY": false,
+        "VISUAL_EMBEDDING_API_KEY": false
+      },
+      "mounts": [
+        {
+          "source": "/var/lib/docker/volumes/edu-ai-lead-agent_official_account_weekly_dag_output/_data",
+          "destination": "/app/input/official-account-weekly-editions",
+          "rw": false
+        },
+        {
+          "source": "/var/lib/docker/volumes/edu-ai-lead-agent_wechat_mp_draft_artifacts/_data",
+          "destination": "/app/output/wechat-mp-draft-artifacts",
+          "rw": true
+        }
+      ]
+    },
+    "edu-ai-lead-agent-official-account-local-worker-1": {
+      "id": "9f5ae97ab12c75dfd6ba32d6407cef8a6c203806710a5ae488fbc28279a14d0b",
+      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:27:02.086107363Z",
+      "command": [
+        "python",
+        "-m",
+        "app.official_account_worker_main"
+      ],
+      "restart_policy": "unless-stopped",
+      "key_presence": {
+        "MODEL_SECRET_KEY": false,
+        "ADMIN_SECRET_KEY": false,
+        "AI_PLATFORM_API_KEY": true,
+        "COMFLY_API_KEY": true,
+        "VISUAL_EMBEDDING_API_KEY": false
+      },
+      "mounts": [
+        {
+          "source": "/opt/edu-ai-lead-agent/private/brand-materials",
+          "destination": "/app/private/brand-materials",
+          "rw": false
+        }
+      ]
+    },
+    "edu-ai-lead-agent-governance-worker-1": {
+      "id": "bcb31f4bd1ef18d1e84f213d4f822413e5be6aca35efaf202ca50261a769edb6",
+      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:27:02.09319662Z",
+      "command": [
+        "python",
+        "-m",
+        "app.governance_worker_main"
+      ],
+      "restart_policy": "unless-stopped",
+      "key_presence": {
+        "MODEL_SECRET_KEY": false,
+        "ADMIN_SECRET_KEY": false,
+        "AI_PLATFORM_API_KEY": true,
+        "COMFLY_API_KEY": false,
+        "VISUAL_EMBEDDING_API_KEY": false
+      },
+      "mounts": []
+    },
     "edu-ai-lead-agent-acquisition-api-1": {
       "id": "a86df1c3a5bfbd501627d2745293161af8f14d4a8a2c3bc854784fa16be6c8de",
       "image": "sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
@@ -43,80 +165,6 @@
       "restarts": 0,
       "started_at": "2026-10-10T05:39:36.123373278Z"
     },
-    "edu-ai-lead-agent-official-account-weekly-dag-worker-1": {
-      "id": "5885ec4716913bde6fd1f91d60b32fedf4df2b01a817ec9d993a51a7333d14e9",
-      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
-      "running": true,
-      "restarts": 0,
-      "started_at": "2026-09-28T03:57:05.553342234Z",
-      "command": [
-        "python",
-        "-m",
-        "app.official_account_weekly_dag_main",
-        "--handler-mode",
-        "production",
-        "worker",
-        "--concurrency",
-        "3",
-        "--lease-seconds",
-        "900",
-        "--poll-seconds",
-        "2"
-      ],
-      "restart_policy": "unless-stopped",
-      "key_presence": {
-        "MODEL_SECRET_KEY": false,
-        "ADMIN_SECRET_KEY": false,
-        "AI_PLATFORM_API_KEY": true,
-        "COMFLY_API_KEY": false,
-        "VISUAL_EMBEDDING_API_KEY": false
-      },
-      "mounts": [
-        {
-          "source": "/opt/edu-ai-lead-agent/private/brand-materials",
-          "destination": "/app/private/brand-materials",
-          "rw": false
-        },
-        {
-          "source": "/var/lib/docker/volumes/edu-ai-lead-agent_official_account_weekly_dag_output/_data",
-          "destination": "/app/output",
-          "rw": true
-        }
-      ]
-    },
-    "edu-ai-lead-agent-wechat-official-account-draft-worker-1": {
-      "id": "16b0045acc44dd2348e659d888e65c22d139b5b8d089d7904fda6fe747a8aeb9",
-      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
-      "running": true,
-      "restarts": 0,
-      "started_at": "2026-09-28T03:57:09.814263461Z",
-      "command": [
-        "python",
-        "-m",
-        "app.wechat_official_account_draft_main",
-        "worker"
-      ],
-      "restart_policy": "unless-stopped",
-      "key_presence": {
-        "MODEL_SECRET_KEY": false,
-        "ADMIN_SECRET_KEY": false,
-        "AI_PLATFORM_API_KEY": false,
-        "COMFLY_API_KEY": false,
-        "VISUAL_EMBEDDING_API_KEY": false
-      },
-      "mounts": [
-        {
-          "source": "/var/lib/docker/volumes/edu-ai-lead-agent_official_account_weekly_dag_output/_data",
-          "destination": "/app/input/official-account-weekly-editions",
-          "rw": false
-        },
-        {
-          "source": "/var/lib/docker/volumes/edu-ai-lead-agent_wechat_mp_draft_artifacts/_data",
-          "destination": "/app/output/wechat-mp-draft-artifacts",
-          "rw": true
-        }
-      ]
-    },
     "edu-ai-lead-agent-official-account-weekly-scheduler-1": {
       "id": "6208ab182cfdb3e6614498d013d9fad6411d3d1bcdd59d9b2dfe29f29aa85420",
       "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
@@ -124,60 +172,12 @@
       "restarts": 0,
       "started_at": "2026-09-28T03:57:06.818481192Z"
     },
-    "edu-ai-lead-agent-official-account-local-worker-1": {
-      "id": "8da3d9eaf67e4ac56fbc8fb14ab5359e61c5bf726df0ab95437d185203353b8e",
-      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
-      "running": true,
-      "restarts": 0,
-      "started_at": "2026-09-28T03:57:08.249664095Z",
-      "command": [
-        "python",
-        "-m",
-        "app.official_account_worker_main"
-      ],
-      "restart_policy": "unless-stopped",
-      "key_presence": {
-        "MODEL_SECRET_KEY": false,
-        "ADMIN_SECRET_KEY": false,
-        "AI_PLATFORM_API_KEY": true,
-        "COMFLY_API_KEY": true,
-        "VISUAL_EMBEDDING_API_KEY": false
-      },
-      "mounts": [
-        {
-          "source": "/opt/edu-ai-lead-agent/private/brand-materials",
-          "destination": "/app/private/brand-materials",
-          "rw": false
-        }
-      ]
-    },
     "edu-ai-lead-agent-governance-scheduler-1": {
       "id": "feedf3cbcd428ea7e137dac668dc5c5dc7512bccef458b9e4cc9b994b95fb991",
       "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
       "running": true,
       "restarts": 0,
       "started_at": "2026-09-28T03:57:00.869692282Z"
-    },
-    "edu-ai-lead-agent-governance-worker-1": {
-      "id": "2878d1bdbba6744f0d535e9564864f47d19512ba49d7f8b81d32bd778da9ff29",
-      "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
-      "running": true,
-      "restarts": 0,
-      "started_at": "2026-09-28T03:57:01.903387838Z",
-      "command": [
-        "python",
-        "-m",
-        "app.governance_worker_main"
-      ],
-      "restart_policy": "unless-stopped",
-      "key_presence": {
-        "MODEL_SECRET_KEY": false,
-        "ADMIN_SECRET_KEY": false,
-        "AI_PLATFORM_API_KEY": true,
-        "COMFLY_API_KEY": false,
-        "VISUAL_EMBEDDING_API_KEY": false
-      },
-      "mounts": []
     },
     "edu-ai-lead-agent-acquisition-scheduler-1": {
       "id": "b6b43a941ca74c0cfdbfabb96d56910be000c6a49e9e1d6823d277a86ad5e2e9",
@@ -210,8 +210,8 @@
   },
   "config_hashes": {
     ".env": "fb00483aa8bc9a3e541f65022af817b4671b1ca2808e80f07f768bde1f95b8d5",
-    ".release.env": "1b54b0b867721a44c82bc8e87b3ad57cfc9638116fb2613abac0b33abc3ba652",
-    "compose.yaml": "fdf2c73d9a3616f5ffe32368c6fc258b44ab7e00417084b007d451e9a42fa11d"
+    ".release.env": "30a10864fadc63bea79040d9355bf7ea1a01778897e79f1c7d8c669249fff4b4",
+    "compose.yaml": "da9f18a9f8e5e0210f60aa4a663f45add0bd955b28f9eae6429042ff1307a792"
   },
   "legacy_source": {
     "files": {
@@ -581,7 +581,7 @@
   },
   "compose_targets": {
     "official-account-local-worker": {
-      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
       "command": [
         "python",
         "-m",
@@ -787,7 +787,7 @@
       "model_secret_configured": false
     },
     "official-account-weekly-dag-worker": {
-      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
       "command": [
         "python",
         "-m",
@@ -994,7 +994,7 @@
       "model_secret_configured": false
     },
     "wechat-official-account-draft-worker": {
-      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
       "command": [
         "python",
         "-m",
@@ -1200,7 +1200,7 @@
       "model_secret_configured": false
     },
     "governance-worker": {
-      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:da05208214aa273084fd2bccb9ce86dbdc1c0ee2069a855706a5d058686e2df7",
+      "image": "offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
       "command": [
         "python",
         "-m",

@@ -1,0 +1,19 @@
+{
+  "result": "ORIGINAL_RUNTIME_RESTORED",
+  "at": "2026-10-10T06:27:04.546586+00:00",
+  "services": [
+    "official-account-local-worker",
+    "official-account-weekly-dag-worker",
+    "governance-worker",
+    "wechat-official-account-draft-worker"
+  ],
+  "legacy_image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+  "preserved_versions": {
+    "CONTENT_SCORING_VERSION": "scoring-v1-preview.11-qualified-authoritative-priority",
+    "CONTENT_SLOT_RANKING_VERSION": "slot-ranking-v1"
+  },
+  "full_runtime_hashes_match": true,
+  "original_work_and_journals_preserved": true,
+  "unrelated_containers_unchanged": true,
+  "env_file_unchanged": true
+}

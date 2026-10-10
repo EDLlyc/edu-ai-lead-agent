@@ -49,7 +49,7 @@ class RolloutTests(unittest.TestCase):
         self.assertIn("  unrelated:\n    <<: *app-runtime\n    environment:", result)
         draft = result.split("  " + common.DRAFT + ":\n")[1].split("\n  unrelated:")[0]
         self.assertNotIn("MODEL_SECRET_KEY", draft)
-        with self.assertRaisesRegex(RuntimeError, "existing_image_override"):
+        with self.assertRaisesRegex(RuntimeError, "existing_model_mapping"):
             common.patch_compose(result)
         with self.assertRaisesRegex(RuntimeError, "service_block_not_unique"):
             common.patch_compose(
@@ -61,8 +61,11 @@ class RolloutTests(unittest.TestCase):
         result = common.patch_release(original, common.BASE)
         self.assertTrue(result.startswith(original))
         self.assertEqual(result.count("APP_IMAGE=admin-current"), 1)
-        with self.assertRaisesRegex(RuntimeError, "pipeline_pin_already_exists"):
-            common.patch_release(result, common.BASE)
+        self.assertEqual(common.patch_release(result, common.BASE), result)
+        with self.assertRaisesRegex(RuntimeError, "pipeline_pin_not_original_base"):
+            common.patch_release(
+                result.replace(common.BASE, "sha256:" + "1" * 64), common.BASE
+            )
         with self.assertRaisesRegex(RuntimeError, "invalid_image"):
             common.patch_release(original, "floating-tag")
 
@@ -95,6 +98,219 @@ class RolloutTests(unittest.TestCase):
             mutate(wrong)
             with self.assertRaisesRegex(RuntimeError, "outside_allowlist"):
                 common.verify_render_patch(before, wrong, common.BASE)
+
+    def test_recreation_admission_detects_prior_shared_env_drift(self):
+        image = {
+            "Env": ["PATH=/base", "BAKED_ONLY=keep"],
+            "Cmd": ["python"],
+            "Entrypoint": None,
+            "WorkingDir": "/app",
+            "User": "",
+        }
+        env = {
+            "PATH": "/base",
+            "BAKED_ONLY": "keep",
+            "CONTENT_SCORING_VERSION": common.PRESERVED_LEGACY_ENV[
+                "CONTENT_SCORING_VERSION"
+            ],
+            "PRIVATE_KEY": "never-print-this",
+        }
+        item = {
+            "Config": dict(image, Env=[key + "=" + value for key, value in env.items()])
+        }
+        rendered = {
+            "environment": {
+                "CONTENT_SCORING_VERSION": "new-unsupported-global-value",
+                "PRIVATE_KEY": "never-print-this",
+            },
+            "command": ["python"],
+        }
+        with self.assertRaisesRegex(
+            RuntimeError, "effective_environment_drift:CONTENT_SCORING_VERSION"
+        ) as error:
+            common.verify_effective_runtime(item, rendered, image)
+        self.assertNotIn("never-print", str(error.exception))
+        rendered["environment"]["CONTENT_SCORING_VERSION"] = env[
+            "CONTENT_SCORING_VERSION"
+        ]
+        self.assertTrue(
+            common.verify_effective_runtime(item, rendered, image)[
+                "environment_matches"
+            ]
+        )
+        for change in [
+            dict(rendered["environment"], ADDED="new"),
+            {"CONTENT_SCORING_VERSION": env["CONTENT_SCORING_VERSION"]},
+            dict(rendered["environment"], PRIVATE_KEY="changed-private"),
+        ]:
+            with self.assertRaisesRegex(RuntimeError, "effective_environment_drift"):
+                common.verify_effective_runtime(
+                    item, dict(rendered, environment=change), image
+                )
+        with self.assertRaisesRegex(RuntimeError, "effective_runtime_drift:Cmd"):
+            common.verify_effective_runtime(
+                item, dict(rendered, command=["wrong"]), image
+            )
+
+    def test_restored_baseline_cutover_and_rollback_preserve_exact_overrides(self):
+        original = self.fixture_compose()
+        restored = original
+        for service in common.TARGETS:
+            header = "  " + service + ":\n    <<: *app-runtime\n"
+            restored = restored.replace(header, header + common.PIPELINE_IMAGE_LINE)
+            start = restored.index("  " + service + ":\n")
+            env_at = restored.index("    environment:\n", start) + len(
+                "    environment:\n"
+            )
+            preserved = "".join(
+                "      " + key + ": " + value + "\n"
+                for key, value in common.PRESERVED_LEGACY_ENV.items()
+            )
+            restored = restored[:env_at] + preserved + restored[env_at:]
+        patched = common.patch_compose(restored)
+        self.assertEqual(patched.count(common.PIPELINE_IMAGE_LINE), 4)
+        self.assertEqual(patched.count("      MODEL_SECRET_KEY: "), 3)
+        self.assertEqual(
+            patched.replace("      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}\n", ""),
+            restored,
+        )
+        for key, value in common.PRESERVED_LEGACY_ENV.items():
+            self.assertEqual(patched.count("      " + key + ": " + value + "\n"), 4)
+        release = common.patch_release("APP_IMAGE=admin-current\n", common.BASE)
+        candidate = "sha256:" + "a" * 64
+        new_release = common.patch_release(release, candidate)
+        self.assertIn("APP_IMAGE=admin-current\n", new_release)
+        self.assertEqual(common.patch_release(release, common.BASE), release)
+        with self.assertRaisesRegex(RuntimeError, "pipeline_pin_not_original_base"):
+            common.patch_release(
+                release + "ADMIN_PIPELINE_IMAGE=duplicate\n", candidate
+            )
+        with self.assertRaisesRegex(RuntimeError, "existing_image_override"):
+            common.patch_compose(
+                restored.replace(common.PIPELINE_IMAGE_LINE, "    image: other\n", 1)
+            )
+        with self.assertRaisesRegex(RuntimeError, "partial_pipeline_override"):
+            common.patch_compose(restored.replace(common.PIPELINE_IMAGE_LINE, "", 1))
+
+    def test_cutover_recreation_admission_precedes_any_stop(self):
+        import json
+
+        candidate = {
+            "image": "sha256:" + "a" * 64,
+            "legacy_image": common.BASE,
+            "source_commit": "fixture-commit",
+            "manifest": "manifest.json",
+        }
+        manifest = {
+            "source_commit": "fixture-commit",
+            "legacy_image": common.BASE,
+            "overlay_sha256": {str(i): "hash" for i in range(12)},
+        }
+        image_config = {
+            "Env": [],
+            "Cmd": ["python"],
+            "Entrypoint": None,
+            "WorkingDir": "/app",
+            "User": "",
+        }
+        items = {
+            common.name(service): {
+                "Id": service,
+                "Config": dict(
+                    image_config,
+                    Env=[
+                        key + "=" + value
+                        for key, value in common.PRESERVED_LEGACY_ENV.items()
+                    ],
+                ),
+            }
+            for service in common.TARGETS
+        }
+        rendered = {
+            "services": {
+                service: {
+                    "environment": dict(
+                        common.PRESERVED_LEGACY_ENV,
+                        CONTENT_SCORING_VERSION="unsupported-new-global",
+                    )
+                }
+                for service in common.TARGETS
+            }
+        }
+        before = {
+            "at": common.now().isoformat(),
+            "config_hashes": {"fixture": "stable"},
+            "containers": {key: {"id": value["Id"]} for key, value in items.items()},
+            "state": {},
+            "volumes": {},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary)
+            for filename, value in [
+                ("candidate.json", candidate),
+                ("manifest.json", manifest),
+                ("preflight-state.json", before),
+            ]:
+                (stage / filename).write_text(json.dumps(value))
+            with (
+                patch.object(cutover, "STAGE", stage),
+                patch.object(cutover, "quiet_window"),
+                patch.object(
+                    cutover,
+                    "run",
+                    return_value=json.dumps([{"Id": candidate["image"]}]),
+                ),
+                patch.object(
+                    common, "run", return_value=json.dumps([{"Config": image_config}])
+                ),
+                patch.object(
+                    cutover, "config_hashes", return_value=before["config_hashes"]
+                ),
+                patch.object(cutover, "inspect", return_value=items),
+                patch.object(
+                    cutover,
+                    "safe_container",
+                    side_effect=lambda item: {"id": item["Id"]},
+                ),
+                patch.object(cutover, "mode_check"),
+                patch.object(cutover, "db_state", return_value={}),
+                patch.object(cutover, "idle"),
+                patch.object(cutover, "render", return_value=rendered),
+                patch.object(cutover, "graceful_stop") as stop,
+                patch.object(cutover, "start") as start,
+                patch.object(cutover, "atomic_text") as mutate,
+                self.assertRaisesRegex(
+                    RuntimeError, "effective_environment_drift:CONTENT_SCORING_VERSION"
+                ),
+            ):
+                cutover.cutover()
+            stop.assert_not_called()
+            start.assert_not_called()
+            mutate.assert_not_called()
+
+    def test_unverified_old_recovery_backup_rejected_before_stop(self):
+        import json
+
+        with tempfile.TemporaryDirectory(prefix="admin-pipeline-test-") as temporary:
+            backup = Path(temporary)
+            (backup / "before.json").write_text(json.dumps({"containers": {}}))
+
+            def local_path(value):
+                return (
+                    backup.parent
+                    if str(value) == "/var/backups/edu-ai"
+                    else Path(value)
+                )
+
+            with (
+                patch.object(cutover, "Path", side_effect=local_path),
+                patch.object(cutover, "graceful_stop") as stop,
+                self.assertRaisesRegex(
+                    RuntimeError, "recovery_baseline_effective_runtime_unverified"
+                ),
+            ):
+                cutover.recover(backup)
+            stop.assert_not_called()
 
     def test_archive_verifies_content_metadata_and_rejects_corruption(self):
         with tempfile.TemporaryDirectory() as temporary:

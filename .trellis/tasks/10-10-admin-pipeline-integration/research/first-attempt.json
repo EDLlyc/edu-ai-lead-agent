@@ -1,0 +1,143 @@
+[
+  {
+    "result": "BACKUP_VERIFIED",
+    "backup": "/var/backups/edu-ai/admin-pipeline-20261010T062459Z",
+    "verification": {
+      "database": {
+        "sha256": "34d27f9b40b6563ea62486c0055e6cf3be0e13499eed62f69b623ef6a5020c22",
+        "bytes": 101876764,
+        "restore_listing_verified": true
+      },
+      "volumes": {
+        "draft": {
+          "sha256": "daf6892f4f0f17990601669ceecb32a91f741125ace39e0c8d95a777ba54c8ba",
+          "bytes": 26833480,
+          "files": 636,
+          "contents_digest": "0783ec720f4d336f1b533b046c9964a3967d897fda07813bcf11bd6a1dca1386"
+        },
+        "weekly": {
+          "sha256": "7be78922fbad5ab39fa20b2acad98529d75c86c6000399e03f07d530ae7849d7",
+          "bytes": 49135316,
+          "files": 281,
+          "contents_digest": "ca8453e071bd65e03680b67de4287f4bd7451e0c1ba07e1012da70e1c6fa8f7f"
+        }
+      },
+      "frozen_state": {
+        "schema": {
+          "version": "20261010_0061"
+        },
+        "governance_jobs": {
+          "count": 5921,
+          "digest": "f01757c1075b895a0319cb4b9e24f31d"
+        },
+        "governance_attempts": {
+          "count": 5923,
+          "digest": "f7f31512c2a1a74f4dea5d6fa8ce4e31"
+        },
+        "official_account_article_runs": {
+          "count": 31,
+          "digest": "b59cdcfe294bc0d1e7f9b20970864551"
+        },
+        "official_account_article_attempts": {
+          "count": 364,
+          "digest": "b96695bc7a01a84470e8a3c40d0cd4cd"
+        },
+        "official_account_weekly_dag_runs": {
+          "count": 2,
+          "digest": "a70a9d4852a14fcfd653fcf4449bdd39"
+        },
+        "official_account_weekly_dag_nodes": {
+          "count": 32,
+          "digest": "46293b4b478eb3622d37261435799a73"
+        },
+        "official_account_weekly_dag_attempts": {
+          "count": 18,
+          "digest": "bdd0a20f17b6665503bb9e277aad459e"
+        },
+        "wechat_mp_draft_jobs": {
+          "count": 2,
+          "digest": "bd9a597c5fb7e9e62aea136a14f16fdb"
+        },
+        "wechat_mp_draft_items": {
+          "count": 6,
+          "digest": "688d7275ba79dba6a6825078ebb87ae5"
+        },
+        "wechat_mp_draft_attempts": {
+          "count": 6,
+          "digest": "0ee4d11ba5266b9dd9ca9083930923a2"
+        },
+        "official_account_single_editions": {
+          "count": 11,
+          "digest": "5ddd4f6d77c152aa0913d1a8796949e0"
+        },
+        "official_account_draft_owners": {
+          "count": 35,
+          "digest": "243d79499f0c9807183232ccf9be6a1a"
+        },
+        "model_api_keys": {
+          "count": 0,
+          "digest": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        "execution_governed_runs": {
+          "count": 2,
+          "digest": "22cbf6e139e8d00ce7234224259dfa71"
+        },
+        "execution_agent_allocations": {
+          "count": 20,
+          "digest": "d1605863311de600e47a56f9afcd6af8"
+        },
+        "execution_budget_reservations": {
+          "count": 18,
+          "digest": "19a706b039e78a451c46c835686a9bd1"
+        },
+        "execution_trace_events": {
+          "count": 120,
+          "digest": "7addbe41ce36b3527db519b7dd54d0ef"
+        },
+        "execution_artifacts": {
+          "count": 14,
+          "digest": "1a42538d59828df2fb9815d48a22bcbb"
+        },
+        "active_governance": {
+          "count": 0
+        },
+        "active_articles": {
+          "count": 0
+        },
+        "active_single": {
+          "count": 0
+        },
+        "active_weekly": {
+          "count": 0
+        },
+        "active_draft": {
+          "count": 0
+        },
+        "active_current_single_unknown": {
+          "count": 0
+        },
+        "active_new_article_unknown": {
+          "count": 0
+        },
+        "active_allocations": {
+          "count": 0
+        },
+        "active_reservations": {
+          "count": 0
+        },
+        "latest_versions": {
+          "versions": {}
+        },
+        "account_binding": {
+          "count": 1,
+          "digest": "6b34451b9674a508c200a99e8b885206"
+        }
+      }
+    }
+  },
+  {
+    "result": "CUTOVER_FAILED",
+    "error": "runtime_config_drift_official-account-local-worker",
+    "backup": "/var/backups/edu-ai/admin-pipeline-20261010T062459Z"
+  }
+]

@@ -30,6 +30,19 @@
 - Avoid restarting workers while an acquisition, copy or long-image job is running.
 - Several sessions may deploy: tell the others the new digest and build only `FROM` the running one.
 
+- **Compare running configuration before recreating**: a healthy old container can retain settings
+  that no longer match today's `.env` and rendered Compose. For every target, compare the actual
+  effective environment/command with the proposed render plus image defaults **before stopping**.
+  Compare secrets in memory and report only differing key names; never store raw inspect/render in
+  task evidence. A before/after render comparison alone misses pre-existing runtime drift.
+- For a deliberately narrow legacy upgrade, preserve proven old nonsecret version values with
+  explicit per-service overrides. Do not propagate newer shared values or weaken runtime hashes
+  to get a release through. Rollback must restore the actual image **and** effective settings.
+  The October 10 pipeline attempt exposed `CONTENT_SCORING_VERSION` and
+  `CONTENT_SLOT_RANKING_VERSION` drift: unchanged September 28 schedulers provided reference values,
+  and substituting only those two proved the original full runtime hashes for all four targets.
+  Preserve these overrides until a separately reviewed upgrade changes their contracts.
+
 ## Live since 2026-10-10 13:40 (image `sha256:da052082…`, admin history + reliability/usability)
 
 - User approved the history fixes and combined deployment with “好的，请你处理”. The same six

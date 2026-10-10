@@ -19,11 +19,13 @@ from common import (
     mode_check,
     name,
     now,
+    render,
     require,
     run,
     safe_container,
     save,
     source_hashes,
+    verify_target_recreation,
     volume_paths,
 )
 
@@ -49,6 +51,7 @@ def collect():
             item["Id"] == previous["id"] and item["Image"] == previous["image"],
             "container_changed_since_research",
         )
+    recreation = verify_target_recreation(items, render())
     modes = mode_check(items)
     state = db_state()
     idle(state)
@@ -99,6 +102,7 @@ def collect():
         "containers": {k: safe_container(v) for k, v in items.items()},
         "config_hashes": hashes,
         "modes": modes,
+        "effective_runtime": recreation,
         "state": state,
         "sources": sources,
         "volumes": volumes,

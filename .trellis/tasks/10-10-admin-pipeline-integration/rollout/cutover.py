@@ -45,6 +45,7 @@ from common import (
     save,
     sha,
     verify_render_patch,
+    verify_target_recreation,
 )
 
 
@@ -241,6 +242,15 @@ def recover(backup):
         "invalid_recovery_backup",
     )
     preflight = json.loads((backup / "before.json").read_text())
+    verified = preflight.get("effective_runtime", {})
+    require(
+        all(
+            verified.get(service)
+            == {"environment_matches": True, "command_and_image_defaults_match": True}
+            for service in TARGETS
+        ),
+        "recovery_baseline_effective_runtime_unverified",
+    )
     frozen = json.loads((backup / "frozen.json").read_text())
     # Stop candidate before deciding old-code compatibility. Fail closed on any read error.
     graceful_stop(TARGETS)
@@ -356,6 +366,7 @@ def cutover():
     for volume in preflight["volumes"].values():
         require(content_manifest(volume["source"]) == volume["files"], "volume_drift")
     before_render = render()
+    verify_target_recreation(items, before_render)
     original_compose = (ROOT / "compose.yaml").read_text()
     original_release = (ROOT / ".release.env").read_text()
     new_compose = patch_compose(original_compose)

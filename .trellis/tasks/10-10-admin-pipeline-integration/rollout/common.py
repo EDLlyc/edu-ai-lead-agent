@@ -220,9 +220,66 @@ def render():
     return json.loads(run(COMPOSE + ["--profile", "*", "config", "--format", "json"]))
 
 
+PIPELINE_IMAGE_LINE = "    image: ${ADMIN_PIPELINE_IMAGE:-${APP_IMAGE:-edu-ai-lead-agent-backend:local}}\n"
+IMAGE_REPOSITORY = "offline.local/edu-ai/edu-ai-lead-agent-backend@"
+PRESERVED_LEGACY_ENV = {
+    "CONTENT_SCORING_VERSION": "scoring-v1-preview.11-qualified-authoritative-priority",
+    "CONTENT_SLOT_RANKING_VERSION": "slot-ranking-v1",
+}
+
+
+def verify_effective_runtime(item, rendered_service, image_config):
+    """Compare actual runtime to recreation inputs before stopping, without storing values."""
+    desired = dict(entry.split("=", 1) for entry in image_config.get("Env", []))
+    for key, value in rendered_service.get("environment", {}).items():
+        if value is None:
+            desired.pop(key, None)
+        else:
+            desired[key] = value
+    actual = environment(item)
+    different = sorted(
+        key
+        for key in actual.keys() | desired.keys()
+        if actual.get(key) != desired.get(key) or (key in actual) != (key in desired)
+    )
+    require(not different, "effective_environment_drift:" + ",".join(different))
+    for compose_key, inspect_key in [
+        ("command", "Cmd"),
+        ("entrypoint", "Entrypoint"),
+        ("working_dir", "WorkingDir"),
+        ("user", "User"),
+    ]:
+        desired_value = rendered_service.get(compose_key)
+        if desired_value is None:
+            desired_value = image_config.get(inspect_key)
+        require(
+            item["Config"].get(inspect_key) == desired_value,
+            "effective_runtime_drift:" + inspect_key,
+        )
+    return {"environment_matches": True, "command_and_image_defaults_match": True}
+
+
+def verify_target_recreation(items, rendered):
+    image_config = json.loads(run(["docker", "image", "inspect", BASE]))[0]["Config"]
+    result = {}
+    for service in TARGETS:
+        result[service] = verify_effective_runtime(
+            items[name(service)], rendered["services"][service], image_config
+        )
+        require(
+            all(
+                environment(items[name(service)]).get(key) == value
+                for key, value in PRESERVED_LEGACY_ENV.items()
+            ),
+            "legacy_version_not_preserved_" + service,
+        )
+    return result
+
+
 def patch_compose(text):
-    """Change only four image mappings and three explicit model-key mappings."""
+    """Accept the original baseline or the exact restored BASE override; preserve all values."""
     result = text
+    existing_pins = 0
     for service in TARGETS:
         pattern = re.compile(
             r"(?ms)^  " + re.escape(service) + r":\n.*?(?=^  [A-Za-z0-9_-]+:|\Z)"
@@ -230,19 +287,23 @@ def patch_compose(text):
         matches = list(pattern.finditer(result))
         require(len(matches) == 1, "service_block_not_unique_" + service)
         block = matches[0].group()
-        require(
-            "ADMIN_PIPELINE_IMAGE" not in block
-            and not re.search(r"^    image:", block, re.MULTILINE),
-            "existing_image_override_" + service,
-        )
         anchor = "    <<: *app-runtime\n"
         require(block.count(anchor) == 1, "runtime_anchor_" + service)
-        replacement = block.replace(
-            anchor,
-            anchor
-            + "    image: ${ADMIN_PIPELINE_IMAGE:-${APP_IMAGE:-edu-ai-lead-agent-backend:local}}\n",
-            1,
-        )
+        image_lines = re.findall(r"^    image:.*\n", block, re.MULTILINE)
+        if image_lines:
+            require(
+                image_lines == [PIPELINE_IMAGE_LINE]
+                and block.count("ADMIN_PIPELINE_IMAGE") == 1,
+                "existing_image_override_" + service,
+            )
+            replacement = block
+            existing_pins += 1
+        else:
+            require(
+                "ADMIN_PIPELINE_IMAGE" not in block,
+                "existing_image_override_" + service,
+            )
+            replacement = block.replace(anchor, anchor + PIPELINE_IMAGE_LINE, 1)
         if service in MODELS:
             require(
                 "MODEL_SECRET_KEY" not in block, "existing_model_mapping_" + service
@@ -256,24 +317,33 @@ def patch_compose(text):
                 1,
             )
         result = result[: matches[0].start()] + replacement + result[matches[0].end() :]
+    require(existing_pins in (0, 4), "partial_pipeline_override")
     return result
 
 
 def patch_release(text, image):
     require(re.fullmatch(r"sha256:[0-9a-f]{64}", image) is not None, "invalid_image_id")
+    lines = text.splitlines(keepends=True)
     require(
-        sum(line.startswith("APP_IMAGE=") for line in text.splitlines()) == 1,
+        sum(line.startswith("APP_IMAGE=") for line in lines) == 1,
         "app_image_not_unique",
     )
-    require(
-        not any(line.startswith("ADMIN_PIPELINE_IMAGE=") for line in text.splitlines()),
-        "pipeline_pin_already_exists",
-    )
+    existing = [line for line in lines if line.startswith("ADMIN_PIPELINE_IMAGE=")]
+    if existing:
+        require(
+            len(existing) == 1
+            and existing[0].rstrip("\n")
+            == "ADMIN_PIPELINE_IMAGE=" + IMAGE_REPOSITORY + BASE,
+            "pipeline_pin_not_original_base",
+        )
+        return "".join(
+            "ADMIN_PIPELINE_IMAGE=" + IMAGE_REPOSITORY + image + "\n"
+            if line.startswith("ADMIN_PIPELINE_IMAGE=")
+            else line
+            for line in lines
+        )
     return (
-        text.rstrip("\n")
-        + "\nADMIN_PIPELINE_IMAGE=offline.local/edu-ai/edu-ai-lead-agent-backend@"
-        + image
-        + "\n"
+        text.rstrip("\n") + "\nADMIN_PIPELINE_IMAGE=" + IMAGE_REPOSITORY + image + "\n"
     )
 
 

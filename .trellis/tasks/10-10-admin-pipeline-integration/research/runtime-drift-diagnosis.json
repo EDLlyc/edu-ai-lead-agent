@@ -1,0 +1,154 @@
+{
+  "official-account-local-worker": {
+    "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+    "running": true,
+    "restarts": 5,
+    "original_runtime_matches": false,
+    "reconstructions": [
+      {
+        "sibling": "acquisition-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "governance-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "official-account-weekly-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      }
+    ]
+  },
+  "official-account-weekly-dag-worker": {
+    "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+    "running": true,
+    "restarts": 5,
+    "original_runtime_matches": false,
+    "reconstructions": [
+      {
+        "sibling": "acquisition-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "governance-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "official-account-weekly-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      }
+    ]
+  },
+  "governance-worker": {
+    "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+    "running": true,
+    "restarts": 5,
+    "original_runtime_matches": false,
+    "reconstructions": [
+      {
+        "sibling": "acquisition-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "governance-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "official-account-weekly-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      }
+    ]
+  },
+  "wechat-official-account-draft-worker": {
+    "image": "sha256:83a41e414fee1636c8d4897ae175ee5549afd9a7d4b37df0897b838c9b714851",
+    "running": true,
+    "restarts": 5,
+    "original_runtime_matches": false,
+    "reconstructions": [
+      {
+        "sibling": "acquisition-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "governance-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      },
+      {
+        "sibling": "official-account-weekly-scheduler",
+        "matches": true,
+        "added": [],
+        "removed": [],
+        "different": [
+          "CONTENT_SCORING_VERSION",
+          "CONTENT_SLOT_RANKING_VERSION"
+        ]
+      }
+    ]
+  }
+}

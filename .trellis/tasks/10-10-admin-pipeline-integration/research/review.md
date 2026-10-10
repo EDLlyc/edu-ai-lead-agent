@@ -78,3 +78,48 @@ fresh read-only production admission, verified DB/journal-volume backups, and tw
 heartbeat observations spanning a poll. Existing six admin/core services must retain their
 container identities. Root swaps frontend only after those checks pass. Empty stored-key versions
 prove DB reads and environment fallback, not an actual production encrypted-key rotation.
+
+## Follow-up after runtime configuration drift was detected
+
+The first attempt exposed a gap in the original admission review: comparing the old and new
+Compose renders does not prove that either render matches an already-running legacy container.
+The post-recreation full runtime hash correctly rejected the change, but the check was too late
+to avoid interruption; the original recovery render had the same gap.
+
+Locally inspected root's `runtime-drift-diagnosis.json` and `runtime-restoration.json`: three
+untouched legacy schedulers independently reconstructed all four original runtime hashes with
+only `CONTENT_SCORING_VERSION=scoring-v1-preview.11-qualified-authoritative-priority` and
+`CONTENT_SLOT_RANKING_VERSION=slot-ranking-v1`. Root's receipt at 06:27:04Z reports original
+work/journals and the twelve other container identities preserved. The refreshed baseline and
+the original first-attempt baseline are retained separately. Reviewer performed no SSH.
+
+Reviewed follow-up fixes in `common.py`, `preflight.py`, `cutover.py`, and `test_rollout.py`:
+
+- Admission now merges the actual base image environment defaults with rendered service values,
+  compares the complete result with the live container, and also checks command, entrypoint,
+  working directory and user. Environment additions, removals and changed values fail before
+  stop or configuration writes; failure output includes key names only. Both preflight and
+  cutover invoke it. The two recovered legacy rule versions have explicit preservation checks.
+- A restored baseline may already contain exactly four canonical pipeline image overrides and
+  one canonical BASE release pin. The patch preserves those overrides and the two per-service
+  values, adds only the intended three model-secret mappings, and changes only the pipeline pin.
+  Partial/foreign image overrides, duplicate pins and an existing non-BASE pin are rejected.
+- A further review finding was fixed: `recover()` now rejects a backup lacking all four verified
+  effective-runtime receipts **before stopping**. This prevents reusing the first attempt's
+  known-incompatible saved render. The original incident's manual restoration remains explicit;
+  new verified backups retain normal guarded recovery. Full runtime hashes were not weakened.
+- Replaced a weak source-order assertion with an actual `cutover()` control-flow regression.
+  Synthetic stage/image/render fixtures reproduce the drift; assertions prove stop, start and
+  atomic config writes are all untouched. Another real `recover()` invocation proves an old
+  unverified backup is rejected without stopping services.
+
+Follow-up verification: **17 isolated tests PASS**, zero failures/skips; Ruff and formatting PASS
+for all four changed helper/test files; `git diff --check` PASS. Application, migration,
+`build_context.py`, Dockerfile and smoke source are byte-unchanged relative to application commit
+`f062b82`; their existing type/source-gate results remain applicable. Root's separately owned
+orchestration helpers are outside this focused follow-up review. Receipt:
+`/tmp/edu-admin-pipeline-integration/reviewer-rollout-followup.log`.
+
+Focused follow-up result: **no unresolved review blocker**. Proceed with a new release stage,
+fresh admission and backup, preserving the first attempt's receipts and requiring the original
+postcheck/heartbeat gates. This review does not claim the second cutover has run.

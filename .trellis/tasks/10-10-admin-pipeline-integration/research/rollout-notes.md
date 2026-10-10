@@ -88,7 +88,7 @@ matching frontend; this script never swaps it.
 
 ## Local verification
 
-- `python -m unittest discover -s .trellis/tasks/10-10-admin-pipeline-integration/rollout -p test_rollout.py -v`: **13 passed**.
+- `python -m unittest discover -s .trellis/tasks/10-10-admin-pipeline-integration/rollout -p test_rollout.py -v`: **17 passed**.
 - Scoped Ruff lint and Ruff formatting: **passed** for all five owned Python files.
 - Tests cover allowlisted patching, rejected unrelated render/secret changes, APP_IMAGE
   preservation, tar content/metadata/path/link checks, missing restore-listing rejection,
@@ -100,3 +100,46 @@ matching frontend; this script never swaps it.
 
 Production preflight, backup, cutover and two postcheck receipts remain root-owned acceptance;
 these local tests do not claim those operations have occurred.
+
+
+## Verified runtime-drift correction (2026-10-10 06:27 UTC)
+
+The first root-operated attempt failed the unchanged full `runtime_hash` check and restored the
+legacy image. Root proved that all four original runtime hashes can be reconstructed exactly by
+substituting only `CONTENT_SCORING_VERSION` and `CONTENT_SLOT_RANKING_VERSION` from any of the
+three untouched legacy schedulers; all three independently agreed. The old containers had retained
+September configuration while the shared `.env` had subsequently changed for newer core services.
+Comparing Compose before/after alone did not prove it matched the already-running targets.
+
+Root restored exact original runtime hashes at `2026-10-10T06:27:04Z`, with original business and
+journal digests, unchanged `.env`, and all 12 unrelated containers preserved. The two explicit,
+nonsecret overrides on exactly the four legacy targets are now:
+
+- `CONTENT_SCORING_VERSION=scoring-v1-preview.11-qualified-authoritative-priority`
+- `CONTENT_SLOT_RANKING_VERSION=slot-ranking-v1`
+
+These values are preserved during upgrade and recovery. The helper's full `runtime_hash` function
+was not changed or weakened. Before any stop, both `preflight.collect` and `cutover.cutover` now
+merge actual legacy image ENV defaults with rendered service environment and compare every key
+and value to the running container, plus command, entrypoint, working directory and user. Values
+stay in memory; a failure reports only differing key names. The verified two version values are
+also explicitly required. Preflight records only success booleans for this comparison.
+
+Patching accepts either the original no-pin baseline or exactly four existing canonical pipeline
+image mappings. An existing release pin is accepted only when it points to the exact original
+BASE digest; duplicate/arbitrary/candidate pins and partial image overrides fail closed. The
+restored baseline's two explicit version values remain byte-identical through patch and recovery.
+Root must refresh the safe research snapshot with restored container IDs/config hashes.
+
+Recovery now refuses any backup lacking all four `effective_runtime` verification receipts before
+stopping a service. In particular, do not run the corrected automatic recovery against the first
+failed backup `admin-pipeline-20261010T062459Z`: its old Compose lacks the two preservation overrides.
+Root's separately recorded exact restoration is authoritative for that attempt.
+
+The expanded 17-test suite includes a real `cutover()` control-flow regression with isolated
+stage files and mocked read-only Docker inputs: actual-vs-render environment drift raises before
+`graceful_stop`, `start` or `atomic_text` is called. Other new regressions cover added/removed/
+changed environment values, changed command, preserved restored-baseline patches, rejected
+non-BASE/duplicate/partial pins, and old unverified recovery rejection before stop. Scoped Ruff
+lint/format checks pass. The independent checker reviews these changes; root owns re-running live
+preflight and the next release attempt.
