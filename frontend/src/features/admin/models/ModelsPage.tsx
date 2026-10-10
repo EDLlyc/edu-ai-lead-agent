@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import styles from "../Admin.module.css";
+import { useUnsavedChanges } from "../unsaved/context";
 import { AdminSessionExpiredError } from "../api";
 import { formatTime } from "../sources/labels";
 import {
@@ -244,41 +245,48 @@ function ConsumerTable({
     return state === "loaded" ? text : `${text}（等待重启）`;
   };
   return (
-    <table className={styles.table}>
-      <caption className={styles.hint}>
-        各服务正在用的 key（每分钟报到一次）
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">服务</th>
-          {providers.map((provider) => (
-            <th key={provider.id} scope="col">
-              {provider.name}
-            </th>
-          ))}
-          <th scope="col">最近报到</th>
-        </tr>
-      </thead>
-      <tbody>
-        {consumers.map((consumer) => (
-          <tr key={consumer.service}>
-            <th scope="row">{consumer.label}</th>
-            {consumer.reporting ? (
-              providers.map((provider) => (
-                <td key={provider.id}>{cell(consumer, provider)}</td>
-              ))
-            ) : (
-              <td colSpan={providers.length}>
-                未接入：还在旧版本上，用服务器配置的 key
-              </td>
-            )}
-            <td>
-              {consumer.seen_at === null ? "—" : formatTime(consumer.seen_at)}
-            </td>
+    <div
+      className={styles.tableScroll}
+      tabIndex={0}
+      role="region"
+      aria-label="服务模型配置表，可横向滚动"
+    >
+      <table className={styles.table}>
+        <caption className={styles.hint}>
+          各服务正在用的 key（每分钟报到一次）
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">服务</th>
+            {providers.map((provider) => (
+              <th key={provider.id} scope="col">
+                {provider.name}
+              </th>
+            ))}
+            <th scope="col">最近报到</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {consumers.map((consumer) => (
+            <tr key={consumer.service}>
+              <th scope="row">{consumer.label}</th>
+              {consumer.reporting ? (
+                providers.map((provider) => (
+                  <td key={provider.id}>{cell(consumer, provider)}</td>
+                ))
+              ) : (
+                <td colSpan={providers.length}>
+                  未接入：还在旧版本上，用服务器配置的 key
+                </td>
+              )}
+              <td>
+                {consumer.seen_at === null ? "—" : formatTime(consumer.seen_at)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -436,72 +444,82 @@ function ProviderCard({
       ) : history.length === 0 ? (
         <p className={styles.hint}>还没在后台换过 key。</p>
       ) : (
-        <table className={styles.table}>
-          <caption className={styles.hint}>
-            最近 {history.length} 版（恢复也会先测试那个 key）
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">版本</th>
-              <th scope="col">key</th>
-              <th scope="col">说明</th>
-              <th scope="col">操作人</th>
-              <th scope="col">时间</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((item) => (
-              <tr key={item.version}>
-                <td>
-                  第 {item.version} 版{item.current ? "（当前）" : ""}
-                </td>
-                <td>
-                  {item.source === "env"
-                    ? "服务器配置"
-                    : (item.key_hint ?? "—")}
-                </td>
-                <td>{item.note ?? "—"}</td>
-                <td>{item.created_by}</td>
-                <td>{formatTime(item.created_at)}</td>
-                <td>
-                  {item.current ? null : confirming === item.version ? (
-                    <span
-                      className={styles.confirm}
-                      role="group"
-                      aria-label={`确认恢复第 ${item.version} 版`}
-                    >
+        <div
+          className={styles.tableScroll}
+          tabIndex={0}
+          role="region"
+          aria-label={`${provider.name}历史版本表，可横向滚动`}
+        >
+          <table className={styles.table}>
+            <caption className={styles.hint}>
+              最近 {history.length} 版（恢复也会先测试那个 key）
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">版本</th>
+                <th scope="col">key</th>
+                <th scope="col">说明</th>
+                <th scope="col">操作人</th>
+                <th scope="col">时间</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item) => (
+                <tr key={item.version}>
+                  <td>
+                    第 {item.version} 版{item.current ? "（当前）" : ""}
+                  </td>
+                  <td>
+                    {item.source === "env"
+                      ? "服务器配置"
+                      : (item.key_hint ?? "—")}
+                  </td>
+                  <td>{item.note ?? "—"}</td>
+                  <td>{item.created_by}</td>
+                  <td>{formatTime(item.created_at)}</td>
+                  <td>
+                    {item.current ? null : confirming === item.version ? (
+                      <span
+                        className={styles.confirm}
+                        role="group"
+                        aria-label={`确认恢复第 ${item.version} 版`}
+                      >
+                        <button
+                          type="button"
+                          className={styles.primary}
+                          disabled={busy}
+                          onClick={() => {
+                            void run(
+                              () => api.restore(provider.id, item.version),
+                              `「${provider.name}」已恢复第 ${item.version} 版（存为第 {version} 版），请查看各服务的加载状态确认生效。`,
+                            );
+                          }}
+                        >
+                          {busy ? "正在测试…" : "确定恢复"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirming(null)}
+                        >
+                          取消
+                        </button>
+                      </span>
+                    ) : (
                       <button
                         type="button"
-                        className={styles.primary}
-                        disabled={busy}
-                        onClick={() => {
-                          void run(
-                            () => api.restore(provider.id, item.version),
-                            `「${provider.name}」已恢复第 ${item.version} 版（存为第 {version} 版），请查看各服务的加载状态确认生效。`,
-                          );
-                        }}
+                        disabled={!canChange || busy}
+                        onClick={() => setConfirming(item.version)}
                       >
-                        {busy ? "正在测试…" : "确定恢复"}
+                        恢复这一版
                       </button>
-                      <button type="button" onClick={() => setConfirming(null)}>
-                        取消
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!canChange || busy}
-                      onClick={() => setConfirming(item.version)}
-                    >
-                      恢复这一版
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </li>
   );
@@ -522,6 +540,10 @@ function KeyForm({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [note, setNote] = useState("");
+  const { requestDiscard } = useUnsavedChanges(
+    apiKey !== "" || note !== "",
+    onCancel,
+  );
   const [tested, setTested] = useState<{
     readonly key: string;
     readonly result: ModelKeyTest;
@@ -569,6 +591,7 @@ function KeyForm({
         <label className={styles.field}>
           <span>新的 API key</span>
           <input
+            disabled={busy === "save"}
             type="password"
             value={apiKey}
             required
@@ -580,6 +603,7 @@ function KeyForm({
         <label className={styles.field}>
           <span>说明（可选，例如 换成学校账号）</span>
           <input
+            disabled={busy === "save"}
             value={note}
             maxLength={200}
             onChange={(event) => setNote(event.target.value)}
@@ -615,7 +639,11 @@ function KeyForm({
         >
           {busy === "save" ? "正在保存…" : "保存并启用"}
         </button>
-        <button type="button" disabled={busy !== null} onClick={onCancel}>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => requestDiscard(onCancel)}
+        >
           取消
         </button>
       </div>

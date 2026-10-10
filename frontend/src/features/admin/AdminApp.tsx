@@ -28,11 +28,14 @@ import {
   type SourcesApi,
 } from "./sources/api";
 import styles from "./Admin.module.css";
+import { adminDataMode, ADMIN_ENVIRONMENT_LABELS } from "./environment";
+import { UnsavedChangesProvider } from "./unsaved/UnsavedChanges";
+import { useUnsavedNavigation } from "./unsaved/context";
+import { useAdminHistory } from "./unsaved/useAdminHistory";
 import {
   sectionFromPath,
   visibleSections,
   type AdminSection,
-  type AdminSectionKey,
 } from "./sections";
 
 type Session =
@@ -44,15 +47,7 @@ type Session =
 const ROLE_LABELS = { owner: "管理员", editor: "编辑" } as const;
 
 /** The 运营后台 at /admin: login, the section menu, and one section at a time. */
-export function AdminApp({
-  api = adminApi,
-  sourcesApi = defaultSourcesApi,
-  keywordsApi = defaultKeywordsApi,
-  accountsApi = defaultAccountsApi,
-  wechatApi = defaultWeChatApi,
-  layoutApi = defaultLayoutApi,
-  modelsApi = defaultModelsApi,
-}: {
+type AdminAppProps = {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
   readonly keywordsApi?: KeywordsApi;
@@ -60,9 +55,36 @@ export function AdminApp({
   readonly wechatApi?: WeChatApi;
   readonly layoutApi?: LayoutApi;
   readonly modelsApi?: ModelsApi;
-}) {
+};
+
+export function AdminApp(props: AdminAppProps) {
+  const mode = adminDataMode(import.meta.env.VITE_ADMIN_DATA_MODE);
+  return (
+    <UnsavedChangesProvider>
+      <div
+        className={styles.environmentBadge}
+        data-mode={mode}
+        aria-label="数据环境"
+      >
+        {ADMIN_ENVIRONMENT_LABELS[mode]}
+      </div>
+      <AdminSession {...props} />
+    </UnsavedChangesProvider>
+  );
+}
+
+function AdminSession({
+  api = adminApi,
+  sourcesApi = defaultSourcesApi,
+  keywordsApi = defaultKeywordsApi,
+  accountsApi = defaultAccountsApi,
+  wechatApi = defaultWeChatApi,
+  layoutApi = defaultLayoutApi,
+  modelsApi = defaultModelsApi,
+}: AdminAppProps) {
   const [session, setSession] = useState<Session>({ kind: "checking" });
-  const [path, setPath] = useState(() => window.location.pathname);
+  const { path, navigate } = useAdminHistory();
+  const { requestNavigation, clearAll } = useUnsavedNavigation();
 
   useEffect(() => {
     let cancelled = false;
@@ -88,21 +110,10 @@ export function AdminApp({
     };
   }, [api]);
 
-  useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  const navigate = useCallback((key: AdminSectionKey) => {
-    const next = `/admin/${key}`;
-    window.history.pushState(null, "", next);
-    setPath(next);
-  }, []);
-
   const expire = useCallback(() => {
+    clearAll();
     setSession({ kind: "anonymous", notice: "登录已过期，请重新登录" });
-  }, []);
+  }, [clearAll]);
 
   if (session.kind === "checking") {
     return (
@@ -149,13 +160,16 @@ export function AdminApp({
           <button
             type="button"
             onClick={() => {
-              // Even if the API is unreachable, leave the page; the cookie expires anyway.
-              void api
-                .logout()
-                .catch(() => undefined)
-                .then(() => {
-                  setSession({ kind: "anonymous", notice: "已退出" });
-                });
+              requestNavigation(() => {
+                // Even if the API is unreachable, leave the page; the cookie expires anyway.
+                void api
+                  .logout()
+                  .catch(() => undefined)
+                  .then(() => {
+                    clearAll();
+                    setSession({ kind: "anonymous", notice: "已退出" });
+                  });
+              });
             }}
           >
             退出
@@ -184,7 +198,7 @@ export function AdminApp({
                         return;
                       }
                       event.preventDefault();
-                      navigate(section.key);
+                      navigate(`/admin/${section.key}`);
                     }}
                   >
                     {section.title}

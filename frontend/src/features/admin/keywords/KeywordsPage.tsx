@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import styles from "../Admin.module.css";
+import { useUnsavedChanges, useUnsavedNavigation } from "../unsaved/context";
 import { AdminSessionExpiredError } from "../api";
 import { formatTime } from "../sources/labels";
 import {
@@ -109,6 +110,17 @@ export function KeywordsPage({
     };
   }, [api, handleError]);
 
+  const saved = overview === null ? EMPTY : listsOf(overview);
+  const dirty = LISTS.some(({ name }) => !sameTerms(draft[name], saved[name]));
+  const { requestNavigation } = useUnsavedNavigation();
+  const discard = () => {
+    setDraft(saved);
+    setImpact(null);
+    setWideWarning(null);
+    setNote("");
+  };
+  useUnsavedChanges(dirty || note !== "", discard);
+
   if (overview === null) {
     return message === null ? (
       <p role="status">正在读取…</p>
@@ -118,9 +130,6 @@ export function KeywordsPage({
       </p>
     );
   }
-
-  const saved = listsOf(overview);
-  const dirty = LISTS.some(({ name }) => !sameTerms(draft[name], saved[name]));
 
   const update = (name: ListName, terms: readonly string[]) => {
     setDraft((current) => ({ ...current, [name]: terms }));
@@ -287,6 +296,7 @@ export function KeywordsPage({
         <label className={styles.field}>
           <span>备注（可选，写清楚为什么改）</span>
           <input
+            disabled={busy}
             value={note}
             maxLength={200}
             onChange={(event) => setNote(event.target.value)}
@@ -319,10 +329,7 @@ export function KeywordsPage({
             type="button"
             disabled={busy}
             onClick={() => {
-              setDraft(saved);
-              setImpact(null);
-              setWideWarning(null);
-              setNote("");
+              requestNavigation(discard);
             }}
           >
             放弃修改
@@ -333,47 +340,56 @@ export function KeywordsPage({
       {overview.history.length === 0 ? null : (
         <section aria-label="历史版本">
           <h3 className={styles.subheading}>历史版本</h3>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th scope="col">版本</th>
-                <th scope="col">时间</th>
-                <th scope="col">账号</th>
-                <th scope="col">词数（关注/屏蔽/禁用）</th>
-                <th scope="col">备注</th>
-                <th scope="col">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {overview.history.map((item, index) => (
-                <tr key={item.version}>
-                  <td>
-                    第 {item.version} 版{index === 0 ? "（当前）" : ""}
-                  </td>
-                  <td>{formatTime(item.created_at)}</td>
-                  <td>{item.created_by}</td>
-                  <td>
-                    {item.focus_count} / {item.block_count} /{" "}
-                    {item.copy_banned_count}
-                  </td>
-                  <td>{item.note ?? ""}</td>
-                  <td>
-                    {index === 0 ? null : (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => {
-                          void loadVersion(item.version);
-                        }}
-                      >
-                        载入这一版
-                      </button>
-                    )}
-                  </td>
+          <div
+            className={styles.tableScroll}
+            tabIndex={0}
+            role="region"
+            aria-label="关键词历史版本，可横向滚动"
+          >
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th scope="col">版本</th>
+                  <th scope="col">时间</th>
+                  <th scope="col">账号</th>
+                  <th scope="col">词数（关注/屏蔽/禁用）</th>
+                  <th scope="col">备注</th>
+                  <th scope="col">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {overview.history.map((item, index) => (
+                  <tr key={item.version}>
+                    <td>
+                      第 {item.version} 版{index === 0 ? "（当前）" : ""}
+                    </td>
+                    <td>{formatTime(item.created_at)}</td>
+                    <td>{item.created_by}</td>
+                    <td>
+                      {item.focus_count} / {item.block_count} /{" "}
+                      {item.copy_banned_count}
+                    </td>
+                    <td>{item.note ?? ""}</td>
+                    <td>
+                      {index === 0 ? null : (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            requestNavigation(() => {
+                              void loadVersion(item.version);
+                            });
+                          }}
+                        >
+                          载入这一版
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
     </section>
@@ -397,6 +413,10 @@ function TermList({
 }) {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  useUnsavedChanges(input !== "", () => {
+    setInput("");
+    setError(null);
+  });
   const savedKeys = new Set(saved.map((term) => term.toLocaleLowerCase()));
   const removed = saved.filter(
     (term) =>

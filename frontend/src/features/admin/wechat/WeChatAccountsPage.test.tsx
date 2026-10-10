@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
+import { UnsavedChangesProvider } from "../unsaved/UnsavedChanges";
 import { describe, expect, it, vi } from "vitest";
 
 import { ACCOUNT, fakeWeChatApi } from "./testApi";
@@ -18,7 +19,7 @@ describe("公众号账号", () => {
     expect((await axe(view.container)).violations).toEqual([]);
   });
 
-  it("binds an account after WeChat verifies it and clears a refused secret", async () => {
+  it("binds an account after verification and retains failed inputs only in memory", async () => {
     const user = userEvent.setup();
     const bind = vi
       .fn()
@@ -45,7 +46,10 @@ describe("公众号账号", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "AppSecret 不对",
     );
-    expect(within(form).getByLabelText("AppSecret")).toHaveValue("");
+    expect(within(form).getByLabelText("AppSecret")).toHaveValue(
+      "wrong-secret-value",
+    );
+    await user.clear(within(form).getByLabelText("AppSecret"));
 
     await user.type(
       within(form).getByLabelText("AppSecret"),
@@ -97,4 +101,56 @@ describe("公众号账号", () => {
     await user.click(within(row).getByRole("button", { name: "停用" }));
     expect(calls.update).toHaveBeenCalledWith(ACCOUNT.id, { enabled: false });
   });
+});
+
+it("protects binding credentials when opening an existing account and keeps failed updates", async () => {
+  const user = userEvent.setup();
+  const calls = fakeWeChatApi({
+    update: vi.fn(() => Promise.reject(new Error("保存失败"))),
+  });
+  render(
+    <UnsavedChangesProvider>
+      <WeChatAccountsPage api={calls} onSessionExpired={vi.fn()} />
+    </UnsavedChangesProvider>,
+  );
+  await user.click(await screen.findByRole("button", { name: "绑定公众号" }));
+  await user.type(screen.getByLabelText("AppSecret"), "memory-only-secret");
+  await user.click(screen.getByRole("button", { name: "修改" }));
+  await user.click(screen.getByRole("button", { name: "继续编辑" }));
+  expect(screen.getByLabelText("AppSecret")).toHaveValue("memory-only-secret");
+  await user.click(screen.getByRole("button", { name: "修改" }));
+  await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
+  expect(
+    screen.queryByRole("form", { name: "绑定公众号" }),
+  ).not.toBeInTheDocument();
+  await user.type(
+    screen.getByLabelText("新的 AppSecret（不换就留空）"),
+    "updated-fake-secret",
+  );
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
+  expect(screen.getByLabelText("新的 AppSecret（不换就留空）")).toHaveValue(
+    "updated-fake-secret",
+  );
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
+  expect(localStorage.length).toBe(0);
+  expect(sessionStorage.length).toBe(0);
+});
+
+it("freezes account and credential fields while binding", async () => {
+  const user = userEvent.setup();
+  const calls = fakeWeChatApi({
+    bind: vi.fn(() => new Promise<typeof ACCOUNT>(() => undefined)),
+  });
+  render(<WeChatAccountsPage api={calls} onSessionExpired={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "绑定公众号" }));
+  const form = screen.getByRole("form", { name: "绑定公众号" });
+  await user.type(within(form).getByLabelText("名称"), "科学");
+  await user.type(within(form).getByLabelText("AppID"), "wx-test");
+  await user.type(within(form).getByLabelText("AppSecret"), "fake-secret");
+  await user.click(within(form).getByRole("button", { name: "验证并绑定" }));
+  for (const name of ["名称", "AppID", "AppSecret", /主题（可选/]) {
+    expect(within(form).getByLabelText(name)).toBeDisabled();
+  }
 });

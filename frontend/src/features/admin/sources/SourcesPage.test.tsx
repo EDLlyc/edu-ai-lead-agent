@@ -316,3 +316,20 @@ describe("新闻源", () => {
     await waitFor(() => expect(expired).toHaveBeenCalledOnce());
   });
 });
+
+it("freezes the previewed source snapshot while saving", async () => {
+  const user = userEvent.setup();
+  const calls = api({
+    update: vi.fn(() => new Promise<AdminSource>(() => undefined)),
+  });
+  render(<SourcesPage api={calls} onSessionExpired={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "修改" }));
+  const form = screen.getByRole("form", { name: "修改新闻源" });
+  await user.type(within(form).getByLabelText("名称"), "新名");
+  await user.click(within(form).getByRole("button", { name: "预览" }));
+  await user.click(await within(form).findByRole("button", { name: "保存" }));
+  for (const role of ["textbox", "combobox", "radio"] as const) {
+    for (const input of within(form).getAllByRole(role))
+      expect(input).toBeDisabled();
+  }
+});

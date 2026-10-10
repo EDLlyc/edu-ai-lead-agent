@@ -191,7 +191,7 @@ export function SourcesPage({
           <p role="status">正在读取…</p>
         )
       ) : (
-        <table className={styles.table}>
+        <table className={styles.table} data-responsive="cards">
           <thead>
             <tr>
               <th scope="col">名称</th>
@@ -207,7 +207,7 @@ export function SourcesPage({
             {sources.map((source) => (
               <Fragment key={source.id}>
                 <tr data-enabled={source.enabled}>
-                  <td>
+                  <td data-label="名称">
                     <a
                       href={source.entry_url}
                       target="_blank"
@@ -216,18 +216,18 @@ export function SourcesPage({
                       {source.display_name}
                     </a>
                   </td>
-                  <td>{kindLabel(source)}</td>
-                  <td>{TIER_LABELS[source.tier]}</td>
-                  <td>{latestJobLabel(source)}</td>
-                  <td>{source.new_last_7_days}</td>
-                  <td>
+                  <td data-label="类型">{kindLabel(source)}</td>
+                  <td data-label="可信度">{TIER_LABELS[source.tier]}</td>
+                  <td data-label="最近一次抓取">{latestJobLabel(source)}</td>
+                  <td data-label="7 天新增">{source.new_last_7_days}</td>
+                  <td data-label="状态">
                     {source.archived_at !== null
                       ? "已删除"
                       : source.enabled
                         ? "打开"
                         : "关闭"}
                   </td>
-                  <td>
+                  <td data-label="操作">
                     {pending?.id === source.id ? (
                       <span
                         className={styles.confirm}
@@ -303,7 +303,7 @@ export function SourcesPage({
                 </tr>
                 {openArticles?.id === source.id ? (
                   <tr className={styles.articlesRow}>
-                    <td colSpan={7}>
+                    <td colSpan={7} data-label="最近收录的文章">
                       <ArticleList items={openArticles.items} />
                     </td>
                   </tr>

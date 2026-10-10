@@ -240,3 +240,16 @@ describe("keyword helpers", () => {
     ]);
   });
 });
+
+it("freezes notes together with keyword lists while saving", async () => {
+  const user = userEvent.setup();
+  const calls = api({
+    save: vi.fn(() => new Promise<KeywordsOverview>(() => undefined)),
+  });
+  render(<KeywordsPage api={calls} onSessionExpired={vi.fn()} />);
+  await user.type(await screen.findByLabelText("添加关注词"), "新增词{Enter}");
+  await user.type(screen.getByLabelText(/备注（可选/), "这次提交说明");
+  await user.click(screen.getByRole("button", { name: "保存为新版本" }));
+  expect(screen.getByLabelText(/备注（可选/)).toBeDisabled();
+  expect(screen.getByLabelText("添加关注词")).toBeDisabled();
+});

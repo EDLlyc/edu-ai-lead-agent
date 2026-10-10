@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Accessible responsive UI and explicit states"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "In-memory form state and navigation ownership"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Stable hooks and stale request isolation"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Generated contracts; no unsafe casts"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Behavior tests and build gates"}
+{"file": ".trellis/spec/backend/admin-console.md", "reason": "Existing publication/auth/secret/reliability semantics"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse guard/pagination/labels"}
+{"file": ".trellis/tasks/10-10-admin-usability/research/audit.md", "reason": "Confirmed visual and behavior defects"}

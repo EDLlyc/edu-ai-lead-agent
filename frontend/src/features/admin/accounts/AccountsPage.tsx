@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import styles from "../Admin.module.css";
+import { useUnsavedChanges, useUnsavedNavigation } from "../unsaved/context";
 import { AdminSessionExpiredError } from "../api";
 import { formatTime } from "../sources/labels";
 import {
@@ -40,6 +41,7 @@ export function AccountsPage({
   const [accounts, setAccounts] = useState<readonly AdminAccount[] | null>(
     null,
   );
+  const { requestNavigation } = useUnsavedNavigation();
   const [reloads, setReloads] = useState(0);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -121,9 +123,12 @@ export function AccountsPage({
           className={styles.primary}
           disabled={creating}
           onClick={() => {
-            setMessage(null);
-            setIssued(null);
-            setCreating(true);
+            requestNavigation(() => {
+              setMessage(null);
+              setIssued(null);
+              setEditing(null);
+              setCreating(true);
+            });
           }}
         >
           新建账号
@@ -160,127 +165,147 @@ export function AccountsPage({
           <p role="status">正在读取…</p>
         )
       ) : (
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">用户名</th>
-              <th scope="col">显示名</th>
-              <th scope="col">角色</th>
-              <th scope="col">状态</th>
-              <th scope="col">最近登录</th>
-              <th scope="col">在线</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((account) => {
-              const self = account.username === me;
-              return (
-                <tr key={account.username} data-enabled={account.active}>
-                  <td>
-                    {account.username}
-                    {self ? "（我）" : ""}
-                  </td>
-                  <td>{account.display_name}</td>
-                  <td>{ROLE_LABELS[account.role]}</td>
-                  <td>
-                    {!account.active
-                      ? "停用"
-                      : account.locked
-                        ? "锁定中"
-                        : "正常"}
-                  </td>
-                  <td>
-                    {account.last_login_at === null
-                      ? "从未登录"
-                      : formatTime(account.last_login_at)}
-                  </td>
-                  <td>{account.live_sessions}</td>
-                  <td>
-                    {editing === account.username ? (
-                      <EditAccountForm
-                        api={api}
-                        account={account}
-                        self={self}
-                        onError={fail}
-                        onCancel={() => setEditing(null)}
-                        onSaved={(saved) => {
-                          setEditing(null);
-                          setMessage({
-                            kind: "ok",
-                            text: `已保存「${saved.display_name}」`,
-                          });
-                          reload();
-                        }}
-                      />
-                    ) : pending?.username === account.username ? (
-                      <span
-                        className={styles.confirm}
-                        role="group"
-                        aria-label="确认操作"
-                      >
-                        {CONFIRM_TEXT[pending.action]}
-                        <button
-                          type="button"
-                          className={styles.primary}
-                          disabled={busy}
-                          onClick={() => {
-                            void run(pending);
+        <div
+          className={styles.tableScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="账号列表，可横向滚动"
+        >
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th scope="col">用户名</th>
+                <th scope="col">显示名</th>
+                <th scope="col">角色</th>
+                <th scope="col">状态</th>
+                <th scope="col">最近登录</th>
+                <th scope="col">在线</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((account) => {
+                const self = account.username === me;
+                return (
+                  <tr key={account.username} data-enabled={account.active}>
+                    <td>
+                      {account.username}
+                      {self ? "（我）" : ""}
+                    </td>
+                    <td>{account.display_name}</td>
+                    <td>{ROLE_LABELS[account.role]}</td>
+                    <td>
+                      {!account.active
+                        ? "停用"
+                        : account.locked
+                          ? "锁定中"
+                          : "正常"}
+                    </td>
+                    <td>
+                      {account.last_login_at === null
+                        ? "从未登录"
+                        : formatTime(account.last_login_at)}
+                    </td>
+                    <td>{account.live_sessions}</td>
+                    <td>
+                      {editing === account.username ? (
+                        <EditAccountForm
+                          api={api}
+                          account={account}
+                          self={self}
+                          onError={fail}
+                          onCancel={() => setEditing(null)}
+                          onSaved={(saved) => {
+                            setEditing(null);
+                            setMessage({
+                              kind: "ok",
+                              text: `已保存「${saved.display_name}」`,
+                            });
+                            reload();
                           }}
+                        />
+                      ) : pending?.username === account.username ? (
+                        <span
+                          className={styles.confirm}
+                          role="group"
+                          aria-label="确认操作"
                         >
-                          确认
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setPending(null)}
-                        >
-                          取消
-                        </button>
-                      </span>
-                    ) : (
-                      <span className={styles.rowActions}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMessage(null);
-                            setEditing(account.username);
-                          }}
-                        >
-                          修改
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPending({
-                              username: account.username,
-                              action: "reset",
-                            })
-                          }
-                        >
-                          重设密码
-                        </button>
-                        {self ? null : (
+                          {CONFIRM_TEXT[pending.action]}
+                          <button
+                            type="button"
+                            className={styles.primary}
+                            disabled={busy}
+                            onClick={() => {
+                              void run(pending);
+                            }}
+                          >
+                            确认
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setPending(null)}
+                          >
+                            取消
+                          </button>
+                        </span>
+                      ) : (
+                        <span className={styles.rowActions}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              requestNavigation(() => {
+                                setMessage(null);
+                                setCreating(false);
+                                setEditing(account.username);
+                              });
+                            }}
+                          >
+                            修改
+                          </button>
                           <button
                             type="button"
                             onClick={() =>
-                              setPending({
-                                username: account.username,
-                                action: account.active ? "disable" : "enable",
+                              requestNavigation(() => {
+                                setEditing(null);
+                                setCreating(false);
+                                setPending({
+                                  username: account.username,
+                                  action: "reset",
+                                });
                               })
                             }
                           >
-                            {account.active ? "停用" : "启用"}
+                            重设密码
                           </button>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                          {self ? null : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                requestNavigation(() => {
+                                  setEditing(null);
+                                  setCreating(false);
+                                  setPending({
+                                    username: account.username,
+                                    action: account.active
+                                      ? "disable"
+                                      : "enable",
+                                  });
+                                })
+                              }
+                            >
+                              {account.active ? "停用" : "启用"}
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -343,6 +368,10 @@ function CreateAccountForm({
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<AccountRole>("editor");
+  const { requestDiscard } = useUnsavedChanges(
+    username !== "" || displayName !== "" || role !== "editor",
+    onCancel,
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -375,6 +404,7 @@ function CreateAccountForm({
         <label className={styles.field}>
           <span>用户名（登录用，小写字母开头，可含数字 _ . -）</span>
           <input
+            disabled={busy}
             value={username}
             required
             maxLength={40}
@@ -387,6 +417,7 @@ function CreateAccountForm({
         <label className={styles.field}>
           <span>显示名</span>
           <input
+            disabled={busy}
             value={displayName}
             required
             maxLength={40}
@@ -397,6 +428,7 @@ function CreateAccountForm({
         <label className={styles.field}>
           <span>角色</span>
           <select
+            disabled={busy}
             value={role}
             onChange={(event) => setRole(event.target.value as AccountRole)}
           >
@@ -409,7 +441,11 @@ function CreateAccountForm({
         <button type="submit" className={styles.primary} disabled={busy}>
           {busy ? "正在新建…" : "新建并生成密码"}
         </button>
-        <button type="button" onClick={onCancel} disabled={busy}>
+        <button
+          type="button"
+          onClick={() => requestDiscard(onCancel)}
+          disabled={busy}
+        >
           取消
         </button>
       </div>
@@ -434,6 +470,10 @@ function EditAccountForm({
 }) {
   const [displayName, setDisplayName] = useState(account.display_name);
   const [role, setRole] = useState<AccountRole>(account.role);
+  const { requestDiscard } = useUnsavedChanges(
+    displayName !== account.display_name || role !== account.role,
+    onCancel,
+  );
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -460,6 +500,7 @@ function EditAccountForm({
       aria-label={`修改 ${account.username}`}
     >
       <input
+        disabled={busy}
         aria-label="显示名"
         value={displayName}
         maxLength={40}
@@ -468,7 +509,7 @@ function EditAccountForm({
       <select
         aria-label="角色"
         value={role}
-        disabled={self}
+        disabled={self || busy}
         title={self ? "不能修改自己的角色" : undefined}
         onChange={(event) => setRole(event.target.value as AccountRole)}
       >
@@ -485,7 +526,11 @@ function EditAccountForm({
       >
         保存
       </button>
-      <button type="button" disabled={busy} onClick={onCancel}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => requestDiscard(onCancel)}
+      >
         取消
       </button>
     </span>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import styles from "../Admin.module.css";
+import { useUnsavedChanges, useUnsavedNavigation } from "../unsaved/context";
 import { AdminSessionExpiredError } from "../api";
 import { splitTerms } from "../keywords/api";
 import { formatTime } from "../sources/labels";
@@ -22,6 +23,7 @@ export function WeChatAccountsPage({
   const [accounts, setAccounts] = useState<readonly WeChatAccount[] | null>(
     null,
   );
+  const { requestNavigation } = useUnsavedNavigation();
   const [reloads, setReloads] = useState(0);
   const [binding, setBinding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -98,8 +100,11 @@ export function WeChatAccountsPage({
           className={styles.primary}
           disabled={binding || configured === false}
           onClick={() => {
-            setMessage(null);
-            setBinding(true);
+            requestNavigation(() => {
+              setMessage(null);
+              setEditing(null);
+              setBinding(true);
+            });
           }}
         >
           绑定公众号
@@ -144,103 +149,113 @@ export function WeChatAccountsPage({
       ) : accounts.length === 0 ? (
         <p>还没有绑定公众号。</p>
       ) : (
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">名称</th>
-              <th scope="col">AppID</th>
-              <th scope="col">AppSecret</th>
-              <th scope="col">主题</th>
-              <th scope="col">验证</th>
-              <th scope="col">状态</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((account) => (
-              <tr key={account.id} data-enabled={account.enabled}>
-                <td>{account.name}</td>
-                <td>
-                  <code>{account.app_id}</code>
-                </td>
-                <td>{account.secret_hint}</td>
-                <td>
-                  {account.topics.length === 0
-                    ? "—"
-                    : account.topics.join("、")}
-                </td>
-                <td>
-                  {account.last_verify_error !== null
-                    ? `失败：${account.last_verify_error}`
-                    : account.last_verified_at === null
-                      ? "未验证"
-                      : `通过 ${formatTime(account.last_verified_at)}`}
-                </td>
-                <td>{account.enabled ? "使用中" : "已停用"}</td>
-                <td>
-                  {editing === account.id ? (
-                    <EditForm
-                      api={api}
-                      account={account}
-                      onError={fail}
-                      onCancel={() => setEditing(null)}
-                      onSaved={(saved) => {
-                        setEditing(null);
-                        setMessage({
-                          kind: "ok",
-                          text: `已保存「${saved.name}」`,
-                        });
-                        reload();
-                      }}
-                    />
-                  ) : (
-                    <span className={styles.rowActions}>
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => {
-                          void act(
-                            account.id,
-                            () => api.verify(account.id),
-                            "验证通过",
-                          );
-                        }}
-                      >
-                        {busy === account.id ? "验证中…" : "验证"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => {
-                          setMessage(null);
-                          setEditing(account.id);
-                        }}
-                      >
-                        修改
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => {
-                          void act(
-                            account.id,
-                            () =>
-                              api.update(account.id, {
-                                enabled: !account.enabled,
-                              }),
-                            account.enabled ? "已停用" : "已启用",
-                          );
-                        }}
-                      >
-                        {account.enabled ? "停用" : "启用"}
-                      </button>
-                    </span>
-                  )}
-                </td>
+        <div
+          className={styles.tableScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="公众号列表，可横向滚动"
+        >
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th scope="col">名称</th>
+                <th scope="col">AppID</th>
+                <th scope="col">AppSecret</th>
+                <th scope="col">主题</th>
+                <th scope="col">验证</th>
+                <th scope="col">状态</th>
+                <th scope="col">操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {accounts.map((account) => (
+                <tr key={account.id} data-enabled={account.enabled}>
+                  <td>{account.name}</td>
+                  <td>
+                    <code>{account.app_id}</code>
+                  </td>
+                  <td>{account.secret_hint}</td>
+                  <td>
+                    {account.topics.length === 0
+                      ? "—"
+                      : account.topics.join("、")}
+                  </td>
+                  <td>
+                    {account.last_verify_error !== null
+                      ? `失败：${account.last_verify_error}`
+                      : account.last_verified_at === null
+                        ? "未验证"
+                        : `通过 ${formatTime(account.last_verified_at)}`}
+                  </td>
+                  <td>{account.enabled ? "使用中" : "已停用"}</td>
+                  <td>
+                    {editing === account.id ? (
+                      <EditForm
+                        api={api}
+                        account={account}
+                        onError={fail}
+                        onCancel={() => setEditing(null)}
+                        onSaved={(saved) => {
+                          setEditing(null);
+                          setMessage({
+                            kind: "ok",
+                            text: `已保存「${saved.name}」`,
+                          });
+                          reload();
+                        }}
+                      />
+                    ) : (
+                      <span className={styles.rowActions}>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => {
+                            void act(
+                              account.id,
+                              () => api.verify(account.id),
+                              "验证通过",
+                            );
+                          }}
+                        >
+                          {busy === account.id ? "验证中…" : "验证"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => {
+                            requestNavigation(() => {
+                              setMessage(null);
+                              setBinding(false);
+                              setEditing(account.id);
+                            });
+                          }}
+                        >
+                          修改
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => {
+                            void act(
+                              account.id,
+                              () =>
+                                api.update(account.id, {
+                                  enabled: !account.enabled,
+                                }),
+                              account.enabled ? "已停用" : "已启用",
+                            );
+                          }}
+                        >
+                          {account.enabled ? "停用" : "启用"}
+                        </button>
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -261,6 +276,10 @@ function BindForm({
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [topics, setTopics] = useState("");
+  const { requestDiscard } = useUnsavedChanges(
+    name !== "" || appId !== "" || appSecret !== "" || topics !== "",
+    onCancel,
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -277,7 +296,6 @@ function BindForm({
       );
     } catch (error) {
       onError(error);
-      setAppSecret("");
       setBusy(false);
     }
   };
@@ -300,6 +318,7 @@ function BindForm({
         <label className={styles.field}>
           <span>名称</span>
           <input
+            disabled={busy}
             value={name}
             required
             maxLength={40}
@@ -310,6 +329,7 @@ function BindForm({
         <label className={styles.field}>
           <span>AppID</span>
           <input
+            disabled={busy}
             value={appId}
             required
             spellCheck={false}
@@ -320,6 +340,7 @@ function BindForm({
         <label className={styles.field}>
           <span>AppSecret</span>
           <input
+            disabled={busy}
             type="password"
             value={appSecret}
             required
@@ -331,6 +352,7 @@ function BindForm({
         <label className={styles.field}>
           <span>主题（可选，空格分隔，例如 科学 教育）</span>
           <input
+            disabled={busy}
             value={topics}
             onChange={(event) => setTopics(event.target.value)}
           />
@@ -340,7 +362,11 @@ function BindForm({
         <button type="submit" className={styles.primary} disabled={busy}>
           {busy ? "正在和微信验证…" : "验证并绑定"}
         </button>
-        <button type="button" onClick={onCancel} disabled={busy}>
+        <button
+          type="button"
+          onClick={() => requestDiscard(onCancel)}
+          disabled={busy}
+        >
           取消
         </button>
       </div>
@@ -364,6 +390,12 @@ function EditForm({
   const [name, setName] = useState(account.name);
   const [topics, setTopics] = useState(account.topics.join(" "));
   const [secret, setSecret] = useState("");
+  const { requestDiscard } = useUnsavedChanges(
+    name !== account.name ||
+      topics !== account.topics.join(" ") ||
+      secret !== "",
+    onCancel,
+  );
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -378,7 +410,6 @@ function EditForm({
       );
     } catch (error) {
       onError(error);
-      setSecret("");
       setBusy(false);
     }
   };
@@ -390,18 +421,21 @@ function EditForm({
       aria-label={`修改 ${account.name}`}
     >
       <input
+        disabled={busy}
         aria-label="名称"
         value={name}
         maxLength={40}
         onChange={(event) => setName(event.target.value)}
       />
       <input
+        disabled={busy}
         aria-label="主题"
         value={topics}
         placeholder="主题，空格分隔"
         onChange={(event) => setTopics(event.target.value)}
       />
       <input
+        disabled={busy}
         aria-label="新的 AppSecret（不换就留空）"
         type="password"
         autoComplete="new-password"
@@ -419,7 +453,11 @@ function EditForm({
       >
         {busy ? "保存中…" : "保存"}
       </button>
-      <button type="button" disabled={busy} onClick={onCancel}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => requestDiscard(onCancel)}
+      >
         取消
       </button>
     </span>

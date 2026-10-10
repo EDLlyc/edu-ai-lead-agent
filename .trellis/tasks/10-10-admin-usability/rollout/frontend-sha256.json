@@ -1,0 +1,9 @@
+{
+  "environment": "production",
+  "files": {
+    "admin/index.html": "c137eb0f7f0cd9b03cf8899d1ebc865a649ad9b6d7af299c4dde0eb6517d5b2c",
+    "assets/index-Bl4uRFXL.js": "0b344759f49309a6d81d138bfff102ef30fdb4999c75456ae91de22c3da099c5",
+    "assets/index-DFicJJbO.css": "30ed2d06f2cd27c1ad1bd1a4741d38a30c39e8ea6d435853c73d1c5c96d4f568"
+  },
+  "archive_sha256": "092b558c4bea07484f2ac56d851050a8e3f180024f0f2c8a1a5ffb7248c5277a"
+}

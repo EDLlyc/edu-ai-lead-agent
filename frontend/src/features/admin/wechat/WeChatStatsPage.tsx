@@ -9,7 +9,13 @@ import {
   type WeChatApi,
   type WeChatStats,
 } from "./api";
-import { shiftDate, statsDays, statsTotal, type StatsDay } from "./statsView";
+import {
+  shiftDate,
+  statsDays,
+  statsSummary,
+  statsTotal,
+  type StatsDay,
+} from "./statsView";
 
 const DAYS = 30;
 // Single-series magnitude bars; validated (lightness, chroma, contrast) on the white surface.
@@ -202,57 +208,83 @@ export function WeChatStatsPage({
                 ["在看人数之和", "zaikan_user"],
                 ["收藏人数之和", "collection_user"],
               ] as const
-            ).map(([label, key]) => (
-              <div key={key} className={styles.tile}>
-                <span>近 7 天{label}</span>
-                <strong>{statsTotal(lastWeek, key)}</strong>
-                <small>近 30 天 {statsTotal(daily, key)}</small>
-              </div>
-            ))}
+            ).map(([label, key]) => {
+              const { total, missing } = statsSummary(lastWeek, key);
+              return (
+                <div key={key} className={styles.tile}>
+                  <span>近 7 天{label}</span>
+                  <strong>{total ?? "—"}</strong>
+                  <span
+                    className={styles.statusBadge}
+                    data-status={
+                      total === null
+                        ? "missing"
+                        : missing > 0
+                          ? "partial"
+                          : "complete"
+                    }
+                  >
+                    {total === null
+                      ? "暂无数据"
+                      : missing > 0
+                        ? `已知值 · 缺 ${missing} 天`
+                        : "7 天完整数据"}
+                  </span>
+                  <small>近 30 天 {statsTotal(daily, key)}</small>
+                </div>
+              );
+            })}
           </div>
           <DailyReadsChart key={accountId} rows={daily} />
           <h3 className={styles.subheading}>文章（近 30 天发布）</h3>
           {stats.articles.length === 0 ? (
             <p>近 30 天还没有群发文章的数据。</p>
           ) : (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th scope="col">文章</th>
-                  <th scope="col">发布日期</th>
-                  <th scope="col">阅读人数</th>
-                  <th scope="col">分享</th>
-                  <th scope="col">收藏</th>
-                  <th scope="col">送达阅读率</th>
-                  <th scope="col">主要来源</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.articles.map((article) => (
-                  <tr key={article.msgid}>
-                    <td>
-                      {article.url === null ? (
-                        article.title
-                      ) : (
-                        <a
-                          href={article.url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                        >
-                          {article.title}
-                        </a>
-                      )}
-                    </td>
-                    <td>{formatDate(article.publish_date)}</td>
-                    <td>{article.read_user}</td>
-                    <td>{article.share_user}</td>
-                    <td>{article.collection_user}</td>
-                    <td>{percent(article.read_delivery_rate)}</td>
-                    <td>{topSources(article.read_sources)}</td>
+            <div
+              className={styles.tableScroll}
+              tabIndex={0}
+              role="region"
+              aria-label="文章数据表，可横向滚动"
+            >
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">文章</th>
+                    <th scope="col">发布日期</th>
+                    <th scope="col">阅读人数</th>
+                    <th scope="col">分享</th>
+                    <th scope="col">收藏</th>
+                    <th scope="col">送达阅读率</th>
+                    <th scope="col">主要来源</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {stats.articles.map((article) => (
+                    <tr key={article.msgid}>
+                      <td>
+                        {article.url === null ? (
+                          article.title
+                        ) : (
+                          <a
+                            href={article.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            {article.title}
+                          </a>
+                        )}
+                      </td>
+                      <td>{formatDate(article.publish_date)}</td>
+                      <td>{article.read_user}</td>
+                      <td>{article.share_user}</td>
+                      <td>{article.collection_user}</td>
+                      <td>{percent(article.read_delivery_rate)}</td>
+                      <td>{topSources(article.read_sources)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
@@ -370,36 +402,43 @@ function DailyReadsChart({ rows }: { readonly rows: readonly StatsDay[] }) {
       </div>
       <details>
         <summary>看表格</summary>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">日期</th>
-              <th scope="col">阅读</th>
-              <th scope="col">分享</th>
-              <th scope="col">点赞</th>
-              <th scope="col">在看</th>
-              <th scope="col">评论</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...rows].reverse().map((row) => (
-              <tr key={row.date}>
-                <td>{shortDate(row.date)}</td>
-                {row.values === null ? (
-                  <td colSpan={5}>缺少数据</td>
-                ) : (
-                  <>
-                    <td>{row.values.read_user}</td>
-                    <td>{row.values.share_user}</td>
-                    <td>{row.values.like_user}</td>
-                    <td>{row.values.zaikan_user}</td>
-                    <td>{row.values.comment_count}</td>
-                  </>
-                )}
+        <div
+          className={styles.tableScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="每日数据表，可横向滚动"
+        >
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th scope="col">日期</th>
+                <th scope="col">阅读</th>
+                <th scope="col">分享</th>
+                <th scope="col">点赞</th>
+                <th scope="col">在看</th>
+                <th scope="col">评论</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {[...rows].reverse().map((row) => (
+                <tr key={row.date}>
+                  <td>{shortDate(row.date)}</td>
+                  {row.values === null ? (
+                    <td colSpan={5}>缺少数据</td>
+                  ) : (
+                    <>
+                      <td>{row.values.read_user}</td>
+                      <td>{row.values.share_user}</td>
+                      <td>{row.values.like_user}</td>
+                      <td>{row.values.zaikan_user}</td>
+                      <td>{row.values.comment_count}</td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </details>
     </figure>
   );

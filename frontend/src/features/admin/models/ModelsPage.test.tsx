@@ -10,6 +10,7 @@ import type {
   ModelsApi,
 } from "./api";
 import { ModelsPage } from "./ModelsPage";
+import { UnsavedChangesProvider } from "../unsaved/UnsavedChanges";
 
 const ZHIPU: ModelProvider = {
   id: "zhipu",
@@ -335,4 +336,63 @@ describe("模型配置", () => {
     expect(zhipu).not.toHaveTextContent("使用中");
     expect(zhipu).toHaveTextContent("尚未收到服务加载状态");
   });
+});
+
+it("cancels only the selected provider form and preserves another unsaved key", async () => {
+  const user = userEvent.setup();
+  const calls = fakeApi();
+  render(
+    <UnsavedChangesProvider>
+      <ModelsPage api={calls} onSessionExpired={vi.fn()} />
+    </UnsavedChangesProvider>,
+  );
+  const buttons = await screen.findAllByRole("button", { name: "更换 key" });
+  await user.click(buttons[0]!);
+  const zhipu = screen.getByRole("form", { name: "更换智谱的 key" });
+  await user.type(within(zhipu).getByLabelText("新的 API key"), "fake-key-one");
+  await user.click(screen.getByRole("button", { name: "更换 key" }));
+  const comfly = screen.getByRole("form", { name: "更换Comfly的 key" });
+  await user.type(
+    within(comfly).getByLabelText("新的 API key"),
+    "fake-key-two",
+  );
+  await user.click(within(zhipu).getByRole("button", { name: "取消" }));
+  await user.click(screen.getByRole("button", { name: "继续编辑" }));
+  expect(within(zhipu).getByLabelText("新的 API key")).toHaveValue(
+    "fake-key-one",
+  );
+  await user.click(within(zhipu).getByRole("button", { name: "取消" }));
+  await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
+  expect(
+    screen.queryByRole("form", { name: "更换智谱的 key" }),
+  ).not.toBeInTheDocument();
+  expect(within(comfly).getByLabelText("新的 API key")).toHaveValue(
+    "fake-key-two",
+  );
+  const reload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(reload);
+  expect(reload.defaultPrevented).toBe(true);
+  expect(calls.test).not.toHaveBeenCalled();
+  expect(calls.save).not.toHaveBeenCalled();
+  expect(localStorage.length).toBe(0);
+  expect(sessionStorage.length).toBe(0);
+});
+
+it("freezes key and note while saving the tested key", async () => {
+  const user = userEvent.setup();
+  const calls = fakeApi({
+    save: vi.fn(() => new Promise<ModelProvider>(() => undefined)),
+  });
+  render(<ModelsPage api={calls} onSessionExpired={vi.fn()} />);
+  await user.click(
+    (await screen.findAllByRole("button", { name: "更换 key" }))[0]!,
+  );
+  const form = screen.getByRole("form", { name: "更换智谱的 key" });
+  await user.type(within(form).getByLabelText("新的 API key"), "good-fake-key");
+  await user.click(within(form).getByRole("button", { name: "测试连接" }));
+  await user.click(
+    await within(form).findByRole("button", { name: "保存并启用" }),
+  );
+  expect(within(form).getByLabelText("新的 API key")).toBeDisabled();
+  expect(within(form).getByLabelText(/说明（可选/)).toBeDisabled();
 });

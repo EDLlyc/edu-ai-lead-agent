@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
+import { UnsavedChangesProvider } from "../unsaved/UnsavedChanges";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AccountsApi, AdminAccount } from "./api";
@@ -169,4 +170,44 @@ describe("账号管理", () => {
       "用户名已经有了",
     );
   });
+});
+
+it("keeps failed account edits until save or explicit discard and guards switching rows", async () => {
+  const user = userEvent.setup();
+  const calls = api({
+    update: vi.fn(() => Promise.reject(new Error("保存失败"))),
+  });
+  render(
+    <UnsavedChangesProvider>
+      <AccountsPage api={calls} me="liyuchen" onSessionExpired={vi.fn()} />
+    </UnsavedChangesProvider>,
+  );
+  const rows = await screen.findAllByRole("row");
+  await user.click(within(rows[2]!).getByRole("button", { name: "修改" }));
+  await user.type(screen.getByLabelText("显示名"), "新名称");
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
+  await user.click(within(rows[1]!).getByRole("button", { name: "修改" }));
+  await user.click(screen.getByRole("button", { name: "继续编辑" }));
+  expect(screen.getByLabelText("显示名")).toHaveValue("王老师新名称");
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
+  expect(screen.queryByLabelText("显示名")).not.toBeInTheDocument();
+  const reload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(reload);
+  expect(reload.defaultPrevented).toBe(false);
+});
+
+it("freezes name and role while an account update is pending", async () => {
+  const user = userEvent.setup();
+  const calls = api({
+    update: vi.fn(() => new Promise<AdminAccount>(() => undefined)),
+  });
+  render(<AccountsPage api={calls} me="liyuchen" onSessionExpired={vi.fn()} />);
+  const rows = await screen.findAllByRole("row");
+  await user.click(within(rows[2]!).getByRole("button", { name: "修改" }));
+  await user.type(screen.getByLabelText("显示名"), "编辑");
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  expect(screen.getByLabelText("显示名")).toBeDisabled();
+  expect(screen.getByLabelText("角色")).toBeDisabled();
 });

@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import styles from "../Admin.module.css";
 import { AdminSessionExpiredError } from "../api";
 import { formatTime } from "../sources/labels";
+import { useUnsavedChanges, useUnsavedNavigation } from "../unsaved/context";
+import {
+  PUBLICATION_PAGE_SIZE,
+  usePublicationPage,
+  type PublicationTab,
+} from "./usePublicationPage";
 import {
   JOB_STATUS_LABELS,
   wechatApi as defaultApi,
@@ -11,10 +17,8 @@ import {
   type WeChatAccountOption,
   type WeChatApi,
   type WeChatDraft,
-  type WeChatPublished,
 } from "./api";
 
-type Tab = "drafts" | "jobs" | "published";
 type Pending = {
   readonly draft: WeChatDraft;
   readonly when: "now" | "later";
@@ -62,17 +66,48 @@ export function WeChatPublishPage({
     readonly WeChatAccountOption[] | null
   >(null);
   const [accountId, setAccountId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("drafts");
-  const [drafts, setDrafts] = useState<readonly WeChatDraft[] | null>(null);
-  const [jobs, setJobs] = useState<readonly PublishJob[] | null>(null);
-  const [published, setPublished] = useState<readonly WeChatPublished[] | null>(
-    null,
-  );
+  const [tab, setTab] = useState<PublicationTab>("drafts");
   const [pending, setPending] = useState<Pending>(null);
   const [reconciling, setReconciling] = useState<PublishJob | null>(null);
   const [when, setWhen] = useState(defaultLocalTime);
   const [busy, setBusy] = useState(false);
-  const [reloads, setReloads] = useState(0);
+  const [optionsReloads, setOptionsReloads] = useState(0);
+  const [initialWhen, setInitialWhen] = useState(defaultLocalTime);
+  const submitting = useRef(false);
+  const { requestNavigation } = useUnsavedNavigation();
+  const page = usePublicationPage({ api, accountId, tab, onSessionExpired });
+  const { refresh } = page;
+  const drafts = page.data?.tab === "drafts" ? page.data.page.items : null;
+  const published =
+    page.data?.tab === "published" ? page.data.page.items : null;
+  const jobs = page.jobs;
+  const actionsDisabled = busy || !page.ready;
+  const pendingDraft = drafts?.find(
+    (draft) => draft.media_id === pending?.draft.media_id,
+  );
+  const pendingInvalid =
+    pending !== null &&
+    pendingDraft !== undefined &&
+    (pendingDraft.open_job_id !== null ||
+      pendingDraft.updated_at !== pending.draft.updated_at ||
+      JSON.stringify(pendingDraft.articles) !==
+        JSON.stringify(pending.draft.articles));
+  const { requestDiscard: discardPending } = useUnsavedChanges(
+    pending?.step === 2 || (pending?.when === "later" && when !== initialWhen),
+    () => {
+      setPending(null);
+    },
+  );
+
+  const changeContext = (action: () => void) => {
+    if (busy) return;
+    requestNavigation(() => {
+      setPending(null);
+      setReconciling(null);
+      setMessage(null);
+      action();
+    });
+  };
   const [message, setMessage] = useState<{
     readonly kind: "ok" | "error";
     readonly text: string;
@@ -107,44 +142,29 @@ export function WeChatPublishPage({
     return () => {
       cancelled = true;
     };
-  }, [api, fail]);
-
-  useEffect(() => {
-    if (accountId === null) return;
-    let cancelled = false;
-    const load =
-      tab === "drafts"
-        ? api.drafts(accountId, 0).then((page) => {
-            if (!cancelled) setDrafts(page.items);
-          })
-        : tab === "published"
-          ? api.published(accountId, 0).then((page) => {
-              if (!cancelled) setPublished(page.items);
-            })
-          : Promise.resolve();
-    const jobsLoad = api.jobs(accountId).then((items) => {
-      if (!cancelled) setJobs(items);
-    });
-    Promise.all([load, jobsLoad]).catch((error: unknown) => {
-      if (!cancelled) fail(error);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, accountId, tab, reloads, fail]);
+  }, [api, fail, optionsReloads]);
 
   const anyOpen = jobs?.some((job) => OPEN.has(job.status)) ?? false;
   useEffect(() => {
-    if (!anyOpen) return;
-    const timer = window.setInterval(
-      () => setReloads((count) => count + 1),
-      REFRESH_MS,
-    );
+    if (!anyOpen || page.loading || busy) return;
+    const timer = window.setInterval(refresh, REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [anyOpen]);
+  }, [anyOpen, busy, page.loading, refresh]);
 
   const confirm = async () => {
-    if (pending === null || accountId === null) return;
+    if (
+      pending === null ||
+      accountId === null ||
+      actionsDisabled ||
+      pendingInvalid ||
+      submitting.current
+    )
+      return;
+    const currentDraft = drafts?.find(
+      (draft) => draft.media_id === pending.draft.media_id,
+    );
+    if (!currentDraft || currentDraft.open_job_id !== null) return;
+    submitting.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -170,24 +190,26 @@ export function WeChatPublishPage({
       );
       setPending(null);
       setTab("jobs");
-      setReloads((count) => count + 1);
+      refresh();
     } catch (error) {
       fail(error);
       // A lost browser response does not prove that the API never submitted the draft.
       setPending(null);
       setTab("jobs");
-      setReloads((count) => count + 1);
+      refresh();
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
 
   const cancelJob = async (job: PublishJob) => {
+    if (actionsDisabled || job.account_id !== accountId) return;
     setBusy(true);
     try {
       await api.cancel(job.id);
       setMessage({ kind: "ok", text: `已取消「${job.title}」的定时发布` });
-      setReloads((count) => count + 1);
+      refresh();
     } catch (error) {
       fail(error);
     } finally {
@@ -196,6 +218,7 @@ export function WeChatPublishPage({
   };
 
   const recheck = async (job: PublishJob) => {
+    if (actionsDisabled || job.account_id !== accountId) return;
     setBusy(true);
     try {
       const result = await api.recheck(job.id);
@@ -203,7 +226,7 @@ export function WeChatPublishPage({
         kind: result.status === "outcome_unknown" ? "error" : "ok",
         text: `查询结果：${JOB_STATUS_LABELS[result.status]}${result.error ? `：${result.error}` : ""}`,
       });
-      setReloads((count) => count + 1);
+      refresh();
     } catch (error) {
       fail(error);
     } finally {
@@ -212,7 +235,12 @@ export function WeChatPublishPage({
   };
 
   const reconcile = async (input: PublishReconcile) => {
-    if (reconciling === null) return;
+    if (
+      reconciling === null ||
+      actionsDisabled ||
+      reconciling.account_id !== accountId
+    )
+      return;
     setBusy(true);
     try {
       await api.reconcile(reconciling.id, input);
@@ -224,7 +252,7 @@ export function WeChatPublishPage({
             ? "已记录人工核对：文章已发布，仍禁止重复提交。"
             : "已记录人工核对：文章未发布。可以返回草稿箱重新提交。",
       });
-      setReloads((count) => count + 1);
+      refresh();
     } catch (error) {
       fail(error);
     } finally {
@@ -256,12 +284,11 @@ export function WeChatPublishPage({
               value={accountId ?? ""}
               disabled={busy}
               onChange={(event) => {
-                setAccountId(event.target.value);
-                setDrafts(null);
-                setJobs(null);
-                setPublished(null);
-                setPending(null);
-                setReconciling(null);
+                const nextAccount = event.target.value;
+                changeContext(() => {
+                  page.changePage(0);
+                  setAccountId(nextAccount);
+                });
               }}
             >
               {accounts.map((account) => (
@@ -289,7 +316,14 @@ export function WeChatPublishPage({
             type="button"
             role="tab"
             aria-selected={tab === key}
-            onClick={() => setTab(key)}
+            disabled={busy}
+            onClick={() => {
+              if (key !== tab)
+                changeContext(() => {
+                  page.changePage(0);
+                  setTab(key);
+                });
+            }}
           >
             {label}
           </button>
@@ -308,14 +342,33 @@ export function WeChatPublishPage({
         <ReconcileForm
           key={reconciling.id}
           job={reconciling}
-          busy={busy}
+          busy={actionsDisabled}
           onConfirm={(input) => {
             void reconcile(input);
           }}
           onCancel={() => setReconciling(null)}
         />
       )}
-      {tab === "drafts" ? (
+      {accounts === null && message?.kind === "error" ? (
+        <button
+          type="button"
+          onClick={() => {
+            setMessage(null);
+            setOptionsReloads((value) => value + 1);
+          }}
+        >
+          重新读取公众号
+        </button>
+      ) : page.error !== null ? (
+        <div>
+          <p className={styles.error} role="alert">
+            {page.error}
+          </p>
+          <button type="button" onClick={refresh}>
+            重试读取
+          </button>
+        </div>
+      ) : tab === "drafts" ? (
         drafts === null ? (
           <p role="status">正在读取草稿箱…</p>
         ) : drafts.length === 0 ? (
@@ -343,12 +396,18 @@ export function WeChatPublishPage({
                     }
                     when={when}
                     busy={busy}
+                    disabled={actionsDisabled || pendingInvalid}
+                    invalid={pendingInvalid}
                     onWhen={setWhen}
                     onNext={() => setPending({ ...pending, step: 2 })}
                     onConfirm={() => {
                       void confirm();
                     }}
-                    onCancel={() => setPending(null)}
+                    onCancel={() =>
+                      discardPending(() => {
+                        setPending(null);
+                      })
+                    }
                   />
                 ) : draft.open_job_id !== null ? (
                   <span className={styles.hint}>
@@ -359,20 +418,26 @@ export function WeChatPublishPage({
                     <button
                       type="button"
                       className={styles.primary}
-                      onClick={() => {
-                        setMessage(null);
-                        setPending({ draft, when: "now", step: 1 });
-                      }}
+                      disabled={actionsDisabled}
+                      onClick={() =>
+                        changeContext(() => {
+                          setPending({ draft, when: "now", step: 1 });
+                        })
+                      }
                     >
                       立即发布
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setMessage(null);
-                        setWhen(defaultLocalTime());
-                        setPending({ draft, when: "later", step: 1 });
-                      }}
+                      disabled={actionsDisabled}
+                      onClick={() =>
+                        changeContext(() => {
+                          const nextWhen = defaultLocalTime();
+                          setWhen(nextWhen);
+                          setInitialWhen(nextWhen);
+                          setPending({ draft, when: "later", step: 1 });
+                        })
+                      }
                     >
                       定时发布
                     </button>
@@ -388,7 +453,7 @@ export function WeChatPublishPage({
         ) : jobs.length === 0 ? (
           <p>还没有发布记录。</p>
         ) : (
-          <table className={styles.table}>
+          <table className={styles.table} data-responsive="cards">
             <thead>
               <tr>
                 <th scope="col">文章</th>
@@ -400,8 +465,8 @@ export function WeChatPublishPage({
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id} data-status={job.status}>
-                  <td>
+                <tr key={job.id}>
+                  <td data-label="文章">
                     {job.article_url === null ? (
                       job.title
                     ) : (
@@ -414,26 +479,33 @@ export function WeChatPublishPage({
                       </a>
                     )}
                   </td>
-                  <td>{formatTime(job.scheduled_at)}</td>
-                  <td>
-                    {job.reconciled_by && job.status === "succeeded"
-                      ? "人工核对已发布"
-                      : JOB_STATUS_LABELS[job.status]}
-                    {job.error === null ? "" : `：${job.error}`}
+                  <td data-label="发布时间">{formatTime(job.scheduled_at)}</td>
+                  <td data-label="状态">
+                    <span
+                      className={styles.statusBadge}
+                      data-status={job.status}
+                    >
+                      {job.reconciled_by && job.status === "succeeded"
+                        ? "人工核对已发布"
+                        : JOB_STATUS_LABELS[job.status]}
+                    </span>
+                    {job.error === null ? null : (
+                      <span className={styles.hint}>：{job.error}</span>
+                    )}
                     {job.reconciliation_note ? (
                       <p className={styles.hint}>
                         核对依据：{job.reconciliation_note}
                       </p>
                     ) : null}
                   </td>
-                  <td>
+                  <td data-label="操作人">
                     {job.reconciled_by ?? job.cancelled_by ?? job.created_by}
                   </td>
-                  <td>
+                  <td data-label="操作">
                     {job.status === "scheduled" ? (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={actionsDisabled}
                         onClick={() => {
                           void cancelJob(job);
                         }}
@@ -444,7 +516,7 @@ export function WeChatPublishPage({
                     {job.can_recheck ? (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={actionsDisabled}
                         onClick={() => {
                           void recheck(job);
                         }}
@@ -460,8 +532,10 @@ export function WeChatPublishPage({
                         {canReconcile ? (
                           <button
                             type="button"
-                            disabled={busy}
-                            onClick={() => setReconciling(job)}
+                            disabled={actionsDisabled}
+                            onClick={() =>
+                              changeContext(() => setReconciling(job))
+                            }
                           >
                             记录人工核对
                           </button>
@@ -483,7 +557,11 @@ export function WeChatPublishPage({
       ) : published.length === 0 ? (
         <p>还没有已发布的文章。</p>
       ) : (
-        <ol className={styles.articles} aria-label="已发布的文章">
+        <ol
+          className={styles.articles}
+          aria-label="已发布的文章"
+          start={page.offset + 1}
+        >
           {published.map((item) => (
             <li key={item.article_id}>
               {item.articles.map((article) => (
@@ -501,7 +579,74 @@ export function WeChatPublishPage({
           ))}
         </ol>
       )}
+      {accountId !== null && tab !== "jobs" ? (
+        <PageNavigation
+          tab={tab}
+          offset={page.offset}
+          total={page.error !== null ? null : (page.data?.page?.total ?? null)}
+          count={page.data?.page?.items.length ?? 0}
+          loading={page.loading}
+          busy={busy}
+          onPage={(offset) => changeContext(() => page.changePage(offset))}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function PageNavigation({
+  tab,
+  offset,
+  total,
+  count,
+  loading,
+  busy,
+  onPage,
+}: {
+  readonly tab: "drafts" | "published";
+  readonly offset: number;
+  readonly total: number | null;
+  readonly count: number;
+  readonly loading: boolean;
+  readonly busy: boolean;
+  readonly onPage: (offset: number) => void;
+}) {
+  return (
+    <nav
+      className={styles.pagination}
+      aria-label={tab === "drafts" ? "草稿分页" : "已发布分页"}
+    >
+      <span aria-live="polite">
+        {total === null
+          ? loading
+            ? "正在读取分页…"
+            : "分页读取失败"
+          : total === 0
+            ? "共 0 条记录"
+            : `共 ${total} 条记录 · 第 ${count === 0 ? 0 : offset + 1}–${Math.min(offset + count, total)} 条 · 第 ${Math.floor(offset / PUBLICATION_PAGE_SIZE) + 1}/${Math.ceil(total / PUBLICATION_PAGE_SIZE)} 页`}
+      </span>
+      <div className={styles.rowActions}>
+        <button
+          type="button"
+          disabled={busy || loading || offset === 0}
+          onClick={() => onPage(offset - PUBLICATION_PAGE_SIZE)}
+        >
+          上一页
+        </button>
+        <button
+          type="button"
+          disabled={
+            busy ||
+            loading ||
+            total === null ||
+            offset + PUBLICATION_PAGE_SIZE >= total
+          }
+          onClick={() => onPage(offset + PUBLICATION_PAGE_SIZE)}
+        >
+          下一页
+        </button>
+      </div>
+    </nav>
   );
 }
 
@@ -510,6 +655,8 @@ function PublishConfirm({
   accountName,
   when,
   busy,
+  disabled,
+  invalid,
   onWhen,
   onNext,
   onConfirm,
@@ -519,6 +666,8 @@ function PublishConfirm({
   readonly accountName: string;
   readonly when: string;
   readonly busy: boolean;
+  readonly disabled: boolean;
+  readonly invalid: boolean;
   readonly onWhen: (value: string) => void;
   readonly onNext: () => void;
   readonly onConfirm: () => void;
@@ -533,16 +682,22 @@ function PublishConfirm({
             <input
               type="datetime-local"
               value={when}
+              disabled={disabled}
               onChange={(event) => onWhen(event.target.value)}
             />
           </label>
         ) : (
           <span>将立即公开发布这组草稿的全部篇目。</span>
         )}
-        <button type="button" className={styles.primary} onClick={onNext}>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={disabled}
+          onClick={onNext}
+        >
           下一步
         </button>
-        <button type="button" onClick={onCancel}>
+        <button type="button" disabled={busy} onClick={onCancel}>
           取消
         </button>
       </div>
@@ -550,6 +705,11 @@ function PublishConfirm({
   }
   return (
     <div className={styles.issued} role="alertdialog" aria-label="再次确认发布">
+      {invalid ? (
+        <p className={styles.error} role="alert">
+          草稿内容已更新或已有发布记录，请返回后重新核对。
+        </p>
+      ) : null}
       <p>
         <strong>再次确认：</strong>
         {pending.when === "later"
@@ -571,7 +731,7 @@ function PublishConfirm({
         <button
           type="button"
           className={styles.primary}
-          disabled={busy}
+          disabled={disabled}
           onClick={onConfirm}
         >
           {busy
@@ -602,13 +762,21 @@ function ReconcileForm({
   const [result, setResult] = useState<PublishReconcile["result"]>("published");
   const [note, setNote] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const { requestDiscard } = useUnsavedChanges(
+    note !== "" || result !== "published" || confirmed,
+    () => {
+      setNote("");
+      setResult("published");
+      setConfirmed(false);
+    },
+  );
   return (
     <form
-      className={styles.confirm}
+      className={styles.reconcileForm}
       aria-label="记录人工核对"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!confirmed || note.trim().length < 5) return;
+        if (busy || !confirmed || note.trim().length < 5) return;
         onConfirm({
           result,
           note: note.trim(),
@@ -651,7 +819,7 @@ function ReconcileForm({
           placeholder="填写核对时间、文章链接或后台核对情况（至少 5 字）"
         />
       </label>
-      <label>
+      <label className={styles.checkboxField}>
         <input
           type="checkbox"
           checked={confirmed}
@@ -660,15 +828,22 @@ function ReconcileForm({
         />
         我已在公众号后台核对，确认上述结果准确
       </label>
-      <button
-        type="submit"
-        disabled={busy || !confirmed || note.trim().length < 5}
-      >
-        保存核对结果
-      </button>
-      <button type="button" disabled={busy} onClick={onCancel}>
-        取消核对
-      </button>
+      <div className={styles.actions}>
+        <button
+          type="submit"
+          className={styles.primary}
+          disabled={busy || !confirmed || note.trim().length < 5}
+        >
+          保存核对结果
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => requestDiscard(onCancel)}
+        >
+          取消核对
+        </button>
+      </div>
     </form>
   );
 }

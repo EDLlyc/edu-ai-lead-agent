@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import styles from "../Admin.module.css";
+import { useUnsavedChanges } from "../unsaved/context";
 import type {
   AdminSource,
   SourceConfig,
@@ -69,6 +70,22 @@ export function SourceEditor({
   const [busy, setBusy] = useState<"preview" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const formValue = JSON.stringify([
+    name,
+    entryUrl,
+    kind,
+    organization,
+    tier,
+    linkContains,
+    listSelectors,
+    contentSelectors,
+  ]);
+  const [initialForm] = useState(formValue);
+  const { requestDiscard } = useUnsavedChanges(
+    formValue !== initialForm,
+    onCancel,
+  );
+
   const currentConfig: SourceConfig = {
     kind,
     link_contains: kind === "html" ? words(linkContains) : [],
@@ -136,6 +153,7 @@ export function SourceEditor({
         <label className={styles.field}>
           <span>名称</span>
           <input
+            disabled={busy === "save"}
             value={name}
             maxLength={60}
             required
@@ -146,6 +164,7 @@ export function SourceEditor({
         <label className={styles.field}>
           <span>网址（列表页或 RSS 地址）</span>
           <input
+            disabled={busy === "save"}
             value={entryUrl}
             type="url"
             required
@@ -158,6 +177,7 @@ export function SourceEditor({
           <legend>类型</legend>
           <label>
             <input
+              disabled={busy === "save"}
               type="radio"
               name="source-kind"
               checked={kind === "html"}
@@ -167,6 +187,7 @@ export function SourceEditor({
           </label>
           <label>
             <input
+              disabled={busy === "save"}
               type="radio"
               name="source-kind"
               checked={kind === "rss"}
@@ -178,6 +199,7 @@ export function SourceEditor({
         <label className={styles.field}>
           <span>机构类型</span>
           <select
+            disabled={busy === "save"}
             value={organization}
             onChange={(event) =>
               setOrganization(
@@ -195,6 +217,7 @@ export function SourceEditor({
         <label className={styles.field}>
           <span>可信度</span>
           <select
+            disabled={busy === "save"}
             value={tier}
             onChange={(event) =>
               setTier(event.target.value as SourceDraft["tier"])
@@ -214,6 +237,7 @@ export function SourceEditor({
             <label className={styles.field}>
               <span>文章链接包含（空格分隔，例如 content_ /article/）</span>
               <input
+                disabled={busy === "save"}
                 value={linkContains}
                 spellCheck={false}
                 onChange={(event) => setLinkContains(event.target.value)}
@@ -222,6 +246,7 @@ export function SourceEditor({
             <label className={styles.field}>
               <span>列表位置（CSS 选择器，例如 .news-list）</span>
               <input
+                disabled={busy === "save"}
                 value={listSelectors}
                 spellCheck={false}
                 onChange={(event) => setListSelectors(event.target.value)}
@@ -232,6 +257,7 @@ export function SourceEditor({
         <label className={styles.field}>
           <span>正文位置（CSS 选择器，例如 .article-content）</span>
           <input
+            disabled={busy === "save"}
             value={contentSelectors}
             spellCheck={false}
             onChange={(event) => setContentSelectors(event.target.value)}
@@ -265,7 +291,11 @@ export function SourceEditor({
         >
           {busy === "save" ? "正在保存…" : "保存"}
         </button>
-        <button type="button" onClick={onCancel} disabled={busy === "save"}>
+        <button
+          type="button"
+          onClick={() => requestDiscard(onCancel)}
+          disabled={busy === "save"}
+        >
           取消
         </button>
       </div>

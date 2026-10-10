@@ -75,20 +75,30 @@
 
 .field {
   display: grid;
+  min-width: 0;
   gap: 0.35rem;
   font-size: 0.9rem;
   font-weight: 600;
 }
 
-.field input {
+.field input,
+.field select,
+.field textarea,
+.shell select,
+.shell textarea {
+  min-width: 0;
+  max-width: 100%;
   padding: 0.6rem 0.7rem;
+  color: #17252a;
+  background: #fff;
   border: 1px solid #c4cfcb;
   border-radius: 0.5rem;
   font: inherit;
   font-weight: 400;
 }
 
-.field input:focus-visible,
+.field :is(input, select, textarea):focus-visible,
+.shell :is(a, input, select, textarea, summary, [tabindex]):focus-visible,
 .menu a:focus-visible,
 .shell button:focus-visible,
 .primary:focus-visible {
@@ -108,6 +118,8 @@
 }
 
 .shell button {
+  min-height: 2.5rem;
+  max-width: 100%;
   padding: 0.4rem 0.8rem;
   color: #17252a;
   background: #fff;
@@ -115,6 +127,12 @@
   border-radius: 0.45rem;
   font: inherit;
   cursor: pointer;
+}
+
+.shell button:disabled {
+  color: #5b6b70;
+  cursor: not-allowed;
+  opacity: 0.75;
 }
 
 .shell button.primary {
@@ -132,6 +150,8 @@
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   grid-area: top;
   align-items: center;
   justify-content: space-between;
@@ -143,6 +163,8 @@
 
 .brand {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: baseline;
   gap: 0.75rem;
   margin: 0;
@@ -159,12 +181,24 @@
 
 .account {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 0.75rem;
   font-size: 0.9rem;
 }
 
+.account span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.account button {
+  flex-shrink: 0;
+}
+
 .menu {
+  min-width: 0;
   grid-area: menu;
   padding: 1rem 0.75rem;
   background: #eef2ef;
@@ -216,17 +250,31 @@
 
 .content {
   display: grid;
+  min-width: 0;
   grid-area: content;
   align-content: start;
   gap: 1rem;
   padding: 1.5rem;
 }
 
+.content > *,
+.content section,
+.cards > li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .sectionHeader {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.sectionHeader > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .sectionHeader h2 {
@@ -277,6 +325,8 @@
   padding: 0.5rem 0.75rem;
   text-align: left;
   border-bottom: 1px solid #eef2ef;
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .table th {
@@ -288,6 +338,23 @@
   color: #b42318;
 }
 
+.tableScroll {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border-radius: 0.6rem;
+}
+
+.tableScroll .table {
+  min-width: 40rem;
+}
+
+.tableScroll caption {
+  padding: 0.6rem;
+  text-align: left;
+}
+
 .success {
   margin: 0;
   color: #0f766e;
@@ -296,6 +363,7 @@
 /* 新闻源 */
 .editor {
   display: grid;
+  min-width: 0;
   gap: 1rem;
   padding: 1.25rem;
   background: #fff;
@@ -310,16 +378,15 @@
 
 .formGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
   gap: 0.9rem 1.25rem;
 }
 
-.field select {
-  padding: 0.55rem 0.6rem;
-  border: 1px solid #c4cfcb;
-  border-radius: 0.5rem;
-  font: inherit;
-  font-weight: 400;
+.field textarea,
+.shell textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  resize: vertical;
 }
 
 .choice {
@@ -360,6 +427,7 @@
 .rowActions,
 .confirm {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
@@ -409,7 +477,7 @@
 }
 
 .table tr[data-enabled="false"] td {
-  color: #7a8a8f;
+  color: #5b6b70;
 }
 
 .table a {
@@ -428,12 +496,13 @@
 /* 关键词 */
 .keywordLists {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   gap: 1rem;
 }
 
 .termList {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: 0.6rem;
   margin: 0;
@@ -465,6 +534,8 @@
   background: #eef2ef;
   border-radius: 999px;
   font-size: 0.85rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .termList li[data-new="true"] {
@@ -518,7 +589,7 @@
 
 .actions .field {
   flex: 1;
-  min-width: 16rem;
+  min-width: min(100%, 16rem);
 }
 
 .subheading {
@@ -564,7 +635,7 @@
 
 .facts {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 0.4rem 1.25rem;
   margin: 0 0 1.25rem;
 }
@@ -574,6 +645,7 @@
 }
 
 .facts dd {
+  min-width: 0;
   margin: 0;
 }
 
@@ -615,6 +687,9 @@
 /* 公众号 */
 .inlineField {
   display: inline-flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.9rem;
@@ -622,6 +697,8 @@
 
 .inlineField select,
 .inlineField input {
+  min-width: 0;
+  max-width: 100%;
   padding: 0.4rem 0.5rem;
   border: 1px solid #c4cfcb;
   border-radius: 0.45rem;
@@ -649,22 +726,173 @@
   color: #5b6b70;
 }
 
-.table tr[data-status="failed"] td,
-.table tr[data-status="outcome_unknown"] td {
+.statusBadge {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.15rem 0.55rem;
+  color: #42575d;
+  background: #eef2ef;
+  border: 1px solid #dfe5e2;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.statusBadge[data-status="failed"] {
   color: #b42318;
+  background: #fff0ee;
+  border-color: #f2c1ba;
+}
+
+.statusBadge[data-status="outcome_unknown"],
+.statusBadge[data-status="partial"] {
+  color: #865500;
+  background: #fff7e0;
+  border-color: #f2d27a;
+}
+
+.statusBadge[data-status="succeeded"],
+.statusBadge[data-status="complete"] {
+  color: #0f766e;
+  background: #e3f3f0;
+  border-color: #afd8cf;
+}
+
+.reconcileForm {
+  display: grid;
+  gap: 0.8rem;
+  width: 100%;
+  min-width: 0;
+  padding: 1rem;
+  background: #fffaf0;
+  border: 1px solid #f2d27a;
+  border-radius: 0.6rem;
+}
+
+.reconcileForm label {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.reconcileForm p {
+  margin: 0;
+}
+
+.reconcileForm select,
+.reconcileForm textarea {
+  width: 100%;
+}
+
+.reconcileForm .checkboxField {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.checkboxField input {
+  flex-shrink: 0;
+  margin-top: 0.3rem;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+  font-size: 0.9rem;
+}
+
+.environmentBadge {
+  margin: 0;
+  padding: 0.45rem 1.25rem;
+  color: #5b4c26;
+  background: #fff7e0;
+  border-bottom: 1px solid #f2d27a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.environmentBadge[data-mode="production"] {
+  color: #0d625c;
+  background: #e3f3f0;
+  border-color: #afd8cf;
+}
+
+.environmentBadge[data-mode="demo"] {
+  color: #21567b;
+  background: #edf5fc;
+  border-color: #c4ddee;
+}
+
+.unsavedOverlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: 1rem;
+  overflow-y: auto;
+  background: rgb(23 37 42 / 42%);
+}
+
+.unsavedDialog {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 2rem);
+  padding: 1.5rem;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #dfe5e2;
+  border-radius: 0.8rem;
+  box-shadow: 0 1rem 3rem rgb(23 37 42 / 18%);
+}
+
+.unsavedDialog :is(h2, p) {
+  margin: 0;
+}
+
+.unsavedDialog button {
+  min-height: 2.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #c4cfcb;
+  border-radius: 0.45rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.unsavedDialog button:not(.primary) {
+  color: #17252a;
+  background: #fff;
+}
+
+.unsavedDialog button:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
 }
 
 /* 数据 */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
   gap: 0.75rem;
   margin: 0.5rem 0 1rem;
 }
 
 .tile {
   display: grid;
-  gap: 0.2rem;
+  min-width: 0;
+  align-content: start;
+  gap: 0.4rem;
   padding: 0.8rem 1rem;
   background: #fff;
   border: 1px solid #dfe5e2;
@@ -679,8 +907,13 @@
 
 .tile strong {
   color: #17252a;
-  font-size: 1.6rem;
+  font-size: 1.9rem;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
+}
+
+.tile .statusBadge {
+  font-size: 0.75rem;
 }
 
 .chart {
@@ -725,13 +958,14 @@
 
 .layoutGrid {
   display: grid;
-  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: start;
 }
 
 .layoutChoices {
   display: grid;
+  min-width: 0;
   gap: 0.6rem;
   margin: 0;
   padding: 0;
@@ -765,11 +999,13 @@
 
 .layoutChoiceText {
   display: grid;
+  min-width: 0;
   gap: 0.35rem;
 }
 
 .layoutChoiceText strong {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
@@ -792,6 +1028,7 @@
 
 .layoutPreview {
   display: grid;
+  min-width: 0;
   gap: 0.5rem;
   margin: 0;
 }
@@ -816,6 +1053,75 @@
   border-radius: 0.6rem;
 }
 
+@media (max-width: 900px) {
+  .table[data-responsive="cards"],
+  .table[data-responsive="cards"] tbody {
+    display: block;
+    border: 0;
+    background: transparent;
+  }
+
+  .table[data-responsive="cards"] thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .table[data-responsive="cards"] tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+    background: #fff;
+    border: 1px solid #dfe5e2;
+    border-radius: 0.65rem;
+  }
+
+  .table[data-responsive="cards"] td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .table[data-responsive="cards"] td::before {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: #5b6b70;
+    font-size: 0.75rem;
+    font-weight: 400;
+    content: attr(data-label);
+  }
+
+  .table[data-responsive="cards"] td:first-child,
+  .table[data-responsive="cards"] td:last-child,
+  .table[data-responsive="cards"] td[colspan] {
+    grid-column: 1 / -1;
+  }
+
+  .table[data-responsive="cards"] td:first-child {
+    font-weight: 600;
+  }
+
+  .table[data-responsive="cards"] .articlesRow {
+    margin-top: -0.4rem;
+    background: #f5f8f6;
+  }
+
+  .table[data-responsive="cards"] .articlesRow td {
+    font-weight: 400;
+  }
+
+  .layoutGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 720px) {
   .shell {
     grid-template-areas:
@@ -827,6 +1133,7 @@
   }
 
   .topbar {
+    gap: 0.5rem 1rem;
     padding: 0.6rem 1rem;
   }
 
@@ -834,10 +1141,10 @@
     display: none;
   }
 
-  .brand strong,
-  .account span,
-  .shell button {
-    white-space: nowrap;
+  .account {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    font-size: 0.85rem;
   }
 
   /* One scrollable row of groups instead of a long column. */
@@ -862,16 +1169,64 @@
     display: flex;
   }
 
+  .menu a {
+    min-height: 2.75rem;
+    white-space: nowrap;
+  }
+
   .menu small {
     display: none;
   }
 
   .content {
     padding: 1rem;
-    overflow-x: auto;
   }
 
-  .layoutGrid {
-    grid-template-columns: 1fr;
+  .sectionHeader {
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .sectionHeader > .rowActions,
+  .sectionHeader .inlineField {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .sectionHeader .rowActions > select,
+  .sectionHeader .inlineField select {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .shell button {
+    min-height: 2.75rem;
+  }
+
+  .editor,
+  .reconcileForm {
+    padding: 0.85rem;
+  }
+
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
+
+  .facts dd + dt {
+    margin-top: 0.5rem;
+  }
+
+  .tile {
+    padding: 0.8rem;
+  }
+
+  .password code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .chart {
+    padding: 0.75rem;
   }
 }

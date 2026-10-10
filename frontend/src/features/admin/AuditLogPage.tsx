@@ -326,26 +326,33 @@ export function AuditLogPage({
         <p>还没有记录。</p>
       ) : (
         <>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th scope="col">时间</th>
-                <th scope="col">账号</th>
-                <th scope="col">操作</th>
-                <th scope="col">说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.events.map((event) => (
-                <tr key={event.id} data-action={event.action}>
-                  <td>{timeFormat.format(new Date(event.occurred_at))}</td>
-                  <td>{event.username}</td>
-                  <td>{ACTION_LABELS[event.action] ?? event.action}</td>
-                  <td>{describe(event)}</td>
+          <div
+            className={styles.tableScroll}
+            tabIndex={0}
+            role="region"
+            aria-label="操作记录表，可横向滚动"
+          >
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th scope="col">时间</th>
+                  <th scope="col">账号</th>
+                  <th scope="col">操作</th>
+                  <th scope="col">说明</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {state.events.map((event) => (
+                  <tr key={event.id} data-action={event.action}>
+                    <td>{timeFormat.format(new Date(event.occurred_at))}</td>
+                    <td>{event.username}</td>
+                    <td>{ACTION_LABELS[event.action] ?? event.action}</td>
+                    <td>{describe(event)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {state.more ? (
             <button
               type="button"

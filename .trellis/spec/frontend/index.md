@@ -43,6 +43,7 @@ React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types
 | [Local Agent Workbench UI](./agent-workbench.md) | Development-only generated-contract trace UI, safe citations, accessibility, and production tree-shaking |
 | [Official-Account Editor Handoff](./official-account-editor-handoff.md) | Development-only approved-run gates, Xiaosai preview, rich clipboard, local downloads, and permanent no-publish truth |
 | [Quality Guidelines](./quality-guidelines.md) | Tests, accessibility, generated-contract drift, and review gates |
+| [Operations Console UI](./admin-console.md) | Authenticated admin editing/history guards, pagination, responsive tables, and explicit environment labels |
 | [Brand Knowledge Workspace](./brand-knowledge-workspace.md) | Implemented upload, status, activation, generation-context diagnostics, generated types, accessibility, and manual-only boundary |
 | [IP Digital Asset Hub UI](./ip-asset-hub.md) | No-auth intranet gallery, upload, multimodal search, download, generation, accessibility, and safe resource URL contracts |
 
@@ -56,6 +57,6 @@ React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types
   package version snapshots through the typed material mapper.
 - Keep server state in the server-state client and ephemeral interaction state local.
 - Generate API types from FastAPI OpenAPI; do not hand-maintain duplicate wire interfaces.
-- Do not expose automated social publishing, social credentials, or misleading “publish” actions.
+- Material/reuse workspaces do not expose automated social publishing, social credentials, or misleading “publish” actions. The separate authenticated operations console follows its explicit operator-confirmation and backend authorization contracts in [Operations Console UI](./admin-console.md).
 
 **Documentation language:** English.

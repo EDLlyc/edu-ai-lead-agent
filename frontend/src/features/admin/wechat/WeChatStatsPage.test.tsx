@@ -53,9 +53,11 @@ describe("公众号数据", () => {
     );
     const tiles = await screen.findByLabelText("近 7 天");
     // Days 24..30 sum to 189; all 30 days sum to 465.
-    expect(
-      within(tiles).getByText("近 7 天阅读人数之和").parentElement,
-    ).toHaveTextContent("近 7 天阅读人数之和189近 30 天 465");
+    const readingTile =
+      within(tiles).getByText("近 7 天阅读人数之和").parentElement!;
+    expect(readingTile.querySelector("strong")).toHaveTextContent(/^189$/);
+    expect(within(readingTile).getByText("7 天完整数据")).toBeInTheDocument();
+    expect(within(readingTile).getByText("近 30 天 465")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /近 30 天合计 465，最高 30/ }),
     ).toBeInTheDocument();
@@ -120,6 +122,12 @@ describe("公众号数据", () => {
       await screen.findByText(/同步后这里显示近 30 天的阅读走势/),
     ).toBeInTheDocument();
     expect(screen.getByText(/还没同步过/)).toBeInTheDocument();
+    const readingTile = screen.getByText("近 7 天阅读人数之和").parentElement!;
+    expect(readingTile.querySelector("strong")).toHaveTextContent(/^—$/);
+    expect(within(readingTile).getByText("暂无数据")).toBeInTheDocument();
+    expect(
+      within(readingTile).queryByText("7 天完整数据"),
+    ).not.toBeInTheDocument();
   });
   it("uses calendar bounds across gaps and ignores today/future rows", async () => {
     const user = userEvent.setup();
@@ -145,9 +153,15 @@ describe("公众号数据", () => {
       />,
     );
     const tiles = await screen.findByLabelText("近 7 天");
+    const readingTile =
+      within(tiles).getByText("近 7 天阅读人数之和").parentElement!;
+    expect(readingTile.querySelector("strong")).toHaveTextContent(/^54$/);
     expect(
-      within(tiles).getByText("近 7 天阅读人数之和").parentElement,
-    ).toHaveTextContent("已知 54（缺 5 天）近 30 天 已知 74（缺 27 天）");
+      within(readingTile).getByText("已知值 · 缺 5 天"),
+    ).toBeInTheDocument();
+    expect(
+      within(readingTile).getByText("近 30 天 已知 74（缺 27 天）"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/已有 3\/30 天数据/)).toHaveTextContent(
       "缺少 27 天",
     );
@@ -179,9 +193,11 @@ describe("公众号数据", () => {
       />,
     );
     const tiles = await screen.findByLabelText("近 7 天");
-    expect(
-      within(tiles).getByText("近 7 天阅读人数之和").parentElement,
-    ).toHaveTextContent("近 7 天阅读人数之和0近 30 天 0");
+    const readingTile =
+      within(tiles).getByText("近 7 天阅读人数之和").parentElement!;
+    expect(readingTile.querySelector("strong")).toHaveTextContent(/^0$/);
+    expect(within(readingTile).getByText("7 天完整数据")).toBeInTheDocument();
+    expect(within(readingTile).getByText("近 30 天 0")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /最高 0/ })).toBeInTheDocument();
   });
 

@@ -29,15 +29,25 @@ export function statsDays(stats: WeChatStats): readonly StatsDay[] {
   return result;
 }
 
+export function statsSummary(
+  days: readonly StatsDay[],
+  key: keyof Omit<DailyStats, "date">,
+): { readonly total: number | null; readonly missing: number } {
+  const known = days.flatMap((day) =>
+    day.values === null ? [] : [day.values],
+  );
+  return {
+    total:
+      known.length === 0 ? null : known.reduce((sum, row) => sum + row[key], 0),
+    missing: days.length - known.length,
+  };
+}
+
 export function statsTotal(
   days: readonly StatsDay[],
   key: keyof Omit<DailyStats, "date">,
 ): string {
-  const known = days.flatMap((day) =>
-    day.values === null ? [] : [day.values],
-  );
-  if (known.length === 0) return "—";
-  const total = known.reduce((sum, row) => sum + row[key], 0);
-  const missing = days.length - known.length;
+  const { total, missing } = statsSummary(days, key);
+  if (total === null) return "—";
   return missing === 0 ? String(total) : `已知 ${total}（缺 ${missing} 天）`;
 }
