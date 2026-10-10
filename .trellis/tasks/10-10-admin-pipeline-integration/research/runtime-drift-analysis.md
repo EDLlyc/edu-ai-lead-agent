@@ -31,10 +31,10 @@
 
 | Priority | Mechanism | Specific action | Status |
 |---|---|---|---|
-| P0 | Admission | Compare actual target environment/command with effective rendered values plus image defaults before stopping anything. Fail on differing key names; never log values. | Added to rollout follow-up |
+| P0 | Admission | Compare actual target environment/command with effective rendered values plus image defaults before stopping anything. Fail on differing key names; never log values. | Done — 17 regression tests and independent review passed |
 | P0 | Exact preservation | Keep original runtime hashes, verified nonsecret per-service version overrides, DB/journal hashes and independent untouched-container identities. Never waive the runtime mismatch. | Done |
-| P0 | Recovery | Support the exact already-restored BASE pipeline pin and preserve explicit legacy values during forward switch and rollback. | Added to rollout follow-up |
-| P1 | Tests | Reproduce pre-existing environment drift and an already-restored baseline before the next release attempt. | Added to rollout follow-up |
+| P0 | Recovery | Support the exact already-restored BASE pipeline pin and preserve explicit legacy values during forward switch and rollback. | Done — 17 regression tests and independent review passed |
+| P1 | Tests | Reproduce pre-existing environment drift and an already-restored baseline before the next release attempt. | Done — 17 regression tests and independent review passed |
 | P1 | Documentation | Capture heterogeneous image/config lineage and pre-recreate admission contract in production-mainline guidance. | Done |
 
 ## 4. Systematic Expansion

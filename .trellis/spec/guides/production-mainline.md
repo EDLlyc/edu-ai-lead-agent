@@ -43,6 +43,46 @@
   and substituting only those two proved the original full runtime hashes for all four targets.
   Preserve these overrides until a separately reviewed upgrade changes their contracts.
 
+## Live since 2026-10-10 14:33 (pipeline image `sha256:6226855a…`, templates + six model consumers)
+
+- Four former legacy services now run
+  `offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b`:
+  official-account-local-worker, official-account-weekly-dag-worker, governance-worker and
+  wechat-official-account-draft-worker. This is actual legacy `83a41e41` plus twelve bounded
+  overlays from source `f062b82`. Settings is narrowly derived from the old file; dependencies,
+  models/migrations, output policies and other defaults remain old. Full 364-file hashes verified
+  in the offline candidate and all four live containers. Rollout helpers are `075e44b`.
+- `APP_IMAGE` and the six admin/core containers remain `da052082`; `ADMIN_PIPELINE_IMAGE` independently
+  pins these four. Three legacy schedulers and infrastructure retain their IDs. The existing model
+  key is mapped only to the three newly connected consumers; draft receives no model/admin key.
+  All six consumers passed two current-host/current-start observations 70 seconds apart, with
+  advancing heartbeats, empty load errors and no restarts. Zero stored keys means live validation
+  proves DB reads/environment fallback; isolated image fixtures prove decryption, not a real rotation.
+- Layout choices now apply to new eligible single-edition drafts at first upload. Retry pins remain
+  fixed; legacy pre-template upload intents retain default blue and old ACKs reconcile without replay.
+  Legacy weekly/manual output stays unchanged. Frontend reports saved configuration and explains
+  first-upload/retry behavior without claiming real-time worker readiness. Both 5180 production and
+  5181 demo previews serve the updated, browser-verified bundles.
+- Preserve the explicit four-service overrides:
+  `CONTENT_SCORING_VERSION=scoring-v1-preview.11-qualified-authoritative-priority` and
+  `CONTENT_SLOT_RANKING_VERSION=slot-ranking-v1`. The first attempt exposed drift between containers
+  alive since September 28 and current shared files. Exact original runtime hashes were restored
+  from three unchanged scheduler references; the corrected helper rejects effective config drift
+  before any stop. `.env`, global settings and credentials were not changed.
+- DB remains `20261010_0061`; business rows and both complete durable artifact directories were
+  preserved. Gate: 10 passed / 0 failed / 1 existing private-asset skip; frontend 371 tests,
+  PostgreSQL admin 36 integration cases and 17 rollout safety regressions PASS. Source gate printed
+  `f062b82+dirty` only for an untracked node_modules tooling symlink; tracked inputs match f062b82.
+- Backup `/var/backups/edu-ai/admin-pipeline-20261010T063121Z`: verified custom-format DB dump,
+  both complete artifact archives, root-only configs and frontend. Previous frontend also remains
+  `/var/www/edu-ai-admin.before-20261010T063121Z`. Corrected recovery lives in
+  `/var/tmp/edu-admin-pipeline-20261010T063108Z/cutover.py`; it preserves exact legacy image/settings
+  and stops draft for forward repair if new/changed pins, journals or state make old code unsafe.
+  Never restore DB/journals or use the first failed `062459Z` backup with automatic recovery.
+- Evidence: `10-10-admin-pipeline-integration` task (archived after completion), result, research
+  receipts and reviewed rollout scripts. No test publication/upload/model probe/key rotation.
+  Public HTTPS/domain and remaining dashboard/poster work are still separate follow-ups.
+
 ## Live since 2026-10-10 13:40 (image `sha256:da052082…`, admin history + reliability/usability)
 
 - User approved the history fixes and combined deployment with “好的，请你处理”. The same six

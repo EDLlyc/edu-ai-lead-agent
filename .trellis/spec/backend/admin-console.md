@@ -153,8 +153,10 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - Report only successfully decrypted/applied versions. Track attempted versions separately for the
   restart comparison. `model_key_consumers.load_errors` stores safe per-provider codes; null on a
   legacy heartbeat means unknown verification, not confirmed success. See the reliability contract
-  below. The diagnostic repair is live in the six-service release of 2026-10-10 13:40; remaining
-  legacy consumer connection is a separately reviewed four-service pipeline release.
+  below. The diagnostic repair is live in the six-service release of 2026-10-10 13:40. The three
+  remaining model consumers connected in the bounded pipeline release at 14:33; all six passed
+  current-host/start observations with advancing heartbeats. See production-mainline for the
+  preserved legacy settings and independent four-service image pin.
 
 ## 公众号数据同步 timing (item 4)
 

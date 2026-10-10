@@ -1,0 +1,18 @@
+{
+  "official-account-local-worker": {
+    "environment_matches": true,
+    "command_and_image_defaults_match": true
+  },
+  "official-account-weekly-dag-worker": {
+    "environment_matches": true,
+    "command_and_image_defaults_match": true
+  },
+  "governance-worker": {
+    "environment_matches": true,
+    "command_and_image_defaults_match": true
+  },
+  "wechat-official-account-draft-worker": {
+    "environment_matches": true,
+    "command_and_image_defaults_match": true
+  }
+}

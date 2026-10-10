@@ -1,0 +1,179 @@
+{
+  "result": "POSTCHECK_PASS_FRONTEND_MAY_FINALIZE",
+  "observation": "final",
+  "at": "2026-10-10T06:33:11.331825+00:00",
+  "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+  "source_commit": "f062b8221c387ecd44d6e7529832f50331d1508d",
+  "backup": "/var/backups/edu-ai/admin-pipeline-20261010T063121Z",
+  "consumers": {
+    "acquisition-api": {
+      "service": "acquisition-api",
+      "host": "a86df1c3a5bf",
+      "container_id": "a86df1c3a5bfbd501627d2745293161af8f14d4a8a2c3bc854784fa16be6c8de",
+      "started_at": "2026-10-10T13:39:48.551545+08:00",
+      "seen_at": "2026-10-10T14:32:53.127762+08:00",
+      "versions": {},
+      "load_errors": {}
+    },
+    "content-worker": {
+      "service": "content-worker",
+      "host": "4d89c89abfbd",
+      "container_id": "4d89c89abfbd6b542f4f637c4199d495fec0119957be4e0dd521dd517c114a8d",
+      "started_at": "2026-10-10T13:39:49.874842+08:00",
+      "seen_at": "2026-10-10T14:32:50.607656+08:00",
+      "versions": {},
+      "load_errors": {}
+    },
+    "wecom-infographic-producer": {
+      "service": "wecom-infographic-producer",
+      "host": "474588ee0b15",
+      "container_id": "474588ee0b15ad40fbce420db1ecff5c1afa72f15985fc3fa826a7e09520d613",
+      "started_at": "2026-10-10T13:39:46.073062+08:00",
+      "seen_at": "2026-10-10T14:32:47.526541+08:00",
+      "versions": {},
+      "load_errors": {}
+    },
+    "official-account-local-worker": {
+      "service": "official-account-local-worker",
+      "host": "1660bbee9999",
+      "container_id": "1660bbee99993bae6c9721b5dd3ec7d9fa221d6ffb8530fcdb97e261bca55618",
+      "started_at": "2026-10-10T14:31:59.718213+08:00",
+      "seen_at": "2026-10-10T14:33:00.243297+08:00",
+      "versions": {},
+      "load_errors": {}
+    },
+    "official-account-weekly-dag-worker": {
+      "service": "official-account-weekly-dag-worker",
+      "host": "b84e821440aa",
+      "container_id": "b84e821440aa56d0180eb4f6b5ce579a46ba53fc4559fb66782db1af0d6e82fa",
+      "started_at": "2026-10-10T14:31:57.70547+08:00",
+      "seen_at": "2026-10-10T14:32:58.671778+08:00",
+      "versions": {},
+      "load_errors": {}
+    },
+    "governance-worker": {
+      "service": "governance-worker",
+      "host": "a3bacf532067",
+      "container_id": "a3bacf532067b5aee1f9ec3861424c2165b5b0fae2d3bb877114109f3c9c7cf3",
+      "started_at": "2026-10-10T14:31:59.061382+08:00",
+      "seen_at": "2026-10-10T14:32:59.217572+08:00",
+      "versions": {},
+      "load_errors": {}
+    }
+  },
+  "sources": {
+    "official-account-local-worker": {
+      "files": 364,
+      "manifest_digest": "24577d3701da8a5959b33c5733174439c1973a5ac3e5a5030002bbfab8c8fe5a",
+      "overlay_files": 12,
+      "nonoverlay_unchanged": true
+    },
+    "official-account-weekly-dag-worker": {
+      "files": 364,
+      "manifest_digest": "24577d3701da8a5959b33c5733174439c1973a5ac3e5a5030002bbfab8c8fe5a",
+      "overlay_files": 12,
+      "nonoverlay_unchanged": true
+    },
+    "governance-worker": {
+      "files": 364,
+      "manifest_digest": "24577d3701da8a5959b33c5733174439c1973a5ac3e5a5030002bbfab8c8fe5a",
+      "overlay_files": 12,
+      "nonoverlay_unchanged": true
+    },
+    "wechat-official-account-draft-worker": {
+      "files": 364,
+      "manifest_digest": "24577d3701da8a5959b33c5733174439c1973a5ac3e5a5030002bbfab8c8fe5a",
+      "overlay_files": 12,
+      "nonoverlay_unchanged": true
+    }
+  },
+  "modes": {
+    "single_enabled": true,
+    "legacy_auto_processing_disabled": true,
+    "account_binding_matches": true
+  },
+  "state_preserved": true,
+  "journal_and_prepared_files_preserved": true,
+  "logs": {
+    "governance-worker": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    },
+    "official-account-weekly-dag-worker": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    },
+    "wecom-infographic-producer": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    },
+    "official-account-local-worker": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    },
+    "wechat-official-account-draft-worker": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    },
+    "acquisition-api": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    },
+    "content-worker": {
+      "Traceback (most recent call last)": 0,
+      "console_model_keys_unavailable": 0,
+      "console_model_key_heartbeat_failed": 0,
+      "console_model_key_unreadable": 0,
+      "single_history_or_artifact_invalid": 0,
+      "single_catalog_fallback_lease_lost": 0,
+      "lease_lost": 0,
+      "lease_expired": 0,
+      "heartbeat_failed": 0
+    }
+  },
+  "production_decryption_claim": "No stored keys: empty versions prove reads/fallback only",
+  "provider_calls_or_mutations_by_check": false,
+  "observation_interval_seconds": 70.09917
+}

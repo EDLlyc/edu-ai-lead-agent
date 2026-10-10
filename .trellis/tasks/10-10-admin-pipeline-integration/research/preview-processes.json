@@ -1,0 +1,19 @@
+{
+  "tunnel_pid": 267426,
+  "mock_pid": 248218,
+  "source_commit": "f062b8221c387ecd44d6e7529832f50331d1508d",
+  "previews": {
+    "5180": {
+      "pid": 329835,
+      "url": "http://127.0.0.1:5180/admin/",
+      "out_dir": "/tmp/edu-admin-pipeline-integration/dist-admin",
+      "api_port": 18100
+    },
+    "5181": {
+      "pid": 329859,
+      "url": "http://127.0.0.1:5181/admin/",
+      "out_dir": "/tmp/edu-admin-pipeline-integration/dist-demo",
+      "api_port": 18103
+    }
+  }
+}

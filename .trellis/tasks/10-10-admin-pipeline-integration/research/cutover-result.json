@@ -1,0 +1,55 @@
+{
+  "result": "CUTOVER_STARTED_PENDING_POSTCHECK",
+  "at": "2026-10-10T06:31:52.327965+00:00",
+  "backup": "/var/backups/edu-ai/admin-pipeline-20261010T063121Z",
+  "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+  "source_commit": "f062b8221c387ecd44d6e7529832f50331d1508d",
+  "containers": {
+    "edu-ai-lead-agent-official-account-local-worker-1": {
+      "id": "1660bbee99993bae6c9721b5dd3ec7d9fa221d6ffb8530fcdb97e261bca55618",
+      "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:31:50.075184711Z",
+      "host": "1660bbee9999",
+      "runtime_hash": "63c63ad46f653bcaa8c871c1911ee464d601fa8a7872f941f3d96f3aa8f56c32"
+    },
+    "edu-ai-lead-agent-official-account-weekly-dag-worker-1": {
+      "id": "b84e821440aa56d0180eb4f6b5ce579a46ba53fc4559fb66782db1af0d6e82fa",
+      "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:31:50.080867409Z",
+      "host": "b84e821440aa",
+      "runtime_hash": "fc745d184fed9395a537149a56c0fb2f4fadfeaab57bbd5a0cc9dc24785e4562"
+    },
+    "edu-ai-lead-agent-governance-worker-1": {
+      "id": "a3bacf532067b5aee1f9ec3861424c2165b5b0fae2d3bb877114109f3c9c7cf3",
+      "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:31:50.073381847Z",
+      "host": "a3bacf532067",
+      "runtime_hash": "56aa7c9c15da9962bdfa867745b75e4b9090d2900b38ec991c7b00475b43aa53"
+    },
+    "edu-ai-lead-agent-wechat-official-account-draft-worker-1": {
+      "id": "a88a814525999ddc766f4b299f52fcc6a4d9fe56617112fca6373d618f7c521a",
+      "image": "sha256:6226855a02fea125c842c7d4c0b9e55edb4800236627c87b777e29386d9fe02b",
+      "running": true,
+      "restarts": 0,
+      "started_at": "2026-10-10T06:31:50.078854901Z",
+      "host": "a88a81452599",
+      "runtime_hash": "f4b23e8988700ae86c18b3c215ab8d9411a63f635f3bd48a2d76cf58bbdee45f"
+    }
+  },
+  "config_hashes": {
+    ".env": "fb00483aa8bc9a3e541f65022af817b4671b1ca2808e80f07f768bde1f95b8d5",
+    ".release.env": "f7193897d4ba2b29c2bf71d2b272ffd5133b304634f16542ad35b57643ea07ab",
+    "compose.yaml": "183e99c6f316a6c130305d728719bf06443c8d95ef1473273c71cb6d42b6e0aa"
+  },
+  "patch": {
+    "render_allowlist_verified": true,
+    "model_key_matches_existing": true
+  },
+  "frontend_swapped": false
+}

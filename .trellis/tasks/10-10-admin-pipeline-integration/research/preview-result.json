@@ -1,0 +1,63 @@
+{
+  "at": "2026-10-10T06:33:27.566Z",
+  "production": {
+    "url": "http://127.0.0.1:5180/admin/",
+    "documents": [
+      {
+        "path": "/admin/",
+        "status": 200,
+        "reload": 200,
+        "unauthenticatedLogin": true,
+        "mobileOverflow": false
+      },
+      {
+        "path": "/admin/sources",
+        "status": 200,
+        "reload": 200,
+        "unauthenticatedLogin": true,
+        "mobileOverflow": false
+      },
+      {
+        "path": "/admin/wechat-publish",
+        "status": 200,
+        "reload": 200,
+        "unauthenticatedLogin": true,
+        "mobileOverflow": false
+      },
+      {
+        "path": "/admin/audit",
+        "status": 200,
+        "reload": 200,
+        "unauthenticatedLogin": true,
+        "mobileOverflow": false
+      },
+      {
+        "path": "/admin/layout-templates",
+        "status": 200,
+        "reload": 200,
+        "unauthenticatedLogin": true,
+        "mobileOverflow": false
+      }
+    ],
+    "http": {
+      "/api/v1/admin/auth/me": 401,
+      "/api/v1/admin/wechat/publish-jobs?limit=20": 401,
+      "/assets/missing-pipeline-check.js": 404,
+      "/api/v1/unproxied-pipeline-check": 404,
+      "/outside-pipeline-check": 404
+    },
+    "assets": {
+      "admin/index.html": "5b855f8faa890f50d8c8b3505644c6a7aa81694ac34d612991ec7b62d3822358",
+      "assets/index-DFicJJbO.css": "30ed2d06f2cd27c1ad1bd1a4741d38a30c39e8ea6d435853c73d1c5c96d4f568",
+      "assets/index-nkmbpK0L.js": "4643eb59fd18e57f192851eb0bf48e497ed3c9a6953365307190266fa8a3615a"
+    },
+    "errors": [],
+    "blockedWrites": []
+  },
+  "demo": {
+    "url": "http://127.0.0.1:5181/admin/",
+    "label": "演示环境 · 模拟数据 · 只读",
+    "fixtureJobs": 65,
+    "templateNoticeUpdated": true
+  }
+}

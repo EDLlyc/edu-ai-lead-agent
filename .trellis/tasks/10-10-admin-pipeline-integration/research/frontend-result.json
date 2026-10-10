@@ -1,0 +1,12 @@
+{
+  "result": "FRONTEND_INSTALLED",
+  "source_commit": "f062b8221c387ecd44d6e7529832f50331d1508d",
+  "frontend": {
+    "admin/index.html": "5b855f8faa890f50d8c8b3505644c6a7aa81694ac34d612991ec7b62d3822358",
+    "assets/index-DFicJJbO.css": "30ed2d06f2cd27c1ad1bd1a4741d38a30c39e8ea6d435853c73d1c5c96d4f568",
+    "assets/index-nkmbpK0L.js": "4643eb59fd18e57f192851eb0bf48e497ed3c9a6953365307190266fa8a3615a"
+  },
+  "previous_frontend": "/var/www/edu-ai-admin.before-20261010T063121Z",
+  "backup": "/var/backups/edu-ai/admin-pipeline-20261010T063121Z",
+  "atomic_exchange": true
+}
