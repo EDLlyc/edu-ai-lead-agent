@@ -27,9 +27,11 @@ class AdminModelKeyConsumer(BaseModel):
     # False: no report in the last 5 minutes. The service then runs an image without the watch
     # (or is down) and uses its environment keys.
     reporting: bool
-    # Newest version per provider it loaded at start ({} = none stored yet); null when that read
-    # failed and it fell back to the environment.
+    # Successfully applied versions only, including explicit env restores. A failed load is
+    # omitted; null means the startup database read failed.
     versions: dict[str, int] | None
+    # Null is a legacy heartbeat without reliable load diagnostics; {} means no failures.
+    load_errors: dict[str, str] | None
     started_at: datetime | None
     seen_at: datetime | None
 

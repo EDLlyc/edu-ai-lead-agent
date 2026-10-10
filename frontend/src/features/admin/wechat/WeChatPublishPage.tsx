@@ -7,6 +7,7 @@ import {
   JOB_STATUS_LABELS,
   wechatApi as defaultApi,
   type PublishJob,
+  type PublishReconcile,
   type WeChatAccountOption,
   type WeChatApi,
   type WeChatDraft,
@@ -51,9 +52,11 @@ function localToIso(value: string): string {
 export function WeChatPublishPage({
   api = defaultApi,
   onSessionExpired,
+  canReconcile = false,
 }: {
   readonly api?: WeChatApi;
   readonly onSessionExpired: () => void;
+  readonly canReconcile?: boolean;
 }) {
   const [accounts, setAccounts] = useState<
     readonly WeChatAccountOption[] | null
@@ -66,6 +69,7 @@ export function WeChatPublishPage({
     null,
   );
   const [pending, setPending] = useState<Pending>(null);
+  const [reconciling, setReconciling] = useState<PublishJob | null>(null);
   const [when, setWhen] = useState(defaultLocalTime);
   const [busy, setBusy] = useState(false);
   const [reloads, setReloads] = useState(0);
@@ -169,6 +173,10 @@ export function WeChatPublishPage({
       setReloads((count) => count + 1);
     } catch (error) {
       fail(error);
+      // A lost browser response does not prove that the API never submitted the draft.
+      setPending(null);
+      setTab("jobs");
+      setReloads((count) => count + 1);
     } finally {
       setBusy(false);
     }
@@ -179,6 +187,43 @@ export function WeChatPublishPage({
     try {
       await api.cancel(job.id);
       setMessage({ kind: "ok", text: `已取消「${job.title}」的定时发布` });
+      setReloads((count) => count + 1);
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recheck = async (job: PublishJob) => {
+    setBusy(true);
+    try {
+      const result = await api.recheck(job.id);
+      setMessage({
+        kind: result.status === "outcome_unknown" ? "error" : "ok",
+        text: `查询结果：${JOB_STATUS_LABELS[result.status]}${result.error ? `：${result.error}` : ""}`,
+      });
+      setReloads((count) => count + 1);
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reconcile = async (input: PublishReconcile) => {
+    if (reconciling === null) return;
+    setBusy(true);
+    try {
+      await api.reconcile(reconciling.id, input);
+      setReconciling(null);
+      setMessage({
+        kind: "ok",
+        text:
+          input.result === "published"
+            ? "已记录人工核对：文章已发布，仍禁止重复提交。"
+            : "已记录人工核对：文章未发布。可以返回草稿箱重新提交。",
+      });
       setReloads((count) => count + 1);
     } catch (error) {
       fail(error);
@@ -209,12 +254,14 @@ export function WeChatPublishPage({
             <span>公众号</span>
             <select
               value={accountId ?? ""}
+              disabled={busy}
               onChange={(event) => {
                 setAccountId(event.target.value);
                 setDrafts(null);
                 setJobs(null);
                 setPublished(null);
                 setPending(null);
+                setReconciling(null);
               }}
             >
               {accounts.map((account) => (
@@ -227,7 +274,7 @@ export function WeChatPublishPage({
         )}
       </header>
       <p className={styles.lede}>
-        从草稿箱选文章立即发布或定时发布。发布后所有关注者都能看到，不能撤回，请先在手机上预览确认。
+        从草稿箱选择文章公开发布或定时公开发布。本操作不会向粉丝群发；请先在公众号后台预览全部篇目。已发布和结果待核对的草稿不能重复提交。
       </p>
       <div className={styles.filters} role="tablist" aria-label="发布视图">
         {(
@@ -257,6 +304,17 @@ export function WeChatPublishPage({
         </p>
       )}
 
+      {reconciling === null ? null : (
+        <ReconcileForm
+          key={reconciling.id}
+          job={reconciling}
+          busy={busy}
+          onConfirm={(input) => {
+            void reconcile(input);
+          }}
+          onCancel={() => setReconciling(null)}
+        />
+      )}
       {tab === "drafts" ? (
         drafts === null ? (
           <p role="status">正在读取草稿箱…</p>
@@ -279,6 +337,10 @@ export function WeChatPublishPage({
                 {pending?.draft.media_id === draft.media_id ? (
                   <PublishConfirm
                     pending={pending}
+                    accountName={
+                      accounts?.find((account) => account.id === accountId)
+                        ?.name ?? ""
+                    }
                     when={when}
                     busy={busy}
                     onWhen={setWhen}
@@ -290,7 +352,7 @@ export function WeChatPublishPage({
                   />
                 ) : draft.open_job_id !== null ? (
                   <span className={styles.hint}>
-                    已在发布或排期中，见「发布记录」
+                    已发布、正在发布或结果待核对，见「发布记录」
                   </span>
                 ) : (
                   <span className={styles.rowActions}>
@@ -354,10 +416,19 @@ export function WeChatPublishPage({
                   </td>
                   <td>{formatTime(job.scheduled_at)}</td>
                   <td>
-                    {JOB_STATUS_LABELS[job.status]}
+                    {job.reconciled_by && job.status === "succeeded"
+                      ? "人工核对已发布"
+                      : JOB_STATUS_LABELS[job.status]}
                     {job.error === null ? "" : `：${job.error}`}
+                    {job.reconciliation_note ? (
+                      <p className={styles.hint}>
+                        核对依据：{job.reconciliation_note}
+                      </p>
+                    ) : null}
                   </td>
-                  <td>{job.cancelled_by ?? job.created_by}</td>
+                  <td>
+                    {job.reconciled_by ?? job.cancelled_by ?? job.created_by}
+                  </td>
                   <td>
                     {job.status === "scheduled" ? (
                       <button
@@ -369,6 +440,37 @@ export function WeChatPublishPage({
                       >
                         取消
                       </button>
+                    ) : null}
+                    {job.can_recheck ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          void recheck(job);
+                        }}
+                      >
+                        重新查询结果
+                      </button>
+                    ) : null}
+                    {job.status === "outcome_unknown" ? (
+                      <>
+                        <p className={styles.hint}>
+                          请核对公众号后台，确认前不要再次发布。
+                        </p>
+                        {canReconcile ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setReconciling(job)}
+                          >
+                            记录人工核对
+                          </button>
+                        ) : (
+                          <span className={styles.hint}>
+                            请管理员记录核对结果。
+                          </span>
+                        )}
+                      </>
                     ) : null}
                   </td>
                 </tr>
@@ -405,6 +507,7 @@ export function WeChatPublishPage({
 
 function PublishConfirm({
   pending,
+  accountName,
   when,
   busy,
   onWhen,
@@ -413,6 +516,7 @@ function PublishConfirm({
   onCancel,
 }: {
   readonly pending: NonNullable<Pending>;
+  readonly accountName: string;
   readonly when: string;
   readonly busy: boolean;
   readonly onWhen: (value: string) => void;
@@ -433,7 +537,7 @@ function PublishConfirm({
             />
           </label>
         ) : (
-          <span>将立即发布这篇草稿。</span>
+          <span>将立即公开发布这组草稿的全部篇目。</span>
         )}
         <button type="button" className={styles.primary} onClick={onNext}>
           下一步
@@ -449,8 +553,19 @@ function PublishConfirm({
       <p>
         <strong>再次确认：</strong>
         {pending.when === "later"
-          ? `${when.replace("T", " ")} 发布「${draftTitle(pending.draft)}」。到时间会自动发给所有关注者，之前可以取消。`
-          : `现在就把「${draftTitle(pending.draft)}」发给所有关注者，发出后不能撤回。`}
+          ? `${when.replace("T", " ")} 将公开发布以下全部篇目，开始前可以取消排期。`
+          : "即将公开发布以下全部篇目。"}
+      </p>
+      <p>
+        公众号：<strong>{accountName}</strong>
+      </p>
+      <ol aria-label="本次发布的全部篇目">
+        {pending.draft.articles.map((article, index) => (
+          <li key={index}>{article.title || "（无标题）"}</li>
+        ))}
+      </ol>
+      <p>
+        这是公开发布，不会向粉丝群发。发布后可通过文章链接访问，请确认公众号与全部篇目无误。
       </p>
       <div className={styles.actions}>
         <button
@@ -470,5 +585,90 @@ function PublishConfirm({
         </button>
       </div>
     </div>
+  );
+}
+
+function ReconcileForm({
+  job,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  readonly job: PublishJob;
+  readonly busy: boolean;
+  readonly onConfirm: (input: PublishReconcile) => void;
+  readonly onCancel: () => void;
+}) {
+  const [result, setResult] = useState<PublishReconcile["result"]>("published");
+  const [note, setNote] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  return (
+    <form
+      className={styles.confirm}
+      aria-label="记录人工核对"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!confirmed || note.trim().length < 5) return;
+        onConfirm({
+          result,
+          note: note.trim(),
+          confirmed: true,
+          expected_updated_at: job.updated_at,
+        });
+      }}
+    >
+      <p>
+        公众号：{job.account_name} · {job.title}
+      </p>
+      <p>请先在公众号后台核实文章状态。这里只记录核对结果，不会提交发布。</p>
+      <label>
+        核对结果
+        <select
+          value={result}
+          disabled={busy}
+          onChange={(event) => {
+            setResult(
+              event.target.value === "not_published"
+                ? "not_published"
+                : "published",
+            );
+            setConfirmed(false);
+          }}
+        >
+          <option value="published">已发布（继续禁止重复提交）</option>
+          <option value="not_published">确认未发布（允许重新提交）</option>
+        </select>
+      </label>
+      <label>
+        核对依据
+        <textarea
+          value={note}
+          minLength={5}
+          maxLength={500}
+          required
+          disabled={busy}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="填写核对时间、文章链接或后台核对情况（至少 5 字）"
+        />
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={confirmed}
+          disabled={busy}
+          onChange={(event) => setConfirmed(event.target.checked)}
+        />
+        我已在公众号后台核对，确认上述结果准确
+      </label>
+      <button
+        type="submit"
+        disabled={busy || !confirmed || note.trim().length < 5}
+      >
+        保存核对结果
+      </button>
+      <button type="button" disabled={busy} onClick={onCancel}>
+        取消核对
+      </button>
+    </form>
   );
 }

@@ -215,7 +215,11 @@ export function AdminApp({
             onSessionExpired={expire}
           />
         ) : current.key === "wechat-publish" ? (
-          <WeChatPublishPage api={wechatApi} onSessionExpired={expire} />
+          <WeChatPublishPage
+            api={wechatApi}
+            onSessionExpired={expire}
+            canReconcile={me.role === "owner"}
+          />
         ) : current.key === "wechat-stats" ? (
           <WeChatStatsPage api={wechatApi} onSessionExpired={expire} />
         ) : current.key === "wechat-accounts" ? (

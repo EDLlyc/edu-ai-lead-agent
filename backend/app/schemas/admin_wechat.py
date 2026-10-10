@@ -122,6 +122,19 @@ class AdminWeChatPublishJob(BaseModel):
     cancelled_by: str | None
     created_at: datetime
     completed_at: datetime | None
+    updated_at: datetime
+    can_recheck: bool
+    reconciled_by: str | None
+    reconciliation_note: str | None
+
+
+class AdminWeChatPublishReconcileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result: Literal["published", "not_published"]
+    note: str = Field(min_length=5, max_length=500)
+    confirmed: Literal[True]
+    expected_updated_at: datetime
 
 
 class AdminWeChatPublishJobListResponse(BaseModel):
@@ -154,6 +167,10 @@ class AdminWeChatArticleStats(BaseModel):
 
 
 class AdminWeChatStatsResponse(BaseModel):
+    range_start: date
+    range_end: date
+    # Date coverage only; optional counters retain the provider's sparse-response semantics.
+    missing_dates: list[date]
     synced_on: date | None
     sync_error: str | None
     daily: list[AdminWeChatDailyStats]

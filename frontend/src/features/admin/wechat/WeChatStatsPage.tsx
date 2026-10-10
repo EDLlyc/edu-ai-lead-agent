@@ -5,22 +5,15 @@ import { AdminSessionExpiredError } from "../api";
 import { formatDate } from "../sources/labels";
 import {
   wechatApi as defaultApi,
-  type DailyStats,
   type WeChatAccountOption,
   type WeChatApi,
   type WeChatStats,
 } from "./api";
+import { shiftDate, statsDays, statsTotal, type StatsDay } from "./statsView";
 
 const DAYS = 30;
 // Single-series magnitude bars; validated (lightness, chroma, contrast) on the white surface.
 const BAR = "#0d9488";
-
-function sum(
-  rows: readonly DailyStats[],
-  key: keyof Omit<DailyStats, "date">,
-): number {
-  return rows.reduce((total, row) => total + row[key], 0);
-}
 
 function shortDate(iso: string): string {
   return iso.slice(5).replace("-", "/");
@@ -105,7 +98,7 @@ export function WeChatStatsPage({
       const report = await api.syncStats(accountId);
       setMessage({
         kind: "ok",
-        text: `已同步：${report.articles} 篇文章、${report.days} 天的公众号数据`,
+        text: `已同步：${report.articles} 篇文章、${report.days} 天的有效公众号数据`,
       });
       setReloads((count) => count + 1);
     } catch (error) {
@@ -128,8 +121,11 @@ export function WeChatStatsPage({
     );
   }
 
-  const daily = stats?.daily ?? [];
-  const lastWeek = daily.slice(-7);
+  const daily = stats === null ? [] : statsDays(stats);
+  const lastWeek =
+    stats === null
+      ? []
+      : daily.filter((day) => day.date >= shiftDate(stats.range_end, -6));
 
   return (
     <section aria-labelledby="admin-section-title">
@@ -140,9 +136,11 @@ export function WeChatStatsPage({
             <select
               aria-label="公众号"
               value={accountId ?? ""}
+              disabled={syncing}
               onChange={(event) => {
                 setAccountId(event.target.value);
                 setStats(null);
+                setMessage(null);
               }}
             >
               {accounts.map((account) => (
@@ -164,11 +162,11 @@ export function WeChatStatsPage({
         </span>
       </header>
       <p className={styles.lede}>
-        每天上午 10 点后自动从微信同步前一天的数据。
+        每天上午 10 点后自动同步，并补查最近 30 天内缺失的数据。
         {stats?.synced_on
           ? `最近同步：${formatDate(stats.synced_on)}。`
           : "还没同步过。"}
-        微信只统计群发的文章，阅读很少时部分数字不显示。
+        微信只统计群发的文章，阅读很少时部分数字不显示。每日人数相加，未按整个区间去重。
       </p>
       {stats?.sync_error ? (
         <p className={styles.error} role="alert">
@@ -188,24 +186,31 @@ export function WeChatStatsPage({
         <p role="status">正在读取…</p>
       ) : (
         <>
+          <p className={styles.notice}>
+            统计日期：{formatDate(stats.range_start)} 至{" "}
+            {formatDate(stats.range_end)}。 已有{" "}
+            {daily.filter((day) => day.values !== null).length}/{daily.length}{" "}
+            天数据， 缺少 {daily.filter((day) => day.values === null).length}{" "}
+            天。 缺失不计为 0，部分数据的合计仅显示已知值。
+          </p>
           <div className={styles.tiles} aria-label="近 7 天">
             {(
               [
-                ["阅读人数", "read_user"],
-                ["分享人数", "share_user"],
-                ["点赞人数", "like_user"],
-                ["在看人数", "zaikan_user"],
-                ["收藏人数", "collection_user"],
+                ["阅读人数之和", "read_user"],
+                ["分享人数之和", "share_user"],
+                ["点赞人数之和", "like_user"],
+                ["在看人数之和", "zaikan_user"],
+                ["收藏人数之和", "collection_user"],
               ] as const
             ).map(([label, key]) => (
               <div key={key} className={styles.tile}>
                 <span>近 7 天{label}</span>
-                <strong>{sum(lastWeek, key)}</strong>
-                <small>近 30 天 {sum(daily, key)}</small>
+                <strong>{statsTotal(lastWeek, key)}</strong>
+                <small>近 30 天 {statsTotal(daily, key)}</small>
               </div>
             ))}
           </div>
-          <DailyReadsChart rows={daily} />
+          <DailyReadsChart key={accountId} rows={daily} />
           <h3 className={styles.subheading}>文章（近 30 天发布）</h3>
           {stats.articles.length === 0 ? (
             <p>近 30 天还没有群发文章的数据。</p>
@@ -269,16 +274,16 @@ const CHART_HEIGHT = 140;
 const BAR_GAP = 2;
 
 /** Daily account-wide readers as thin bars; hover or focus a bar for that day's numbers. */
-function DailyReadsChart({ rows }: { readonly rows: readonly DailyStats[] }) {
+function DailyReadsChart({ rows }: { readonly rows: readonly StatsDay[] }) {
   const [active, setActive] = useState<number | null>(null);
-  if (rows.length === 0) {
+  if (!rows.some((row) => row.values !== null)) {
     return (
       <p className={styles.hint}>
         还没有每日数据，同步后这里显示近 30 天的阅读走势。
       </p>
     );
   }
-  const max = Math.max(1, ...rows.map((row) => row.read_user));
+  const max = Math.max(0, ...rows.map((row) => row.values?.read_user ?? 0));
   const width = 720;
   const slot = width / rows.length;
   const barWidth = Math.max(2, slot - BAR_GAP);
@@ -286,13 +291,13 @@ function DailyReadsChart({ rows }: { readonly rows: readonly DailyStats[] }) {
   return (
     <figure className={styles.chart}>
       <figcaption>
-        每日阅读人数（公众号整体，近 {rows.length} 天，最高 {max}）
+        每日阅读人数（公众号整体，近 {rows.length} 天，最高 {max}；断点为缺失）
       </figcaption>
       <div className={styles.chartBody}>
         <svg
           viewBox={`0 0 ${width} ${CHART_HEIGHT + 20}`}
           role="img"
-          aria-label={`每日阅读人数，近 ${rows.length} 天合计 ${sum(rows, "read_user")}，最高 ${max}`}
+          aria-label={`每日阅读人数，近 ${rows.length} 天合计 ${statsTotal(rows, "read_user")}，最高 ${max}`}
           onMouseLeave={() => setActive(null)}
         >
           <line
@@ -304,12 +309,24 @@ function DailyReadsChart({ rows }: { readonly rows: readonly DailyStats[] }) {
             strokeWidth={1}
           />
           {rows.map((row, index) => {
-            const height = (row.read_user / max) * (CHART_HEIGHT - 8);
+            const height =
+              ((row.values?.read_user ?? 0) / Math.max(1, max)) *
+              (CHART_HEIGHT - 8);
             const x = index * slot + BAR_GAP / 2;
             const radius = Math.min(4, barWidth / 2, height);
             const top = CHART_HEIGHT - height;
             return (
               <g key={row.date}>
+                {row.values === null ? (
+                  <text
+                    x={x + barWidth / 2}
+                    y={CHART_HEIGHT - 4}
+                    textAnchor="middle"
+                    className={styles.axisText}
+                  >
+                    ×
+                  </text>
+                ) : null}
                 {height > 0 ? (
                   <path
                     d={`M${x},${CHART_HEIGHT} V${top + radius} Q${x},${top} ${x + radius},${top} H${x + barWidth - radius} Q${x + barWidth},${top} ${x + barWidth},${top + radius} V${CHART_HEIGHT} Z`}
@@ -344,9 +361,10 @@ function DailyReadsChart({ rows }: { readonly rows: readonly DailyStats[] }) {
         </svg>
         {shown === null || shown === undefined ? null : (
           <div className={styles.tooltip} role="status">
-            <strong>{shortDate(shown.date)}</strong> 阅读 {shown.read_user} ·
-            分享 {shown.share_user} · 点赞 {shown.like_user} · 在看{" "}
-            {shown.zaikan_user}
+            <strong>{shortDate(shown.date)}</strong>{" "}
+            {shown.values === null
+              ? "缺少数据"
+              : `阅读 ${shown.values.read_user} · 分享 ${shown.values.share_user} · 点赞 ${shown.values.like_user} · 在看 ${shown.values.zaikan_user}`}
           </div>
         )}
       </div>
@@ -367,11 +385,17 @@ function DailyReadsChart({ rows }: { readonly rows: readonly DailyStats[] }) {
             {[...rows].reverse().map((row) => (
               <tr key={row.date}>
                 <td>{shortDate(row.date)}</td>
-                <td>{row.read_user}</td>
-                <td>{row.share_user}</td>
-                <td>{row.like_user}</td>
-                <td>{row.zaikan_user}</td>
-                <td>{row.comment_count}</td>
+                {row.values === null ? (
+                  <td colSpan={5}>缺少数据</td>
+                ) : (
+                  <>
+                    <td>{row.values.read_user}</td>
+                    <td>{row.values.share_user}</td>
+                    <td>{row.values.like_user}</td>
+                    <td>{row.values.zaikan_user}</td>
+                    <td>{row.values.comment_count}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>

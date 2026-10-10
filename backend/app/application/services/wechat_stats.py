@@ -10,7 +10,8 @@ WeChat facts (production probe 2026-10-09):
 
 The sync keeps the latest cumulative snapshot per article and one row per account day:
 - a first sync goes back 30 days;
-- later syncs refresh the last 7 publish dates and the last 3 account days.
+- later syncs refresh the last 7 publish dates and the last 3 account days, plus missed dates
+  since the last successful sync and account-day gaps within the 30-day window.
 The API loop runs it once per business day after 10:00. An operator can also start it, at
 most once every 5 minutes per account.
 """
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from math import isfinite
 from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
@@ -59,26 +61,34 @@ class SyncReport:
     days: int
 
 
-def _int(value: Any) -> int:
-    return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else 0
+def _count(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    if value < 0 or value > 2_147_483_647 or not isfinite(value) or value != int(value):
+        return None
+    return int(value)
 
 
 def _float(value: Any) -> float | None:
-    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value) if 0 <= value <= 1e308 and isfinite(value) else None
 
 
-def _sources(entries: Any) -> dict[str, int]:
+def _sources(entries: Any) -> dict[str, int] | None:
+    if entries is None:
+        return {}
+    if not isinstance(entries, list):
+        return None
     sources: dict[str, int] = {}
-    for entry in entries or []:
-        if isinstance(entry, dict) and isinstance(entry.get("scene_desc"), str):
-            sources[entry["scene_desc"]] = _int(entry.get("user_count"))
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("scene_desc"), str):
+            return None
+        count = _count(entry.get("user_count"))
+        if count is None:
+            return None
+        sources[entry["scene_desc"]] = count
     return sources
-
-
-def _total(sources: dict[str, int]) -> int:
-    if _TOTAL_SCENE in sources:
-        return sources[_TOTAL_SCENE]
-    return sum(sources.values())
 
 
 def _day(value: Any) -> date | None:
@@ -86,6 +96,102 @@ def _day(value: Any) -> date | None:
         return date.fromisoformat(str(value))
     except ValueError:
         return None
+
+
+_ACCOUNT_COUNTERS = (
+    "share_user",
+    "like_user",
+    "zaikan_user",
+    "comment_count",
+    "collection_user",
+    "redirect_ori_page_user",
+    "send_page_count",
+)
+_ARTICLE_COUNTERS = ("share_user", "collection_user", "read_subscribe_user")
+
+
+def _optional_counts(detail: dict[str, Any], keys: tuple[str, ...]) -> dict[str, int] | None:
+    # Sparse provider responses omit optional counters when there is no activity. Preserve that
+    # existing zero semantics, but never coerce a present malformed value into a measured zero.
+    counts: dict[str, int] = {}
+    for key in keys:
+        count = _count(detail.get(key, 0))
+        if count is None:
+            return None
+        counts[key] = count
+    return counts
+
+
+def _daily_values(row: Any, *, ref_date: date, now: datetime) -> dict[str, Any] | None:
+    if not isinstance(row, dict) or _day(row.get("ref_date")) != ref_date:
+        return None
+    detail = row.get("detail")
+    if not isinstance(detail, dict):
+        return None
+    readers = _count(detail.get("read_user"))
+    counts = _optional_counts(detail, _ACCOUNT_COUNTERS)
+    sources = _sources(detail.get("read_user_source"))
+    if readers is None or counts is None or sources is None:
+        return None
+    return {"read_user": readers, **counts, "read_sources": sources, "fetched_at": now}
+
+
+def _article_values(
+    row: Any, *, publish_date: date, today: date, now: datetime
+) -> tuple[str, dict[str, Any]] | None:
+    if not isinstance(row, dict) or _day(row.get("ref_date")) != publish_date:
+        return None
+    msgid = row.get("msgid")
+    if not isinstance(msgid, str) or not msgid or len(msgid) > 64:
+        return None
+    details = row.get("detail_list")
+    if not isinstance(details, list):
+        return None
+    dated = [
+        (stat_date, detail)
+        for detail in details
+        if isinstance(detail, dict)
+        and (stat_date := _day(detail.get("stat_date"))) is not None
+        and publish_date <= stat_date < today
+    ]
+    if not dated:
+        return None
+    stat_date, latest = max(dated, key=lambda pair: pair[0])
+    sources = _sources(latest.get("read_user_source"))
+    counts = _optional_counts(latest, _ARTICLE_COUNTERS)
+    if not sources or counts is None:
+        return None
+    readers = _count(sources.get(_TOTAL_SCENE, sum(sources.values())))
+    if readers is None:
+        return None
+    return msgid, {
+        "title": str(row.get("title") or "")[:300],
+        "url": str(row.get("content_url") or "") or None,
+        "publish_date": publish_date,
+        "stat_date": stat_date,
+        "read_user": readers,
+        **counts,
+        "read_delivery_rate": _float(latest.get("read_delivery_rate")),
+        "read_finish_rate": _float(latest.get("read_finish_rate")),
+        "read_avg_activetime": _float(latest.get("read_avg_activetime")),
+        "read_sources": sources,
+        "fetched_at": now,
+    }
+
+
+def sync_dates(
+    *, today: date, last_success: date | None, refresh_days: int, missing: set[date]
+) -> list[date]:
+    """Newest first, capped at the provider's 30-day history; success covers yesterday."""
+    earliest = today - timedelta(days=FIRST_SYNC_DAYS)
+    start = (
+        earliest
+        if last_success is None
+        else max(earliest, min(last_success, today - timedelta(days=refresh_days)))
+    )
+    dates = {start + timedelta(days=offset) for offset in range((today - start).days)}
+    dates.update(day for day in missing if earliest <= day < today)
+    return sorted(dates, reverse=True)
 
 
 async def sync_account_stats(
@@ -100,88 +206,70 @@ async def sync_account_stats(
     account, client = await account_client(
         session, settings=settings, http=http, account_id=account_id
     )
-    account_key = account.id
-    first = account.stats_synced_on is None
-    article_days = FIRST_SYNC_DAYS if first else ARTICLE_REFRESH_DAYS
-    account_days = FIRST_SYNC_DAYS if first else ACCOUNT_REFRESH_DAYS
-    articles = 0
+    account_key, last_success = account.id, account.stats_synced_on
+    first_day = today - timedelta(days=FIRST_SYNC_DAYS)
+    present = set(
+        await session.scalars(
+            select(WeChatAccountDailyStatsModel.ref_date).where(
+                WeChatAccountDailyStatsModel.account_id == account_key,
+                WeChatAccountDailyStatsModel.ref_date >= first_day,
+                WeChatAccountDailyStatsModel.ref_date < today,
+            )
+        )
+    )
+    missing = {today - timedelta(days=back) for back in range(1, FIRST_SYNC_DAYS + 1)} - present
+    article_dates = sync_dates(
+        today=today, last_success=last_success, refresh_days=ARTICLE_REFRESH_DAYS, missing=missing
+    )
+    account_dates = sync_dates(
+        today=today, last_success=last_success, refresh_days=ACCOUNT_REFRESH_DAYS, missing=missing
+    )
+    # End the auth/account/query transaction before any provider or token request. Keep only
+    # immutable identifiers, the client, and collected values across the network phase.
+    await session.rollback()
+    article_values: dict[str, dict[str, Any]] = {}
+    daily_values: dict[date, dict[str, Any]] = {}
     try:
-        for back in range(1, article_days + 1):
-            publish_date = today - timedelta(days=back)
+        for publish_date in article_dates:
             for row in await client.article_day(publish_date):
-                details = [d for d in row.get("detail_list") or [] if isinstance(d, dict)]
-                if not details or row.get("msgid") is None:
-                    continue
-                latest = max(details, key=lambda d: str(d.get("stat_date", "")))
-                sources = _sources(latest.get("read_user_source"))
-                values = {
-                    "title": str(row.get("title") or "")[:300],
-                    "url": str(row.get("content_url") or "") or None,
-                    "publish_date": _day(row.get("ref_date")) or publish_date,
-                    "stat_date": _day(latest.get("stat_date")) or publish_date,
-                    "read_user": _total(sources),
-                    "share_user": _int(latest.get("share_user")),
-                    "collection_user": _int(latest.get("collection_user")),
-                    "read_subscribe_user": _int(latest.get("read_subscribe_user")),
-                    "read_delivery_rate": _float(latest.get("read_delivery_rate")),
-                    "read_finish_rate": _float(latest.get("read_finish_rate")),
-                    "read_avg_activetime": _float(latest.get("read_avg_activetime")),
-                    "read_sources": sources,
-                    "fetched_at": now,
-                }
-                await session.execute(
-                    insert(WeChatArticleStatsModel)
-                    .values(
-                        id=uuid4(), account_id=account.id, msgid=str(row["msgid"])[:64], **values
-                    )
-                    .on_conflict_do_update(
-                        constraint="uq_wechat_article_stats_account_msgid", set_=values
-                    )
-                )
-                articles += 1
-        for back in range(1, account_days + 1):
-            ref_date = today - timedelta(days=back)
+                parsed = _article_values(row, publish_date=publish_date, today=today, now=now)
+                if parsed is not None:
+                    msgid, values = parsed
+                    article_values[msgid] = values
+        for ref_date in account_dates:
             for row in await client.account_day(ref_date):
-                detail = row.get("detail") if isinstance(row, dict) else None
-                if not isinstance(detail, dict):
-                    continue
-                values = {
-                    "read_user": _int(detail.get("read_user")),
-                    "share_user": _int(detail.get("share_user")),
-                    "like_user": _int(detail.get("like_user")),
-                    "zaikan_user": _int(detail.get("zaikan_user")),
-                    "comment_count": _int(detail.get("comment_count")),
-                    "collection_user": _int(detail.get("collection_user")),
-                    "redirect_ori_page_user": _int(detail.get("redirect_ori_page_user")),
-                    "send_page_count": _int(detail.get("send_page_count")),
-                    "read_sources": _sources(detail.get("read_user_source")),
-                    "fetched_at": now,
-                }
-                await session.execute(
-                    insert(WeChatAccountDailyStatsModel)
-                    .values(
-                        id=uuid4(),
-                        account_id=account.id,
-                        ref_date=_day(row.get("ref_date")) or ref_date,
-                        **values,
-                    )
-                    .on_conflict_do_update(
-                        constraint="uq_wechat_account_daily_stats_day", set_=values
-                    )
-                )
+                measured = _daily_values(row, ref_date=ref_date, now=now)
+                if measured is not None:
+                    daily_values[ref_date] = measured
     except WeChatAdminError as error:
-        # A rollback expires every loaded row; reload the account by its key.
-        await session.rollback()
         failed = await session.get(WeChatAccountModel, account_key)
         if failed is not None:
             failed.stats_sync_error = error.message[:200]
             failed.updated_at = now
             await session.commit()
         raise wechat_call_error(error) from error
-    account.stats_synced_on = today
-    account.stats_sync_error = None
+
+    # Persist only after every requested date completed; a provider failure keeps the prior
+    # successful watermark and previously measured data intact for the next catch-up attempt.
+    for msgid, values in article_values.items():
+        await session.execute(
+            insert(WeChatArticleStatsModel)
+            .values(id=uuid4(), account_id=account_key, msgid=msgid, **values)
+            .on_conflict_do_update(constraint="uq_wechat_article_stats_account_msgid", set_=values)
+        )
+    for ref_date, values in daily_values.items():
+        await session.execute(
+            insert(WeChatAccountDailyStatsModel)
+            .values(id=uuid4(), account_id=account_key, ref_date=ref_date, **values)
+            .on_conflict_do_update(constraint="uq_wechat_account_daily_stats_day", set_=values)
+        )
+    updated = await session.get(WeChatAccountModel, account_key)
+    if updated is not None:
+        updated.stats_synced_on = today
+        updated.stats_sync_error = None
+        updated.updated_at = now
     await session.commit()
-    return SyncReport(articles=articles, days=account_days)
+    return SyncReport(articles=len(article_values), days=len(daily_values))
 
 
 def business_today(settings: Settings, now: datetime) -> date:
@@ -275,7 +363,7 @@ async def manual_sync(
 
 
 async def account_stats(
-    session: AsyncSession, *, account_id: UUID, since: date
+    session: AsyncSession, *, account_id: UUID, since: date, until: date
 ) -> tuple[list[WeChatAccountDailyStatsModel], list[WeChatArticleStatsModel]]:
     daily = (
         await session.scalars(
@@ -283,6 +371,7 @@ async def account_stats(
             .where(
                 WeChatAccountDailyStatsModel.account_id == account_id,
                 WeChatAccountDailyStatsModel.ref_date >= since,
+                WeChatAccountDailyStatsModel.ref_date <= until,
             )
             .order_by(WeChatAccountDailyStatsModel.ref_date)
         )
@@ -293,6 +382,8 @@ async def account_stats(
             .where(
                 WeChatArticleStatsModel.account_id == account_id,
                 WeChatArticleStatsModel.publish_date >= since,
+                WeChatArticleStatsModel.publish_date <= until,
+                WeChatArticleStatsModel.stat_date <= until,
             )
             .order_by(WeChatArticleStatsModel.publish_date.desc(), WeChatArticleStatsModel.title)
         )

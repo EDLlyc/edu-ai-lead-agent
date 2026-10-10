@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/admin-console.md", "reason": "Existing admin auth, roles, encryption and audit contracts"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Postgres constraints, migration lineage and short transactions"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed uncertainty and bounded safe errors"}
+{"file": ".trellis/tasks/10-10-admin-reliability/research/quality-contract-excerpt.md", "reason": "Backend verification gates"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Accessible controls and explicit status"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Generated OpenAPI contract"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend behavior regression and build"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Trace state through persistence/API/UI"}
+{"file": ".trellis/spec/guides/production-mainline.md", "reason": "Production lineage and deployment scope"}

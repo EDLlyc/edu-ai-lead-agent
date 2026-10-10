@@ -14,6 +14,8 @@ export type WeChatDraft = components["schemas"]["AdminWeChatDraft"];
 export type WeChatPublished = components["schemas"]["AdminWeChatPublished"];
 export type PublishJob = components["schemas"]["AdminWeChatPublishJob"];
 export type WeChatStats = components["schemas"]["AdminWeChatStatsResponse"];
+export type PublishReconcile =
+  components["schemas"]["AdminWeChatPublishReconcileRequest"];
 export type DailyStats = components["schemas"]["AdminWeChatDailyStats"];
 export type ArticleStats = components["schemas"]["AdminWeChatArticleStats"];
 
@@ -59,6 +61,11 @@ export interface WeChatApi {
     readonly scheduledAt: string | null;
   }) => Promise<PublishJob>;
   readonly cancel: (jobId: string) => Promise<PublishJob>;
+  readonly recheck: (jobId: string) => Promise<PublishJob>;
+  readonly reconcile: (
+    jobId: string,
+    input: PublishReconcile,
+  ) => Promise<PublishJob>;
   readonly stats: (accountId: string, days: number) => Promise<WeChatStats>;
   readonly syncStats: (
     accountId: string,
@@ -190,6 +197,23 @@ export const wechatApi: WeChatApi = {
     );
     return check(result, "取消失败");
   },
+  async recheck(jobId) {
+    const result = await reach(() =>
+      adminClient.POST("/api/v1/admin/wechat/publish-jobs/{job_id}/recheck", {
+        params: { path: { job_id: jobId } },
+      }),
+    );
+    return check(result, "查询失败，原发布结果仍待核对");
+  },
+  async reconcile(jobId, input) {
+    const result = await reach(() =>
+      adminClient.POST("/api/v1/admin/wechat/publish-jobs/{job_id}/reconcile", {
+        params: { path: { job_id: jobId } },
+        body: input,
+      }),
+    );
+    return check(result, "核对结果保存失败，请刷新记录");
+  },
   async stats(accountId, days) {
     const result = await reach(() =>
       adminClient.GET("/api/v1/admin/wechat/accounts/{account_id}/stats", {
@@ -216,6 +240,6 @@ export const JOB_STATUS_LABELS: Readonly<Record<PublishJob["status"], string>> =
     publishing: "微信发布中",
     succeeded: "已发布",
     failed: "发布失败",
-    outcome_unknown: "结果未知，请到公众号后台确认",
+    outcome_unknown: "结果待核对",
     cancelled: "已取消",
   };

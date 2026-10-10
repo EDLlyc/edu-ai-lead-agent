@@ -39,6 +39,10 @@ export function job(changes: Partial<PublishJob> = {}): PublishJob {
     cancelled_by: null,
     created_at: "2026-10-09T02:00:00Z",
     completed_at: null,
+    updated_at: "2026-10-09T02:00:00Z",
+    can_recheck: true,
+    reconciled_by: null,
+    reconciliation_note: null,
     ...changes,
   };
 }
@@ -73,8 +77,15 @@ export function fakeWeChatApi(overrides: Partial<WeChatApi> = {}) {
     jobs: vi.fn(() => Promise.resolve<readonly PublishJob[]>([])),
     publish: vi.fn(() => Promise.resolve(job())),
     cancel: vi.fn(() => Promise.resolve(job({ status: "cancelled" }))),
+    recheck: vi.fn(() => Promise.resolve(job({ status: "succeeded" }))),
+    reconcile: vi.fn(() =>
+      Promise.resolve(job({ status: "failed", reconciled_by: "liyuchen" })),
+    ),
     stats: vi.fn(() =>
       Promise.resolve({
+        range_start: "2026-09-09",
+        range_end: "2026-10-08",
+        missing_dates: [],
         synced_on: "2026-10-09",
         sync_error: null,
         daily: [],

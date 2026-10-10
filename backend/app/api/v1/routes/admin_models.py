@@ -140,6 +140,9 @@ async def get_model_providers(
                 label=label,
                 reporting=row is not None,
                 versions=None if row is None or row.versions is None else dict(row.versions),
+                load_errors=(
+                    None if row is None or row.load_errors is None else dict(row.load_errors)
+                ),
                 started_at=row.started_at if row else None,
                 seen_at=row.seen_at if row else None,
             )

@@ -92,7 +92,9 @@ async def test_a_timeout_is_reported_not_raised():
 
 @pytest.fixture
 def fresh_overlay(monkeypatch):
+    monkeypatch.setattr(overlay, "_attempted_versions", None)
     monkeypatch.setattr(overlay, "_loaded_versions", None)
+    monkeypatch.setattr(overlay, "_load_errors", None)
     monkeypatch.setattr(overlay, "_watch_started", False)
     return overlay
 
@@ -125,7 +127,9 @@ def test_stored_keys_replace_env_keys_and_bad_ones_are_skipped(fresh_overlay, mo
     applied = fresh_overlay.with_console_model_keys(settings)
     assert applied.ai_platform_api_key.get_secret_value() == "console-zhipu-9999"
     assert applied.comfly_api_key.get_secret_value() == "env-comfly-key-0000"
-    assert fresh_overlay.loaded_versions() == {"zhipu": 3, "comfly": 2, "alibaba-visual": 1}
+    assert fresh_overlay.loaded_versions() == {"zhipu": 3, "alibaba-visual": 1}
+    assert fresh_overlay._attempted_versions == {"zhipu": 3, "comfly": 2, "alibaba-visual": 1}
+    assert fresh_overlay._load_errors == {"comfly": "key_unreadable"}
 
 
 def test_a_database_failure_keeps_the_environment(fresh_overlay, monkeypatch):
@@ -136,6 +140,10 @@ def test_a_database_failure_keeps_the_environment(fresh_overlay, monkeypatch):
     settings = _settings(model_secret_key=SecretStr(new_key()))
     assert fresh_overlay.with_console_model_keys(settings) is settings
     assert fresh_overlay.loaded_versions() is None
+    assert fresh_overlay._attempted_versions is None
+    assert fresh_overlay._load_errors == {
+        provider.id: "configuration_unavailable" for provider in MODEL_KEY_PROVIDERS
+    }
 
 
 def test_keys_changed():
@@ -147,6 +155,7 @@ def test_keys_changed():
 
 
 def test_the_watch_reports_then_sends_sigterm_after_a_change(fresh_overlay, monkeypatch):
+    monkeypatch.setattr(fresh_overlay, "_attempted_versions", {"zhipu": 1})
     monkeypatch.setattr(fresh_overlay, "_loaded_versions", {"zhipu": 1})
     monkeypatch.setattr(fresh_overlay, "_started_at", fresh_overlay.time.monotonic() - 1_000)
     reads = iter([{"zhipu": 1}, OSError("down"), {"zhipu": 2}])
@@ -173,6 +182,7 @@ def test_the_watch_reports_then_sends_sigterm_after_a_change(fresh_overlay, monk
 
 
 def test_a_young_process_waits_before_restarting(fresh_overlay, monkeypatch):
+    monkeypatch.setattr(fresh_overlay, "_attempted_versions", {})
     monkeypatch.setattr(fresh_overlay, "_loaded_versions", {})
     monkeypatch.setattr(fresh_overlay, "_started_at", fresh_overlay.time.monotonic())
     monkeypatch.setattr(fresh_overlay, "beat_and_read", lambda *_args: {"comfly": 1})
@@ -183,3 +193,61 @@ def test_a_young_process_waits_before_restarting(fresh_overlay, monkeypatch):
     fresh_overlay._watch(_settings(model_secret_key=SecretStr(new_key())), "governance-worker")
     assert len(sleeps) == 1
     assert overlay.WATCH_MIN_UPTIME_SECONDS + 4 < sleeps[0] <= overlay.WATCH_MIN_UPTIME_SECONDS + 5
+
+
+@pytest.mark.parametrize("configured", ["invalid-encryption-key", None])
+def test_bad_ciphertext_is_not_restarted_again_until_a_new_version(
+    fresh_overlay, monkeypatch, configured
+):
+    # Invalid configured key and ciphertext failures both retain env without a restart storm.
+    monkeypatch.setattr(
+        fresh_overlay, "read_latest_versions", lambda _settings: {"zhipu": (4, "broken-ciphertext")}
+    )
+    settings = _settings(model_secret_key=SecretStr(configured or new_key()))
+    applied = fresh_overlay.with_console_model_keys(settings)
+    assert applied.ai_platform_api_key.get_secret_value() == "env-zhipu-key-0000"
+    assert fresh_overlay.loaded_versions() == {}
+    assert fresh_overlay._load_errors == {
+        "zhipu": "encryption_key_invalid" if configured else "key_unreadable"
+    }
+    reads = iter([{"zhipu": 4}, {"zhipu": 4}, {"zhipu": 5}])
+    monkeypatch.setattr(fresh_overlay, "beat_and_read", lambda *_args: next(reads))
+    monkeypatch.setattr(fresh_overlay, "_started_at", fresh_overlay.time.monotonic() - 1_000)
+    monkeypatch.setattr(fresh_overlay.random, "uniform", lambda _a, _b: 0.0)
+    sleeps: list[float] = []
+    kills: list[tuple[int, int]] = []
+    monkeypatch.setattr(fresh_overlay.time, "sleep", sleeps.append)
+    monkeypatch.setattr(fresh_overlay.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    fresh_overlay._watch(settings, "content-worker")
+    assert sleeps == [overlay.WATCH_POLL_SECONDS, overlay.WATCH_POLL_SECONDS, 0.0]
+    assert kills == [(fresh_overlay.os.getpid(), signal.SIGTERM)]
+
+
+def test_explicit_env_restore_is_loaded_even_with_invalid_encryption_key(
+    fresh_overlay, monkeypatch
+):
+    monkeypatch.setattr(
+        fresh_overlay, "read_latest_versions", lambda _settings: {"zhipu": (5, None)}
+    )
+    settings = _settings(model_secret_key=SecretStr("invalid-key"))
+    assert (
+        fresh_overlay.with_console_model_keys(settings).ai_platform_api_key.get_secret_value()
+        == "env-zhipu-key-0000"
+    )
+    assert fresh_overlay.loaded_versions() == {"zhipu": 5}
+    assert fresh_overlay._load_errors == {}
+
+
+def test_a_recovered_database_triggers_reload_after_failed_startup(fresh_overlay, monkeypatch):
+    def down(_settings):
+        raise OSError("private-connection-detail")
+
+    monkeypatch.setattr(fresh_overlay, "read_latest_versions", down)
+    settings = _settings(model_secret_key=SecretStr(new_key()))
+    fresh_overlay.with_console_model_keys(settings)
+    monkeypatch.setattr(fresh_overlay, "beat_and_read", lambda *_args: {"comfly": 1})
+    monkeypatch.setattr(fresh_overlay.time, "sleep", lambda _seconds: None)
+    kills: list[tuple[int, int]] = []
+    monkeypatch.setattr(fresh_overlay.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    fresh_overlay._watch(settings, "content-worker")
+    assert kills == [(fresh_overlay.os.getpid(), signal.SIGTERM)]

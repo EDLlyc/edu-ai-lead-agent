@@ -22,6 +22,8 @@ from app.application.services.wechat_admin import (
     create_publish_job,
     list_accounts,
     list_jobs,
+    poll_job,
+    reconcile_job,
     update_account,
     verify_account,
     wechat_call_error,
@@ -62,6 +64,7 @@ from app.schemas.admin_wechat import (
     AdminWeChatPublishedListResponse,
     AdminWeChatPublishJob,
     AdminWeChatPublishJobListResponse,
+    AdminWeChatPublishReconcileRequest,
     AdminWeChatPublishRequest,
     AdminWeChatStatsResponse,
     AdminWeChatStatusResponse,
@@ -278,6 +281,10 @@ async def _job(session: AsyncSession, job: WeChatPublishJobModel) -> AdminWeChat
         cancelled_by=job.cancelled_by,
         created_at=job.created_at,
         completed_at=job.completed_at,
+        updated_at=job.updated_at,
+        reconciled_by=job.reconciled_by,
+        reconciliation_note=job.reconciliation_note,
+        can_recheck=job.status in ("publishing", "outcome_unknown") and job.publish_id is not None,
     )
 
 
@@ -317,6 +324,40 @@ async def post_wechat_publish_job_cancel(
     return await _job(session, job)
 
 
+@router.post("/publish-jobs/{job_id}/recheck", response_model=AdminWeChatPublishJob)
+async def post_wechat_publish_job_recheck(
+    job_id: UUID, operator: Operator, session: Session, request: Request
+) -> AdminWeChatPublishJob:
+    job = await poll_job(
+        session,
+        settings=_settings(request),
+        http=_http(request),
+        job_id=job_id,
+        principal=operator,
+        now=datetime.now(UTC),
+    )
+    if job is None:
+        raise NotFoundError("publish job")
+    return await _job(session, job)
+
+
+@router.post("/publish-jobs/{job_id}/reconcile", response_model=AdminWeChatPublishJob)
+async def post_wechat_publish_job_reconcile(
+    job_id: UUID, body: AdminWeChatPublishReconcileRequest, owner: Owner, session: Session
+) -> AdminWeChatPublishJob:
+    job = await reconcile_job(
+        session,
+        principal=owner,
+        job_id=job_id,
+        result=body.result,
+        note=body.note,
+        confirmed=body.confirmed,
+        expected_updated_at=body.expected_updated_at,
+        now=datetime.now(UTC),
+    )
+    return await _job(session, job)
+
+
 @router.get("/accounts/{account_id}/stats", response_model=AdminWeChatStatsResponse)
 async def get_wechat_stats(
     account_id: UUID,
@@ -328,9 +369,18 @@ async def get_wechat_stats(
     account = await session.get(WeChatAccountModel, account_id)
     if account is None:
         raise NotFoundError("wechat account")
-    since = business_today(_settings(request), datetime.now(UTC)) - timedelta(days=days)
-    daily, articles = await account_stats(session, account_id=account_id, since=since)
+    today = business_today(_settings(request), datetime.now(UTC))
+    since, until = today - timedelta(days=days), today - timedelta(days=1)
+    daily, articles = await account_stats(session, account_id=account_id, since=since, until=until)
+    present = {row.ref_date for row in daily}
     return AdminWeChatStatsResponse(
+        range_start=since,
+        range_end=until,
+        missing_dates=[
+            since + timedelta(days=offset)
+            for offset in range(days)
+            if since + timedelta(days=offset) not in present
+        ],
         synced_on=account.stats_synced_on,
         sync_error=account.stats_sync_error,
         daily=[

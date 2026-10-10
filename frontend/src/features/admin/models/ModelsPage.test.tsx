@@ -47,6 +47,7 @@ function consumer(
     label,
     reporting: true,
     versions,
+    load_errors: {},
     started_at: "2026-10-09T01:00:00Z",
     seen_at: "2026-10-09T03:00:00Z",
   };
@@ -232,5 +233,106 @@ describe("模型配置", () => {
     );
     expect(await screen.findByText(/MODEL_SECRET_KEY/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更换 key" })).toBeDisabled();
+  });
+
+  it("separates a saved key from a failed load and refreshes after recovery", async () => {
+    const user = userEvent.setup();
+    const failed = {
+      ...consumer("content-worker", "选题与文案", {}),
+      load_errors: { comfly: "key_unreadable" },
+    };
+    const list = vi.fn<ModelsApi["list"]>().mockResolvedValue({
+      secretKeyConfigured: true,
+      providers: [COMFLY],
+      consumers: [failed],
+    });
+    const api = fakeApi({ list });
+    render(<ModelsPage api={api} onSessionExpired={vi.fn()} />);
+    const comfly = await screen.findByRole("listitem", { name: /Comfly/ });
+    expect(comfly).toHaveTextContent("后台保存的第 2 版");
+    expect(comfly).toHaveTextContent(
+      "已在 0/1 个服务生效；1 个加载失败，保留服务器配置",
+    );
+    expect(comfly).not.toHaveTextContent("等待重启");
+    const services = screen.getByRole("table", { name: /各服务正在用的 key/ });
+    expect(
+      within(services).getByRole("row", { name: /选题与文案/ }),
+    ).toHaveTextContent(
+      "加载失败：已保存的 key 无法解密，保留服务器配置；请联系管理员检查",
+    );
+
+    list.mockResolvedValue({
+      secretKeyConfigured: true,
+      providers: [COMFLY],
+      consumers: [consumer("content-worker", "选题与文案", { comfly: 2 })],
+    });
+    await user.click(screen.getByRole("button", { name: "刷新状态" }));
+    expect(
+      await within(comfly).findByText("已在 1/1 个服务生效"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not count legacy, failed or missing heartbeat details as loaded", async () => {
+    render(
+      <ModelsPage
+        api={fakeApi({
+          list: vi.fn(() =>
+            Promise.resolve({
+              secretKeyConfigured: true,
+              providers: [ZHIPU, COMFLY],
+              consumers: [
+                {
+                  ...consumer("acquisition-api", "接口服务", { comfly: 2 }),
+                  load_errors: null,
+                },
+                {
+                  ...consumer("content-worker", "选题与文案", null),
+                  load_errors: {
+                    zhipu: "configuration_unavailable",
+                    comfly: "configuration_unavailable",
+                  },
+                },
+                consumer("governance-worker", "新闻治理", null),
+              ],
+            }),
+          ),
+        })}
+        onSessionExpired={vi.fn()}
+      />,
+    );
+    const zhipu = await screen.findByRole("listitem", { name: /智谱/ });
+    const comfly = screen.getByRole("listitem", { name: /Comfly/ });
+    for (const card of [zhipu, comfly]) {
+      expect(card).toHaveTextContent(
+        "已在 0/3 个服务生效；1 个加载失败，保留服务器配置；2 个未报告加载状态，尚无法确认",
+      );
+      expect(card).not.toHaveTextContent("使用中");
+    }
+    expect(screen.getByRole("row", { name: /接口服务/ })).toHaveTextContent(
+      "未报告加载状态，尚无法确认",
+    );
+    expect(screen.getByRole("row", { name: /选题与文案/ })).toHaveTextContent(
+      "未能读取后台配置",
+    );
+  });
+
+  it("never claims the environment key is in use without a reporting service", async () => {
+    render(
+      <ModelsPage
+        api={fakeApi({
+          list: vi.fn(() =>
+            Promise.resolve({
+              secretKeyConfigured: true,
+              providers: [ZHIPU],
+              consumers: [],
+            }),
+          ),
+        })}
+        onSessionExpired={vi.fn()}
+      />,
+    );
+    const zhipu = await screen.findByRole("listitem", { name: /智谱/ });
+    expect(zhipu).not.toHaveTextContent("使用中");
+    expect(zhipu).toHaveTextContent("尚未收到服务加载状态");
   });
 });

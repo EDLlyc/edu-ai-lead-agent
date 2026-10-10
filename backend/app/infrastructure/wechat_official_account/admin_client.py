@@ -4,7 +4,7 @@
 Separate from the strict draft adapter (`client.py`). Every call goes to the fixed host
 `api.weixin.qq.com`, reads a bounded response and turns a WeChat `errcode` into
 `WeChatAdminError` with a Chinese hint. `stable_token` is called without force_refresh, so the
-token is shared with the draft worker instead of invalidating it. A timeout on
+token is shared with the draft worker instead of invalidating it. An ambiguous response from
 `freepublish/submit` raises `WeChatAdminOutcomeUnknown`: the caller must not retry it blindly.
 """
 
@@ -125,7 +125,7 @@ class WeChatAdminClient:
         *,
         params: dict[str, str] | None = None,
         payload: dict[str, Any] | None = None,
-        unknown_on_timeout: bool = False,
+        uncertain_on_error: bool = False,
     ) -> dict[str, Any]:
         client = self._client or httpx.AsyncClient(trust_env=False)
         try:
@@ -139,25 +139,32 @@ class WeChatAdminClient:
                     timeout=_TIMEOUT_SECONDS,
                 )
         except (TimeoutError, httpx.TimeoutException) as error:
-            if unknown_on_timeout:
+            if uncertain_on_error:
                 raise WeChatAdminOutcomeUnknown(-2, "微信响应超时，结果未知") from error
             raise WeChatAdminError(-2, "连接微信超时，请稍后再试") from error
         except httpx.RequestError as error:
+            if uncertain_on_error:
+                raise WeChatAdminOutcomeUnknown(-3, "微信连接中断，发布结果未知") from error
             raise WeChatAdminError(-3, "连不上微信服务器") from error
         finally:
             if self._client is None:
                 await client.aclose()
+        response_error = WeChatAdminOutcomeUnknown if uncertain_on_error else WeChatAdminError
         if response.status_code != 200 or len(response.content) > _MAX_RESPONSE_BYTES:
-            raise WeChatAdminError(-4, f"微信返回异常（HTTP {response.status_code}）")
+            raise response_error(
+                -4, "微信响应异常，结果未知" if uncertain_on_error else "微信响应异常"
+            )
         try:
             data = json.loads(response.content.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise WeChatAdminError(-5, "微信返回的内容看不懂") from error
+            raise response_error(-5, "微信返回的内容无法确认，结果未知") from error
         if not isinstance(data, dict):
-            raise WeChatAdminError(-5, "微信返回的内容看不懂")
+            raise response_error(-5, "微信返回的内容无法确认，结果未知")
         code = data.get("errcode")
-        if isinstance(code, int) and code != 0:
-            raise WeChatAdminError(code, describe_error(code, str(data.get("errmsg", ""))))
+        if type(code) is int and code != 0:
+            raise WeChatAdminError(code, describe_error(code))
+        if uncertain_on_error and type(code) is not int:
+            raise WeChatAdminOutcomeUnknown(-5, "微信没有返回有效确认，结果未知")
         return data
 
     async def token(self) -> str:
@@ -191,7 +198,7 @@ class WeChatAdminClient:
         path: str,
         payload: dict[str, Any] | None = None,
         *,
-        unknown_on_timeout: bool = False,
+        uncertain_on_error: bool = False,
     ) -> dict[str, Any]:
         token = await self.token()
         try:
@@ -200,7 +207,7 @@ class WeChatAdminClient:
                 path,
                 params={"access_token": token},
                 payload=payload,
-                unknown_on_timeout=unknown_on_timeout,
+                uncertain_on_error=uncertain_on_error,
             )
         except WeChatAdminError as error:
             if error.code not in (40001, 42001) or isinstance(error, WeChatAdminOutcomeUnknown):
@@ -211,7 +218,7 @@ class WeChatAdminClient:
                 path,
                 params={"access_token": await self.token()},
                 payload=payload,
-                unknown_on_timeout=unknown_on_timeout,
+                uncertain_on_error=uncertain_on_error,
             )
 
     async def drafts(self, *, offset: int = 0, count: int = 20) -> tuple[int, list[Draft]]:
@@ -263,25 +270,54 @@ class WeChatAdminClient:
 
     async def submit(self, media_id: str) -> str:
         data = await self._authed(
-            "POST", "/cgi-bin/freepublish/submit", {"media_id": media_id}, unknown_on_timeout=True
+            "POST", "/cgi-bin/freepublish/submit", {"media_id": media_id}, uncertain_on_error=True
         )
         publish_id = data.get("publish_id")
-        if publish_id is None:
-            raise WeChatAdminOutcomeUnknown(-5, "微信没有返回发布编号，结果未知")
+        if (
+            not isinstance(publish_id, (str, int))
+            or isinstance(publish_id, bool)
+            or not str(publish_id).strip()
+            or len(str(publish_id)) > 64
+            or "\x00" in str(publish_id)
+        ):
+            raise WeChatAdminOutcomeUnknown(-5, "微信没有返回有效发布编号，结果未知")
         return str(publish_id)
 
     async def publish_status(self, publish_id: str) -> PublishStatus:
         data = await self._authed("POST", "/cgi-bin/freepublish/get", {"publish_id": publish_id})
+        if "errcode" in data and type(data["errcode"]) is not int:
+            raise WeChatAdminError(-5, "微信没有返回有效发布状态")
+        status = data.get("publish_status")
+        if type(status) is not int or status not in range(7):
+            raise WeChatAdminError(-5, "微信没有返回有效发布状态")
         detail = data.get("article_detail") or {}
+        if not isinstance(detail, dict):
+            raise WeChatAdminError(-5, "微信没有返回有效文章信息")
         items = detail.get("item") or []
-        url = next(
-            (str(item.get("article_url")) for item in items if item.get("article_url")), None
-        )
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            raise WeChatAdminError(-5, "微信没有返回有效文章信息")
+        urls = [item["article_url"] for item in items if item.get("article_url")]
+        if any(not isinstance(url, str) or "\x00" in url for url in urls):
+            raise WeChatAdminError(-5, "微信没有返回有效文章信息")
+        url = next(iter(urls), None)
+        article_id = data.get("article_id")
+        # Keep an unusable receipt on the bounded polling-error path. Otherwise PostgreSQL
+        # rejects it after the provider call and the job can stay publishing indefinitely.
+        if status == 0 and (
+            not isinstance(article_id, str)
+            or not article_id.strip()
+            or len(article_id) > 128
+            or "\x00" in article_id
+        ):
+            raise WeChatAdminError(-5, "微信成功响应缺少有效文章编号，请重新查询")
+        fail_indexes = data.get("fail_idx") or []
+        if not isinstance(fail_indexes, list):
+            raise WeChatAdminError(-5, "微信没有返回有效发布状态")
         return PublishStatus(
-            status=int(data.get("publish_status", -1)),
-            article_id=str(data["article_id"]) if data.get("article_id") else None,
+            status=status,
+            article_id=str(article_id) if article_id else None,
             article_url=url,
-            fail_indexes=tuple(int(index) for index in data.get("fail_idx") or []),
+            fail_indexes=tuple(index for index in fail_indexes if type(index) is int),
         )
 
     async def article_day(self, day: date) -> list[dict[str, Any]]:

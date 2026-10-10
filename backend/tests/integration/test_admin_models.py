@@ -220,12 +220,38 @@ async def test_a_worker_starts_with_the_console_key(
     assert len(consumers) == 6
     assert by_service["content-worker"]["reporting"] is True
     assert by_service["content-worker"]["versions"] == {"zhipu": 1}
+    assert by_service["content-worker"]["load_errors"] == {}
     assert by_service["content-worker"]["label"] == "选题与文案"
     assert by_service["governance-worker"]["reporting"] is False
     assert by_service["governance-worker"]["versions"] is None
+    assert by_service["governance-worker"]["load_errors"] is None
     # Another MODEL_SECRET_KEY cannot open it: the environment key stays.
     other = settings.model_copy(update={"model_secret_key": SecretStr(new_key())})
     assert overlay.with_console_model_keys(other).ai_platform_api_key.get_secret_value() == ENV_KEY
+    assert overlay.loaded_versions() == {}
+    assert overlay.beat_and_read(other, "content-worker", "host-a") == {"zhipu": 1}
+    async with integration_context.session_factory() as session:
+        now = datetime.now(UTC)
+        session.add(
+            ModelKeyConsumerModel(
+                service="governance-worker",
+                host="legacy-host",
+                versions={"zhipu": 1},
+                started_at=now,
+                seen_at=now,
+            )
+        )
+        await session.commit()
+    async with _logged_in(integration_context, "owner") as owner:
+        response = await owner.get("/api/v1/admin/models")
+        assert response.status_code == 200
+        consumers = response.json()["consumers"]
+    by_service = {item["service"]: item for item in consumers}
+    assert by_service["content-worker"]["versions"] == {}
+    assert by_service["content-worker"]["load_errors"] == {"zhipu": "key_unreadable"}
+    assert by_service["governance-worker"]["reporting"] is True
+    assert by_service["governance-worker"]["load_errors"] is None
+    assert GOOD_2 not in response.text and models not in response.text
 
 
 async def test_without_the_model_secret_key_nothing_is_stored(

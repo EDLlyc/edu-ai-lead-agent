@@ -707,6 +707,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/wechat/publish-jobs/{job_id}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Wechat Publish Job Recheck */
+        post: operations["post_wechat_publish_job_recheck_api_v1_admin_wechat_publish_jobs__job_id__recheck_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/wechat/publish-jobs/{job_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Wechat Publish Job Reconcile */
+        post: operations["post_wechat_publish_job_reconcile_api_v1_admin_wechat_publish_jobs__job_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/wechat/status": {
         parameters: {
             query?: never;
@@ -2423,6 +2457,10 @@ export interface components {
         AdminModelKeyConsumer: {
             /** Label */
             label: string;
+            /** Load Errors */
+            load_errors: {
+                [key: string]: string;
+            } | null;
             /** Reporting */
             reporting: boolean;
             /** Seen At */
@@ -2877,6 +2915,8 @@ export interface components {
             account_name: string;
             /** Article Url */
             article_url: string | null;
+            /** Can Recheck */
+            can_recheck: boolean;
             /** Cancelled By */
             cancelled_by: string | null;
             /** Completed At */
@@ -2897,6 +2937,10 @@ export interface components {
             id: string;
             /** Media Id */
             media_id: string;
+            /** Reconciled By */
+            reconciled_by: string | null;
+            /** Reconciliation Note */
+            reconciliation_note: string | null;
             /**
              * Scheduled At
              * Format: date-time
@@ -2909,11 +2953,36 @@ export interface components {
             status: "scheduled" | "submitting" | "publishing" | "succeeded" | "failed" | "outcome_unknown" | "cancelled";
             /** Title */
             title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** AdminWeChatPublishJobListResponse */
         AdminWeChatPublishJobListResponse: {
             /** Items */
             items: components["schemas"]["AdminWeChatPublishJob"][];
+        };
+        /** AdminWeChatPublishReconcileRequest */
+        AdminWeChatPublishReconcileRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+            /** Note */
+            note: string;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "published" | "not_published";
         };
         /** AdminWeChatPublishRequest */
         AdminWeChatPublishRequest: {
@@ -2964,6 +3033,18 @@ export interface components {
             articles: components["schemas"]["AdminWeChatArticleStats"][];
             /** Daily */
             daily: components["schemas"]["AdminWeChatDailyStats"][];
+            /** Missing Dates */
+            missing_dates: string[];
+            /**
+             * Range End
+             * Format: date
+             */
+            range_end: string;
+            /**
+             * Range Start
+             * Format: date
+             */
+            range_start: string;
             /** Sync Error */
             sync_error: string | null;
             /** Synced On */
@@ -9452,6 +9533,76 @@ export interface operations {
             };
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatPublishJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_publish_job_recheck_api_v1_admin_wechat_publish_jobs__job_id__recheck_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWeChatPublishJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wechat_publish_job_reconcile_api_v1_admin_wechat_publish_jobs__job_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminWeChatPublishReconcileRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

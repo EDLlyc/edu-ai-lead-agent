@@ -23,6 +23,7 @@ import re
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID, uuid4
 
 import httpx
@@ -51,7 +52,7 @@ _APP_ID = re.compile(r"^wx[0-9a-f]{16}$")
 _SECRET = re.compile(r"^[0-9A-Za-z]{16,64}$")
 PUBLISH_GIVE_UP_AFTER = timedelta(minutes=30)
 SUBMIT_LEASE = timedelta(minutes=5)
-OPEN_STATUSES = ("scheduled", "submitting", "publishing")
+OPEN_STATUSES = ("scheduled", "submitting", "publishing", "outcome_unknown", "succeeded")
 
 PUBLISH_STATUS_TEXT = {
     0: "发布成功",
@@ -369,7 +370,7 @@ async def create_publish_job(
         await session.flush()
     except IntegrityError as error:
         await session.rollback()
-        raise ConflictError("这篇草稿已经在发布或排期中") from error
+        raise ConflictError("这篇草稿已发布、正在发布或结果待核对，不能重复提交") from error
     await add_audit_event(
         session,
         now=now,
@@ -414,19 +415,39 @@ async def submit_job(
         job.updated_at = now
         await session.commit()
         return
-    job.status, job.lease_owner = "submitting", worker
+    claim = f"{worker[:90]}:{uuid4().hex}"
+    job.status, job.lease_owner = "submitting", claim
     job.lease_expires_at, job.updated_at = now + SUBMIT_LEASE, now
+    media_id, account_name = job.media_id, account.name
     await session.commit()
+    publish_id: str | None = None
+    failure: tuple[str, str] | None = None
     try:
-        publish_id = await _client(account, settings, http).submit(job.media_id)
+        publish_id = await _client(account, settings, http).submit(media_id)
     except WeChatAdminOutcomeUnknown as error:
-        await _finish(session, job, "outcome_unknown", now, error=error.message)
-        return
+        failure = ("outcome_unknown", error.message)
     except (WeChatAdminError, WeChatAdminRejected) as error:
-        await _finish(session, job, "failed", now, error=getattr(error, "message", str(error)))
+        failure = ("failed", error.message)
+    # A recovered lease or operator reconciliation owns the newer decision. Never overwrite it
+    # with a response from an old submit, and never automatically send that draft again.
+    current = await session.scalar(
+        select(WeChatPublishJobModel)
+        .where(
+            WeChatPublishJobModel.id == job_id,
+            WeChatPublishJobModel.status == "submitting",
+            WeChatPublishJobModel.lease_owner == claim,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if current is None:
+        await session.rollback()
         return
-    job.status, job.publish_id, job.submitted_at = "publishing", publish_id, now
-    job.lease_owner, job.lease_expires_at, job.updated_at = None, None, now
+    if failure is not None:
+        await _finish(session, current, failure[0], now, error=failure[1])
+        return
+    current.status, current.publish_id, current.submitted_at = "publishing", publish_id, now
+    current.lease_owner, current.lease_expires_at, current.updated_at = None, None, now
     await add_audit_event(
         session,
         now=now,
@@ -434,8 +455,8 @@ async def submit_job(
         username="system",
         action="wechat.publish_submitted",
         target_type="wechat_publish_job",
-        target_id=str(job.id),
-        detail={"account": account.name, "title": job.title},
+        target_id=str(current.id),
+        detail={"account": account_name, "title": current.title},
     )
     await session.commit()
 
@@ -476,51 +497,157 @@ async def poll_job(
     http: httpx.AsyncClient | None,
     job_id: UUID,
     now: datetime,
-) -> None:
+    principal: AdminPrincipal | None = None,
+) -> WeChatPublishJobModel | None:
+    allowed = ("publishing", "outcome_unknown") if principal else ("publishing",)
+    job: WeChatPublishJobModel | None = await session.scalar(
+        select(WeChatPublishJobModel)
+        .where(WeChatPublishJobModel.id == job_id)
+        .execution_options(populate_existing=True)
+    )
+    if job is None:
+        if principal:
+            raise NotFoundError("publish job")
+        await session.rollback()
+        return None
+    if job.status not in allowed or job.publish_id is None:
+        if principal:
+            raise ConflictError("只有有发布编号且仍待核对的记录可以重新查询")
+        await session.rollback()
+        return None
+    expected = (job.status, job.updated_at, job.publish_id)
+    account = await session.get(WeChatAccountModel, job.account_id)
+    # End the read transaction before the provider request. Reacquire a lock and compare the
+    # observed state afterwards, so a slow poll cannot undo a newer reconciliation/result.
+    await session.commit()
+    state = None
+    poll_error: str | None = None
+    try:
+        if account is None:
+            raise WeChatAdminRejected("公众号不存在，无法查询")
+        state = await _client(account, settings, http).publish_status(expected[2])
+    except (WeChatAdminError, WeChatAdminRejected) as error:
+        poll_error = error.message
+        logger.warning("wechat_publish_poll_failed", job_id=str(job_id), code=error.code)
     job = await session.scalar(
         select(WeChatPublishJobModel)
-        .where(WeChatPublishJobModel.id == job_id, WeChatPublishJobModel.status == "publishing")
-        .with_for_update(skip_locked=True)
+        .where(WeChatPublishJobModel.id == job_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
-    if job is None or job.publish_id is None:
+    if job is None:
         await session.rollback()
-        return
-    account = await session.get(WeChatAccountModel, job.account_id)
-    if account is None:
-        await session.rollback()
-        return
-    try:
-        state = await _client(account, settings, http).publish_status(job.publish_id)
-    except (WeChatAdminError, WeChatAdminRejected) as error:
-        logger.warning("wechat_publish_poll_failed", job_id=str(job.id), error=str(error))
-        await session.rollback()
-        return
-    job.wechat_status = state.status
-    if state.status == 0:
-        job.article_id, job.article_url = state.article_id, state.article_url
-        await _finish(session, job, "succeeded", now, wechat_status=0)
-    elif state.status == 1:
-        if job.submitted_at is not None and now - job.submitted_at > PUBLISH_GIVE_UP_AFTER:
+        return None
+    changed = (job.status, job.updated_at, job.publish_id) != expected
+    if principal:
+        await add_audit_event(
+            session,
+            now=now,
+            user_id=principal.user_id,
+            username=principal.username,
+            action="wechat.publish_rechecked",
+            target_type="wechat_publish_job",
+            target_id=str(job.id),
+            detail={"ok": state is not None, "ignored_newer_state": changed},
+        )
+    if changed:
+        await session.commit()
+        return job
+    expired = now - (job.submitted_at or job.created_at) >= PUBLISH_GIVE_UP_AFTER
+    if state is None:
+        if expired or job.status == "outcome_unknown":
             await _finish(
                 session,
                 job,
                 "outcome_unknown",
                 now,
-                error="微信超过 30 分钟还在发布中，请到公众号后台确认",
+                error="未能核实发布结果，请重新查询或到公众号后台核对："
+                + (poll_error or "查询失败"),
+            )
+        else:
+            job.error, job.updated_at = poll_error, now
+            await session.commit()
+    elif state.status == 0:
+        job.article_id, job.article_url = state.article_id, state.article_url
+        await _finish(session, job, "succeeded", now, wechat_status=0)
+    elif state.status == 1:
+        if expired or job.status == "outcome_unknown":
+            await _finish(
+                session,
+                job,
+                "outcome_unknown",
+                now,
+                error="微信超过 30 分钟仍未确认结果，请到公众号后台核对",
                 wechat_status=1,
             )
         else:
-            job.updated_at = now
+            job.wechat_status, job.error, job.updated_at = 1, None, now
             await session.commit()
+    elif state.status in (5, 6):
+        # It was published before deletion/platform blocking; a retry would be a second publish.
+        await _finish(
+            session,
+            job,
+            "succeeded",
+            now,
+            error=PUBLISH_STATUS_TEXT[state.status],
+            wechat_status=state.status,
+        )
     else:
         await _finish(
             session,
             job,
             "failed",
             now,
-            error=PUBLISH_STATUS_TEXT.get(state.status, f"微信发布状态 {state.status}"),
+            error=PUBLISH_STATUS_TEXT[state.status],
             wechat_status=state.status,
         )
+    return job
+
+
+async def reconcile_job(
+    session: AsyncSession,
+    *,
+    principal: AdminPrincipal,
+    job_id: UUID,
+    result: Literal["published", "not_published"],
+    note: str,
+    confirmed: bool,
+    expected_updated_at: datetime,
+    now: datetime,
+) -> WeChatPublishJobModel:
+    if principal.role != "owner":
+        raise WeChatAdminRejected("只有管理员可以确认核对结果", "admin_owner_required", 403)
+    clean_note = " ".join(note.split())
+    if not confirmed or not 5 <= len(clean_note) <= 500:
+        raise WeChatAdminRejected("请确认已在公众号后台核对，并填写 5–500 字的核对依据")
+    job = await session.scalar(
+        select(WeChatPublishJobModel)
+        .where(WeChatPublishJobModel.id == job_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if job is None:
+        raise NotFoundError("publish job")
+    if job.status != "outcome_unknown" or job.updated_at != expected_updated_at:
+        raise ConflictError("发布记录已经变化，请刷新后重新核对")
+    job.status = "succeeded" if result == "published" else "failed"
+    job.reconciled_by, job.reconciliation_note = principal.username, clean_note
+    job.error = None if result == "published" else "已人工核对未发布，可以重新提交"
+    job.completed_at, job.updated_at = now, now
+    job.lease_owner, job.lease_expires_at = None, None
+    await add_audit_event(
+        session,
+        now=now,
+        user_id=principal.user_id,
+        username=principal.username,
+        action="wechat.publish_reconciled",
+        target_type="wechat_publish_job",
+        target_id=str(job.id),
+        detail={"result": result, "note": clean_note, "previous_status": "outcome_unknown"},
+    )
+    await session.commit()
+    return job
 
 
 async def run_publish_loop_once(
@@ -535,21 +662,28 @@ async def run_publish_loop_once(
 
     name = worker or f"{socket.gethostname()}:wechat-publish"
     async with session_factory() as session:
-        stuck = (
-            await session.scalars(
+        stale = (
+            WeChatPublishJobModel.status == "submitting",
+            or_(
+                WeChatPublishJobModel.lease_expires_at.is_(None),
+                WeChatPublishJobModel.lease_expires_at < now,
+            ),
+        )
+        stuck_ids = list(
+            (await session.scalars(select(WeChatPublishJobModel.id).where(*stale).limit(20))).all()
+        )
+        await session.commit()
+        recovered = 0
+        for job_id in stuck_ids:
+            job = await session.scalar(
                 select(WeChatPublishJobModel)
-                .where(
-                    WeChatPublishJobModel.status == "submitting",
-                    or_(
-                        WeChatPublishJobModel.lease_expires_at.is_(None),
-                        WeChatPublishJobModel.lease_expires_at < now,
-                    ),
-                )
+                .where(WeChatPublishJobModel.id == job_id, *stale)
                 .with_for_update(skip_locked=True)
+                .execution_options(populate_existing=True)
             )
-        ).all()
-        for job in stuck:
-            # The process stopped mid-submit: WeChat may or may not have the request.
+            if job is None:
+                await session.rollback()
+                continue
             await _finish(
                 session,
                 job,
@@ -557,6 +691,7 @@ async def run_publish_loop_once(
                 now,
                 error="提交时服务中断，请到公众号后台确认是否已发布",
             )
+            recovered += 1
         due_ids = list(
             (
                 await session.scalars(
@@ -587,7 +722,7 @@ async def run_publish_loop_once(
     for job_id in publishing_ids:
         async with session_factory() as session:
             await poll_job(session, settings=settings, http=http, job_id=job_id, now=now)
-    return LoopReport(submitted=len(due_ids), polled=len(publishing_ids), recovered=len(stuck))
+    return LoopReport(submitted=len(due_ids), polled=len(publishing_ids), recovered=recovered)
 
 
 async def cancel_job(
@@ -638,6 +773,7 @@ __all__ = [
     "list_accounts",
     "list_jobs",
     "poll_job",
+    "reconcile_job",
     "run_publish_loop_once",
     "secret_key",
     "submit_job",

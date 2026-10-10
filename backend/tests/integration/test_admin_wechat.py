@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -118,7 +118,9 @@ class FakeWeChat:
                                     "share_user": 1,
                                 },
                                 {
-                                    "stat_date": "2099-01-01",
+                                    "stat_date": (
+                                        date.fromisoformat(self.article_day) + timedelta(days=1)
+                                    ).isoformat(),
                                     "read_user_source": sources,
                                     "share_user": 5,
                                     "collection_user": 2,
@@ -553,7 +555,10 @@ async def test_reading_stats_sync_daily_and_keep_the_latest_cumulative_numbers(
         assert article["read_user"] == 40
         assert article["share_user"] == 5
         assert article["read_delivery_rate"] == 0.25
-        assert article["stat_date"] == "2099-01-01"
+        assert (
+            article["stat_date"]
+            == (date.fromisoformat(wechat.article_day) + timedelta(days=1)).isoformat()
+        )
         assert article["read_sources"]["朋友圈"] == 12
 
         loop = {"settings": app.state.settings, "http": app.state.wechat_http}
@@ -660,3 +665,366 @@ async def test_an_editor_picks_the_layout_template_the_draft_worker_uses(
     assert [event.detail for event in audit] == [
         {"name": "赛先生", "from": "xiaosai-blue", "to": "jade-green", "template": "青绿"}
     ]
+
+
+async def test_unknown_draft_requires_guarded_owner_reconciliation_before_retry(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    import asyncio
+
+    async with (
+        _logged_in(integration_context, "owner") as owner,
+        _logged_in(integration_context, "editor") as editor,
+    ):
+        account_id = await _bind(owner)
+        wechat.submit_timeout = True
+        request = {"account_id": account_id, "media_id": "M1", "title": "科学营开营"}
+        job = (
+            await editor.post("/api/v1/admin/wechat/publish-jobs", json=request, headers=WRITE)
+        ).json()
+        assert job["status"] == "outcome_unknown"
+        assert job["can_recheck"] is False
+        drafts = (await editor.get(f"/api/v1/admin/wechat/accounts/{account_id}/drafts")).json()
+        assert drafts["items"][0]["open_job_id"] == job["id"]
+        blocked = await editor.post(
+            "/api/v1/admin/wechat/publish-jobs", json=request, headers=WRITE
+        )
+        assert blocked.status_code == 409
+        recheck = await editor.post(
+            f"/api/v1/admin/wechat/publish-jobs/{job['id']}/recheck", headers=WRITE
+        )
+        assert recheck.status_code == 409
+        url = f"/api/v1/admin/wechat/publish-jobs/{job['id']}/reconcile"
+        body = {
+            "result": "not_published",
+            "note": "已在公众号后台核实草稿尚未发布",
+            "confirmed": True,
+            "expected_updated_at": job["updated_at"],
+        }
+        assert (await editor.post(url, json=body, headers=WRITE)).status_code == 403
+        assert (await owner.post(url, json=body)).status_code == 403
+        assert (
+            await owner.post(url, json={**body, "confirmed": False}, headers=WRITE)
+        ).status_code == 422
+        assert (
+            await owner.post(url, json={**body, "note": "     "}, headers=WRITE)
+        ).status_code == 422
+        assert (
+            await owner.post(
+                url, json={**body, "expected_updated_at": "2020-01-01T00:00:00Z"}, headers=WRITE
+            )
+        ).status_code == 409
+        responses = await asyncio.gather(
+            *(owner.post(url, json=body, headers=WRITE) for _ in range(2))
+        )
+        assert sorted(response.status_code for response in responses) == [200, 409]
+        resolved = next(response.json() for response in responses if response.status_code == 200)
+        assert resolved["status"] == "failed"
+        assert resolved["reconciliation_note"] == body["note"]
+        assert resolved["reconciled_by"]
+        # Resolution records evidence but never sends another provider request.
+        assert wechat.calls.count("/cgi-bin/freepublish/submit") == 1
+        wechat.submit_timeout = False
+        retry = await editor.post("/api/v1/admin/wechat/publish-jobs", json=request, headers=WRITE)
+        assert retry.status_code == 201
+        assert retry.json()["status"] == "publishing"
+        assert wechat.calls.count("/cgi-bin/freepublish/submit") == 2
+    async with integration_context.session_factory() as session:
+        audits = (
+            await session.scalars(
+                select(AdminAuditEventModel).where(
+                    AdminAuditEventModel.action == "wechat.publish_reconciled"
+                )
+            )
+        ).all()
+        assert len(audits) == 1
+        assert audits[0].detail == {
+            "result": "not_published",
+            "note": body["note"],
+            "previous_status": "outcome_unknown",
+        }
+        assert audits[0].user_id is not None
+
+
+async def test_manual_published_without_receipt_remains_occupied(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        wechat.submit_timeout = True
+        request = {"account_id": account_id, "media_id": "M1"}
+        job = (
+            await owner.post("/api/v1/admin/wechat/publish-jobs", json=request, headers=WRITE)
+        ).json()
+        result = await owner.post(
+            f"/api/v1/admin/wechat/publish-jobs/{job['id']}/reconcile",
+            json={
+                "result": "published",
+                "note": "公众号后台已查到公开发布文章",
+                "confirmed": True,
+                "expected_updated_at": job["updated_at"],
+            },
+            headers=WRITE,
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["status"] == "succeeded"
+        assert result.json()["reconciled_by"]
+        assert (
+            await owner.post("/api/v1/admin/wechat/publish-jobs", json=request, headers=WRITE)
+        ).status_code == 409
+        drafts = (await owner.get(f"/api/v1/admin/wechat/accounts/{account_id}/drafts")).json()
+        assert drafts["items"][0]["open_job_id"] == job["id"]
+        assert wechat.calls.count("/cgi-bin/freepublish/submit") == 1
+
+
+@pytest.mark.parametrize(
+    "poll_body",
+    [
+        {"errcode": 48001},
+        {},
+        {"publish_status": 1},
+        {"publish_status": 0, "article_id": "x" * 129},
+        {"publish_status": 0, "article_id": "article\x00id"},
+    ],
+)
+async def test_failed_or_incomplete_poll_is_bounded_and_recheck_does_not_submit(
+    integration_context: IntegrationContext, wechat: FakeWeChat, poll_body: dict[str, Any]
+) -> None:
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        job = (
+            await owner.post(
+                "/api/v1/admin/wechat/publish-jobs",
+                json={"account_id": account_id, "media_id": "M1"},
+                headers=WRITE,
+            )
+        ).json()
+        wechat.status["P1"] = poll_body
+        await run_publish_loop_once(
+            integration_context.session_factory,
+            settings=app.state.settings,
+            http=app.state.wechat_http,
+            now=datetime.now(UTC) + timedelta(minutes=30),
+        )
+        listed = (await owner.get("/api/v1/admin/wechat/publish-jobs")).json()["items"][0]
+        assert listed["status"] == "outcome_unknown"
+        assert listed["can_recheck"] is True
+        wechat.status["P1"] = {"publish_status": 0, "article_id": "ART1"}
+        checked = await owner.post(
+            f"/api/v1/admin/wechat/publish-jobs/{job['id']}/recheck", headers=WRITE
+        )
+        assert checked.status_code == 200
+        assert checked.json()["status"] == "succeeded"
+        assert checked.json()["reconciled_by"] is None
+        assert wechat.submitted == ["M1"]
+    async with integration_context.session_factory() as session:
+        assert await session.scalar(
+            select(AdminAuditEventModel.id).where(
+                AdminAuditEventModel.action == "wechat.publish_rechecked"
+            )
+        )
+
+
+async def test_parallel_submit_of_one_draft_sends_only_once(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    import asyncio
+
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        responses = await asyncio.gather(
+            *(
+                owner.post(
+                    "/api/v1/admin/wechat/publish-jobs",
+                    json={"account_id": account_id, "media_id": "M1"},
+                    headers=WRITE,
+                )
+                for _ in range(2)
+            )
+        )
+        assert sorted(response.status_code for response in responses) == [201, 409]
+        assert wechat.submitted == ["M1"]
+
+
+async def test_late_poll_cannot_overwrite_an_operator_resolution(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    import asyncio
+
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        job = (
+            await owner.post(
+                "/api/v1/admin/wechat/publish-jobs",
+                json={"account_id": account_id, "media_id": "M1"},
+                headers=WRITE,
+            )
+        ).json()
+        await run_publish_loop_once(
+            integration_context.session_factory,
+            settings=app.state.settings,
+            http=app.state.wechat_http,
+            now=datetime.now(UTC) + timedelta(minutes=31),
+        )
+        job = (await owner.get("/api/v1/admin/wechat/publish-jobs")).json()["items"][0]
+        started, resume = asyncio.Event(), asyncio.Event()
+
+        async def delayed(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("freepublish/get"):
+                started.set()
+                await asyncio.wait_for(resume.wait(), timeout=10)
+                return httpx.Response(200, json={"publish_status": 0, "article_id": "LATE"})
+            return wechat.handler(request)
+
+        previous = app.state.wechat_http
+        async with httpx.AsyncClient(transport=httpx.MockTransport(delayed)) as http:
+            app.state.wechat_http = http
+            try:
+                pending = asyncio.create_task(
+                    owner.post(
+                        f"/api/v1/admin/wechat/publish-jobs/{job['id']}/recheck", headers=WRITE
+                    )
+                )
+                await asyncio.wait_for(started.wait(), timeout=5)
+                reconciled = await owner.post(
+                    f"/api/v1/admin/wechat/publish-jobs/{job['id']}/reconcile",
+                    json={
+                        "result": "not_published",
+                        "note": "公众号后台核实未发布后人工处理",
+                        "confirmed": True,
+                        "expected_updated_at": job["updated_at"],
+                    },
+                    headers=WRITE,
+                )
+                assert reconciled.status_code == 200
+                resume.set()
+                response = await pending
+                assert response.json()["status"] == "failed"
+                assert response.json()["reconciliation_note"] == "公众号后台核实未发布后人工处理"
+                assert wechat.submitted == ["M1"]
+            finally:
+                resume.set()
+                app.state.wechat_http = previous
+
+
+async def test_late_submit_cannot_overwrite_recovered_and_reconciled_job(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    import asyncio
+
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        started, resume = asyncio.Event(), asyncio.Event()
+
+        async def delayed(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("freepublish/submit"):
+                started.set()
+                await asyncio.wait_for(resume.wait(), timeout=10)
+            return wechat.handler(request)
+
+        previous = app.state.wechat_http
+        async with httpx.AsyncClient(transport=httpx.MockTransport(delayed)) as http:
+            app.state.wechat_http = http
+            try:
+                pending = asyncio.create_task(
+                    owner.post(
+                        "/api/v1/admin/wechat/publish-jobs",
+                        json={"account_id": account_id, "media_id": "M1"},
+                        headers=WRITE,
+                    )
+                )
+                await asyncio.wait_for(started.wait(), timeout=5)
+                report = await run_publish_loop_once(
+                    integration_context.session_factory,
+                    settings=app.state.settings,
+                    http=http,
+                    now=datetime.now(UTC) + timedelta(minutes=6),
+                )
+                assert report.recovered == 1
+                job = (await owner.get("/api/v1/admin/wechat/publish-jobs")).json()["items"][0]
+                reconciled = await owner.post(
+                    f"/api/v1/admin/wechat/publish-jobs/{job['id']}/reconcile",
+                    json={
+                        "result": "published",
+                        "note": "公众号后台核实已发布后人工处理",
+                        "confirmed": True,
+                        "expected_updated_at": job["updated_at"],
+                    },
+                    headers=WRITE,
+                )
+                assert reconciled.status_code == 200
+                resume.set()
+                response = await pending
+                assert response.json()["status"] == "succeeded"
+                assert response.json()["reconciled_by"]
+                assert wechat.submitted == ["M1"]
+            finally:
+                resume.set()
+                app.state.wechat_http = previous
+
+
+@pytest.mark.parametrize("statuses", [("outcome_unknown", "scheduled"), ("succeeded", "succeeded")])
+async def test_0060_refuses_conflicting_history_without_deleting_it(
+    integration_context: IntegrationContext, wechat: FakeWeChat, statuses: tuple[str, str]
+) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import func, text
+    from sqlalchemy.engine import Connection
+    from sqlalchemy.exc import DBAPIError
+
+    path = Path(__file__).parents[2] / "alembic/versions/20261010_0060_wechat_publish_occupancy.py"
+    spec = importlib.util.spec_from_file_location("publish_0060", path)
+    assert spec is not None and spec.loader is not None
+    revision = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(revision)
+
+    def upgrade(connection: Connection) -> None:
+        with Operations.context(MigrationContext.configure(connection)):
+            revision.upgrade()
+
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+    async with integration_context.engine.connect() as connection:
+        transaction = await connection.begin()
+        try:
+            await connection.execute(text("DROP INDEX uq_wechat_publish_jobs_open_draft"))
+            await connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX uq_wechat_publish_jobs_open_draft "
+                    "ON wechat_publish_jobs (account_id, media_id) "
+                    "WHERE status IN ('scheduled', 'submitting', 'publishing')"
+                )
+            )
+            now = datetime.now(UTC)
+            await connection.execute(
+                WeChatPublishJobModel.__table__.insert(),
+                [
+                    {
+                        "id": uuid4(),
+                        "account_id": UUID(account_id),
+                        "media_id": "conflicted",
+                        "title": "历史发布",
+                        "status": status,
+                        "publish_id": f"P{index}",
+                        "scheduled_at": now,
+                        "created_at": now,
+                        "updated_at": now,
+                        "created_by": "test",
+                    }
+                    for index, status in enumerate(statuses)
+                ],
+            )
+            savepoint = await connection.begin_nested()
+            with pytest.raises(DBAPIError, match="Conflicting occupied WeChat drafts"):
+                await connection.run_sync(upgrade)
+            await savepoint.rollback()
+            assert (
+                await connection.scalar(select(func.count()).select_from(WeChatPublishJobModel))
+                == 2
+            )
+        finally:
+            await transaction.rollback()

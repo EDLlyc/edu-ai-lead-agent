@@ -171,18 +171,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         _app.state.ip_asset_recognition_service = IpAssetRecognitionService(
             ip_asset_recognition_model
         )
-    wechat_loop: asyncio.Task[None] | None = None
-    secret = settings.admin_secret_key
-    if secret is not None and secret.get_secret_value().strip():
-        # Scheduled 公众号 publishing (and the publish status polling) of the 运营后台.
-        wechat_loop = asyncio.create_task(_wechat_admin_loop())
     try:
-        yield
+        async with _wechat_admin_tasks(_app):
+            yield
     finally:
-        if wechat_loop is not None:
-            wechat_loop.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await wechat_loop
         if image_client is not None:
             await image_client.aclose()
         if brand_embedding_client is not None:
@@ -197,19 +189,33 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 WECHAT_ADMIN_LOOP_SECONDS = 20
 
 
-async def _wechat_admin_loop() -> None:
+@asynccontextmanager
+async def _wechat_admin_tasks(application: FastAPI) -> AsyncIterator[None]:
+    tasks: list[asyncio.Task[None]] = []
+    secret = application.state.settings.admin_secret_key
+    if secret is not None and secret.get_secret_value().strip():
+        # A slow historical statistics sync must never block a due publication or status poll.
+        tasks = [
+            asyncio.create_task(_wechat_publish_loop(application), name="wechat-publishing"),
+            asyncio.create_task(_wechat_stats_loop(application), name="wechat-statistics"),
+        ]
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+async def _wechat_publish_loop(application: FastAPI) -> None:
     while True:
         try:
             report = await run_publish_loop_once(
-                app.state.session_factory,
-                settings=app.state.settings,
-                http=getattr(app.state, "wechat_http", None),
-                now=datetime.now(UTC),
-            )
-            await run_stats_loop_once(
-                app.state.session_factory,
-                settings=app.state.settings,
-                http=getattr(app.state, "wechat_http", None),
+                application.state.session_factory,
+                settings=application.state.settings,
+                http=getattr(application.state, "wechat_http", None),
                 now=datetime.now(UTC),
             )
             if report.submitted or report.recovered:
@@ -221,6 +227,20 @@ async def _wechat_admin_loop() -> None:
                 )
         except Exception:
             logger.exception("wechat_publish_loop_failed")
+        await asyncio.sleep(WECHAT_ADMIN_LOOP_SECONDS)
+
+
+async def _wechat_stats_loop(application: FastAPI) -> None:
+    while True:
+        try:
+            await run_stats_loop_once(
+                application.state.session_factory,
+                settings=application.state.settings,
+                http=getattr(application.state, "wechat_http", None),
+                now=datetime.now(UTC),
+            )
+        except Exception:
+            logger.exception("wechat_stats_loop_failed")
         await asyncio.sleep(WECHAT_ADMIN_LOOP_SECONDS)
 
 

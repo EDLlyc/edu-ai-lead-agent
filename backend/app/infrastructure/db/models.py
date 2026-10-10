@@ -7166,6 +7166,8 @@ class ModelKeyConsumerModel(Base):
     service: Mapped[str] = mapped_column(String(60), primary_key=True)
     host: Mapped[str] = mapped_column(String(100), primary_key=True)
     versions: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+    # Null denotes a legacy heartbeat, which cannot attest that decryption succeeded.
+    load_errors: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -7196,6 +7198,8 @@ class WeChatPublishJobModel(Base):
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reconciled_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reconciliation_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[str] = mapped_column(String(40), nullable=False)
     cancelled_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -7208,7 +7212,7 @@ class WeChatPublishJobModel(Base):
             name="ck_wechat_publish_jobs_status",
         ),
         CheckConstraint(
-            "status NOT IN ('publishing', 'succeeded') OR publish_id IS NOT NULL",
+            "status != 'publishing' OR publish_id IS NOT NULL",
             name="ck_wechat_publish_jobs_publish_id",
         ),
         Index("ix_wechat_publish_jobs_due", "status", "scheduled_at"),
@@ -7217,7 +7221,10 @@ class WeChatPublishJobModel(Base):
             "account_id",
             "media_id",
             unique=True,
-            postgresql_where=text("status IN ('scheduled', 'submitting', 'publishing')"),
+            postgresql_where=text(
+                "status IN ('scheduled', 'submitting', 'publishing', "
+                "'outcome_unknown', 'succeeded')"
+            ),
         ),
     )
 

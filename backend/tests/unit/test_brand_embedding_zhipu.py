@@ -231,6 +231,8 @@ async def test_api_lifespan_owns_and_closes_dedicated_zhipu_brand_client(
     )
 
     test_app = api_main.FastAPI()
+    # Match the configured application state used by lifecycle-owned background tasks.
+    test_app.state.settings = api_main.settings
     async with api_main.lifespan(test_app):
         assert len(clients) == 1
         assert factory_clients == clients

@@ -1039,6 +1039,20 @@
             "title": "Label",
             "type": "string"
           },
+          "load_errors": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Errors"
+          },
           "reporting": {
             "title": "Reporting",
             "type": "boolean"
@@ -1091,6 +1105,7 @@
           "label",
           "reporting",
           "versions",
+          "load_errors",
           "started_at",
           "seen_at"
         ],
@@ -2474,6 +2489,10 @@
             ],
             "title": "Article Url"
           },
+          "can_recheck": {
+            "title": "Can Recheck",
+            "type": "boolean"
+          },
           "cancelled_by": {
             "anyOf": [
               {
@@ -2526,6 +2545,28 @@
             "title": "Media Id",
             "type": "string"
           },
+          "reconciled_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciled By"
+          },
+          "reconciliation_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Note"
+          },
           "scheduled_at": {
             "format": "date-time",
             "title": "Scheduled At",
@@ -2547,6 +2588,11 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
@@ -2562,7 +2608,11 @@
           "created_by",
           "cancelled_by",
           "created_at",
-          "completed_at"
+          "completed_at",
+          "updated_at",
+          "can_recheck",
+          "reconciled_by",
+          "reconciliation_note"
         ],
         "title": "AdminWeChatPublishJob",
         "type": "object"
@@ -2581,6 +2631,43 @@
           "items"
         ],
         "title": "AdminWeChatPublishJobListResponse",
+        "type": "object"
+      },
+      "AdminWeChatPublishReconcileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 5,
+            "title": "Note",
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "published",
+              "not_published"
+            ],
+            "title": "Result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result",
+          "note",
+          "confirmed",
+          "expected_updated_at"
+        ],
+        "title": "AdminWeChatPublishReconcileRequest",
         "type": "object"
       },
       "AdminWeChatPublishRequest": {
@@ -2705,6 +2792,24 @@
             "title": "Daily",
             "type": "array"
           },
+          "missing_dates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Missing Dates",
+            "type": "array"
+          },
+          "range_end": {
+            "format": "date",
+            "title": "Range End",
+            "type": "string"
+          },
+          "range_start": {
+            "format": "date",
+            "title": "Range Start",
+            "type": "string"
+          },
           "sync_error": {
             "anyOf": [
               {
@@ -2730,6 +2835,9 @@
           }
         },
         "required": [
+          "range_start",
+          "range_end",
+          "missing_dates",
           "synced_on",
           "sync_error",
           "daily",
@@ -18944,6 +19052,134 @@
           }
         },
         "summary": "Post Wechat Publish Job Cancel",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/wechat/publish-jobs/{job_id}/recheck": {
+      "post": {
+        "operationId": "post_wechat_publish_job_recheck_api_v1_admin_wechat_publish_jobs__job_id__recheck_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWeChatPublishJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Wechat Publish Job Recheck",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/wechat/publish-jobs/{job_id}/reconcile": {
+      "post": {
+        "operationId": "post_wechat_publish_job_reconcile_api_v1_admin_wechat_publish_jobs__job_id__reconcile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminWeChatPublishReconcileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminWeChatPublishJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Wechat Publish Job Reconcile",
         "tags": [
           "admin"
         ]

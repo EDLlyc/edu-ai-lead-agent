@@ -6,6 +6,8 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { adminDocumentFallback } from "./src/config/adminDocumentFallback";
+
 const previewRoot = fileURLToPath(
   new URL("../output/preview", import.meta.url),
 );
@@ -71,7 +73,7 @@ function servePreviewAssets() {
 // The 运营后台 talks to the API through this origin, so its session cookie stays same-origin
 // (SameSite=Strict, no credentialed CORS on the API).
 const adminApiProxy = {
-  "/api/v1/admin": {
+  "^/api/v1/admin(?:/|$)": {
     target: process.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
     changeOrigin: false,
   },
@@ -81,6 +83,9 @@ const adminApiProxy = {
 export default defineConfig(({ mode }) => ({
   ...(mode === "admin"
     ? {
+        // Only the explicitly recognized admin documents have a fallback. In particular,
+        // missing assets and unproxied API routes must retain their real 404 response.
+        appType: "mpa" as const,
         base: "/",
         build: {
           outDir: "dist-admin",
@@ -94,7 +99,7 @@ export default defineConfig(({ mode }) => ({
       }
     : {}),
   envDir: "..",
-  plugins: [react(), servePreviewAssets()],
+  plugins: [react(), servePreviewAssets(), adminDocumentFallback()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -106,6 +111,7 @@ export default defineConfig(({ mode }) => ({
     proxy: adminApiProxy,
   },
   preview: {
+    host: "127.0.0.1",
     proxy: adminApiProxy,
   },
   test: {

@@ -32,14 +32,25 @@ function loadedVersion(
   return consumer.versions?.[providerId] ?? null;
 }
 
+function loadState(
+  consumer: ModelKeyConsumer,
+  provider: ModelProvider,
+): "loaded" | "waiting" | "failed" | "unknown" {
+  if (!consumer.reporting || consumer.load_errors == null) return "unknown";
+  if (consumer.load_errors[provider.id] !== undefined) return "failed";
+  if (consumer.versions === null) return "unknown";
+  return loadedVersion(consumer, provider.id) === provider.version
+    ? "loaded"
+    : "waiting";
+}
+
 function waitingServices(
   provider: ModelProvider,
   consumers: readonly ModelKeyConsumer[],
 ): readonly ModelKeyConsumer[] {
   return consumers.filter(
     (consumer) =>
-      consumer.reporting &&
-      loadedVersion(consumer, provider.id) !== provider.version,
+      consumer.reporting && loadState(consumer, provider) === "waiting",
   );
 }
 
@@ -50,13 +61,24 @@ function effectText(
   if (provider.source === "none") return "—";
   const reporting = consumers.filter((consumer) => consumer.reporting);
   const waiting = waitingServices(provider, consumers).length;
+  const loaded = reporting.filter(
+    (consumer) => loadState(consumer, provider) === "loaded",
+  ).length;
+  const failed = reporting.filter(
+    (consumer) => loadState(consumer, provider) === "failed",
+  ).length;
+  const unknown = reporting.length - loaded - waiting - failed;
   const absent = consumers.length - reporting.length;
   const parts = [
-    provider.version === null && waiting === 0
-      ? "使用中"
-      : `已在 ${reporting.length - waiting}/${reporting.length} 个服务生效`,
+    reporting.length === 0
+      ? "尚未收到服务加载状态"
+      : provider.version === null && loaded === reporting.length
+        ? "使用中"
+        : `已在 ${loaded}/${reporting.length} 个服务生效`,
   ];
   if (waiting > 0) parts.push(`${waiting} 个等待重启（约 2 分钟）`);
+  if (failed > 0) parts.push(`${failed} 个加载失败，保留服务器配置`);
+  if (unknown > 0) parts.push(`${unknown} 个未报告加载状态，尚无法确认`);
   if (absent > 0) parts.push(`${absent} 个服务未接入，仍用服务器配置的 key`);
   return parts.join("；");
 }
@@ -135,13 +157,17 @@ export function ModelsPage({
     <section aria-labelledby="admin-section-title">
       <header className={styles.sectionHeader}>
         <h2 id="admin-section-title">模型配置</h2>
+        <button type="button" onClick={() => setReloads((count) => count + 1)}>
+          刷新状态
+        </button>
       </header>
       <p className={styles.lede}>
         这里只换 API
         key。接口地址和模型名固定在代码里（文案、审核和图片向量都依赖它们），要换需要发版。换
         key 前会先用新 key
         发一个很小的请求，通过才保存；保存后，相关服务做完手头的任务会自动重启，大约
-        2 分钟内用上新 key。
+        2
+        分钟开始加载。是否已生效以各服务的加载状态为准；加载失败时保留服务器配置。
       </p>
       {configured === false ? (
         <p className={styles.notice} role="status">
@@ -199,10 +225,23 @@ function ConsumerTable({
   readonly consumers: readonly ModelKeyConsumer[];
 }) {
   const cell = (consumer: ModelKeyConsumer, provider: ModelProvider) => {
-    if (consumer.versions === null) return "读取失败，用服务器配置";
+    const state = loadState(consumer, provider);
+    if (state === "unknown") return "未报告加载状态，尚无法确认";
+    if (state === "failed") {
+      const error = consumer.load_errors?.[provider.id];
+      const reason =
+        error === "key_unreadable"
+          ? "已保存的 key 无法解密"
+          : error === "encryption_key_invalid"
+            ? "服务的加密配置无效"
+            : error === "configuration_unavailable"
+              ? "未能读取后台配置"
+              : "未能加载后台配置";
+      return `加载失败：${reason}，保留服务器配置；请联系管理员检查`;
+    }
     const version = loadedVersion(consumer, provider.id);
     const text = version === null ? "服务器配置" : `第 ${version} 版`;
-    return version === provider.version ? text : `${text}（等待重启）`;
+    return state === "loaded" ? text : `${text}（等待重启）`;
   };
   return (
     <table className={styles.table}>
@@ -306,7 +345,7 @@ function ProviderCard({
         <small>（{provider.used_for}）</small>
       </h3>
       <dl className={styles.facts}>
-        <dt>当前 key</dt>
+        <dt>已保存的 key</dt>
         <dd>
           {provider.key_hint ?? "—"} · {sourceText(provider)}
           {provider.updated_at === null || provider.updated_by === null
@@ -332,7 +371,7 @@ function ProviderCard({
             setEditing(false);
             onChanged(
               saved,
-              `「${provider.name}」已保存第 ${saved.version} 版 key。相关服务做完手头的任务后会自动重启，大约 2 分钟内用上。`,
+              `「${provider.name}」已保存第 ${saved.version} 版 key。相关服务做完手头的任务后会自动重启，请查看各服务的加载状态确认生效。`,
             );
           }}
         />
@@ -370,7 +409,7 @@ function ProviderCard({
                   onClick={() => {
                     void run(
                       () => api.useEnv(provider.id),
-                      `「${provider.name}」已改回服务器配置的 key（第 {version} 版），约 2 分钟内生效。`,
+                      `「${provider.name}」已改回服务器配置的 key（第 {version} 版），请查看各服务的加载状态确认生效。`,
                     );
                   }}
                 >
@@ -439,7 +478,7 @@ function ProviderCard({
                         onClick={() => {
                           void run(
                             () => api.restore(provider.id, item.version),
-                            `「${provider.name}」已恢复第 ${item.version} 版（存为第 {version} 版），约 2 分钟内生效。`,
+                            `「${provider.name}」已恢复第 ${item.version} 版（存为第 {version} 版），请查看各服务的加载状态确认生效。`,
                           );
                         }}
                       >

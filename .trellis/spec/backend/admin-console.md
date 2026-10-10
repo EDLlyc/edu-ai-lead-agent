@@ -141,16 +141,14 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - Watched processes report the versions they loaded to `model_key_consumers` every minute. The
   page derives "已生效" from those reports, never from the API's own state. A service listed in
   `MODEL_KEY_SERVICES` that does not report is shown as not connected (env keys).
-- Known limitation in release `9eaaaf3`: the overlay records a version before decrypting its
-  value, so a decryption failure can keep the env key while reporting the stored version.
-  Heartbeats alone do not prove successful decryption. Initial deployment verified an empty
-  key table and the same `MODEL_SECRET_KEY` in all three consumers. A follow-up must report only
-  successfully loaded versions and test bad/mismatched ciphertext before relying on that
-  status after an encryption failure; see the release-2 review.
+- Report only successfully decrypted/applied versions. Track attempted versions separately for the
+  restart comparison. `model_key_consumers.load_errors` stores safe per-provider codes; null on a
+  legacy heartbeat means unknown verification, not confirmed success. See the reliability contract
+  below. This repair is not deployed until its separate release is approved.
 
 ## 公众号数据同步 timing (item 4)
 
-- With `ADMIN_SECRET_KEY` configured, the API checks statistics/publishing work every 20 seconds.
+- With `ADMIN_SECRET_KEY` configured, the API checks statistics and publishing in independent tasks every 20 seconds.
   After 10:00 Asia/Shanghai, an enabled account with no successful sync today can sync now,
   including when it was first bound on the same day; do not promise a next-day-only first sync.
 - Account import verifies credentials and stores the encrypted binding and audit record. It
@@ -171,3 +169,101 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
   successful preview of the same fetch settings.
 - `api.ts` is the same-origin client with the guard header.
 - Tests inject an `AdminApi` instead of fetching.
+
+## Reliability contract (2026-10-10)
+
+### 1. Scope / Trigger
+
+Applies to admin publication, account statistics, credential loading and hard document navigation.
+These fixes close cross-layer correctness gaps found while reviewing the deployed console.
+
+### 2. Signatures
+
+- `POST /api/v1/admin/wechat/publish-jobs/{job_id}/recheck` reads WeChat status only.
+- `POST /api/v1/admin/wechat/publish-jobs/{job_id}/reconcile` records an owner's explicit conclusion.
+- `AdminWeChatPublishJob` adds `updated_at`, `can_recheck`, `reconciled_by`, `reconciliation_note`.
+- `AdminWeChatStatsResponse` adds required `range_start`, `range_end`, `missing_dates`.
+- `AdminModelKeyConsumer.load_errors: dict[str, str] | None` reports heartbeat load failures.
+- Migration `0060` expands the draft occupancy unique index and adds reconciliation columns;
+  `0061` adds nullable JSONB `model_key_consumers.load_errors`.
+
+### 3. Contracts
+
+- Confirmation lists the account and every article. `freepublish/submit` publishes public articles;
+  it does not send a mass notification to all followers.
+- Occupied `(account_id, media_id)` states are `scheduled`, `submitting`, `publishing`,
+  `outcome_unknown`, and `succeeded`. A unique DB index enforces this under concurrency.
+- Reconciliation body: `result: published | not_published`, trimmed `note` (5–500 characters),
+  `confirmed: true`, and `expected_updated_at`. Only unresolved jobs may be reconciled, by an owner.
+  Both outcomes are audited. Published remains occupied even without a recovered publish ID;
+  confirmed not-published becomes failed and permits a subsequent explicit submission.
+  Provider status 5/6 (deleted/blocked after publication) remains succeeded and occupied, with
+  explanatory text; deletion is not proof the draft was never published.
+- Recheck never submits. Late submit/poll results compare the claim/state before applying changes;
+  they cannot overwrite a newer manual conclusion. Publishing that cannot be confirmed within
+  30 minutes becomes `outcome_unknown`, including repeated status-query failure.
+- Statistics dates use the configured business timezone and `[today - days, yesterday]`. Sync
+  refreshes the latest 7 article days / 3 account days plus missed dates since success and daily
+  gaps, bounded to 30 days. Provider I/O runs outside DB transactions; failure preserves the last
+  successful watermark and previous measurements. Publishing and statistics loops are independent.
+- `missing_dates` describes absent whole daily measurements; never turn an absent day into zero.
+  Optional counters omitted by WeChat retain existing sparse-response zero semantics; malformed
+  provided counters reject the measurement. Daily-person totals are daily sums, not deduplicated
+  period users. Partial totals are labelled as known values with explicit coverage.
+- Model overlay separates attempted versions, successfully loaded versions and safe error codes
+  (`key_unreadable`, `encryption_key_invalid`, `configuration_unavailable`). On failure it retains
+  environment credentials. Restart decisions compare attempted versions to avoid looping on an
+  unchanged bad version. A later version still triggers normal reload.
+- `adminDocumentFallback` reuses `sections.ts`: only known `/admin` GET/HEAD document requests
+  fall back to `/admin/index.html`. Admin mode uses Vite `appType: mpa`; unknown assets and API paths
+  retain real 404s. Proxy matching is restricted to `/api/v1/admin` and descendants, loopback only.
+
+### 4. Validation & Error Matrix
+
+| Input / condition | Required result |
+|---|---|
+| Explicit WeChat rejection | Failed, retry possible after operator review |
+| Submit disconnect, HTTP error, oversize or malformed acknowledgment | Unknown, draft occupied |
+| Oversized/NUL-containing poll article ID or malformed status response | Reject response; timeout still becomes unknown |
+| Recheck without a recovered publish ID | Refuse; require manual verification |
+| Editor reconciles, absent write guard, missing confirmation | Refuse without changing state |
+| Stale reconciliation `expected_updated_at` | Conflict; refresh before deciding again |
+| Historical duplicate occupied drafts at migration | Abort migration; never delete history |
+| Bad encrypted model key | Keep env value, emit safe error, do not claim new loaded version |
+| Missing daily statistics | Date gap and partial/absent aggregate, never fabricated zero |
+| Missing `/assets/...` or unrelated `/api/...` | 404, never the admin HTML document |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a lost submit reply remains occupied; the owner checks WeChat and records a conclusion.
+- Base: a valid acknowledgement is polled to success; a measured zero remains visibly zero.
+- Bad: treating a 502 as proof of non-publication and automatically resubmitting; claiming a
+  ciphertext version loaded before decryption; using the last seven rows as the last seven days.
+
+### 6. Tests Required
+
+- Adapter transport-failure and malformed-response tests: unknown vs definitive rejection.
+- PostgreSQL publication tests: single concurrent submit, occupied history, guarded reconciliation,
+  late-response isolation, 30-minute polling expiry and lossless migration conflict rejection.
+- Statistics tests: ten-day outage, failed watermark, date boundaries, gaps, measured zero,
+  malformed records and independent loop scheduling.
+- Model tests: failed decryption does not appear loaded, unchanged bad version does not restart,
+  a new version is detected, real heartbeat upsert and legacy nullable error status.
+- Browser/component tests: every confirmation title; owner-only reconciliation; missing date
+  coverage; load-error labels; real dev/preview hard requests, unknown resource/API 404s.
+- Lifecycle unit fixtures must initialize `test_app.state.settings`, matching the real application;
+  do not add silent production configuration fallback to accommodate a bare test app.
+- Worktree commands must import the worktree: from its root use
+  `PYTHONPATH=backend /root/anaconda3/envs/edu-ai/bin/python ...`, or run from its `backend/`.
+  The shared editable Python installation may otherwise import the root checkout and export a
+  stale OpenAPI schema. Check `app.__path__` before regenerating contracts.
+
+### 7. Wrong vs Correct
+
+Wrong: `loaded_versions[provider] = row.version` before `open_sealed(...)` succeeds.
+Correct: record the attempted version first; set the loaded version only after successful apply,
+otherwise report a safe error and retain the environment value.
+
+Wrong: build a new admin bundle into the directory served against the old production API.
+Correct: verify a separate bundle and isolated preview first; deploy the backend before the new
+frontend, and roll back their images/assets together while retaining the additive schema.
