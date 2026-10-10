@@ -355,3 +355,36 @@ Per-account colour schemes for pipeline drafts; model key rotation with probe-fi
 - 另行升级旧公众号草稿 worker 后排版模板才生效；模型轮换当前仅覆盖三个消费者。
 - 模型密钥解密失败仍可能报告已加载版本，已记入后台规范，需独立修复后再依赖异常情况下的生效状态。
 - 主目录展厅连接器仅追加新镜像白名单，20 测试通过；保留原有未提交改动，未重启展厅。
+
+
+## Session 97: 运营后台首批可靠性修复与隔离预览
+
+**Date**: 2026-10-10
+**Task**: 运营后台首批可靠性修复与隔离预览
+**Branch**: `fix/admin-reliability-20261010`
+
+### Summary
+
+完成R1–R5：发布确认与不确定状态防重/核对、独立统计补同步与日期缺口、模型真实加载状态及深链接修复。新只读模拟预览5181；生产未更新。
+
+### Main Changes
+
+- 新增0060/0061迁移、生成API契约与发布清单；独立复核修复畸形微信回执；保留根工作区及node_modules链接。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d555011` | (see git log) |
+
+### Testing
+
+- [OK] 全量predeploy PASS：10通过0失败1私有素材缺失跳过；308前端测试；49个独立后台集成用例；Ruff/mypy/TypeScript/构建及Chromium验收通过。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户审核 http://127.0.0.1:5181/admin/ 只读模拟预览；单独批准生产切换后，按归档任务rollout执行实际镜像构建、迁移、后端先行部署与前端替换。
