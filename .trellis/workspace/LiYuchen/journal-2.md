@@ -315,3 +315,43 @@ Per-account colour schemes for pipeline drafts; model key rotation with probe-fi
 
 - Combined deploy of polish + items 3/4/5/6/8: ADMIN_SECRET_KEY + MODEL_SECRET_KEY in server .env and compose, migrations 0055-0058, regenerate the rollout bundle; owner go-ahead, outside slot hours
 - Item 7 海报风格 waits for the teacher's samples
+
+
+## Session 96: 运营后台第二批上线与生产验收
+
+**Date**: 2026-10-10
+**Task**: 运营后台第二批上线与生产验收
+**Branch**: `feat/admin-console-20261008`
+
+### Summary
+
+用户同意上线后，10:03 CST 切换六个服务到 24e96708，数据库升至 0059；绑定赛先生并完成首次统计同步，无文章发布。主线已合并并推送 origin。
+
+### Main Changes
+
+- 后台账号完善、公众号绑定/发布/数据、排版模板和模型配置按 9eaaaf3 清单上线；七个旧服务和数据库/MinIO 容器保持原样。
+- 前端安装 /var/www/edu-ai-admin，本地入口 http://127.0.0.1:5180/admin/；公网 HTTPS 仍待域名和证书。
+- 备份 /var/backups/edu-ai/admin-release-2-20261010T015738Z；生产版本、回滚步骤与审查问题已记录在规范和归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f59ed89` | (see git log) |
+| `a136a6d` | (see git log) |
+
+### Testing
+
+- [OK] predeploy gate PASS：10 passed / 0 failed / 1 skipped（缺少本地私有图片清单）；45 个后台前端测试、类型/静态检查、构建和 schema 检查通过。
+- [OK] 六服务 0 重启/0 traceback；3 个模型消费者心跳新鲜；401 登录保护正常；浏览器登录页 200 且无 JS 错误。
+- [OK] 公众号凭证通过；只读查询草稿 6 条、已发布记录 14 条；统计同步成功（21 条文章数据、30 条日数据），发布任务为 0。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 另行升级旧公众号草稿 worker 后排版模板才生效；模型轮换当前仅覆盖三个消费者。
+- 模型密钥解密失败仍可能报告已加载版本，已记入后台规范，需独立修复后再依赖异常情况下的生效状态。
+- 主目录展厅连接器仅追加新镜像白名单，20 测试通过；保留原有未提交改动，未重启展厅。
