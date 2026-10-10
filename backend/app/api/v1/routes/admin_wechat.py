@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, cast
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Query, Request, status
+from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,6 +70,7 @@ from app.schemas.admin_wechat import (
     AdminWeChatStatsResponse,
     AdminWeChatStatusResponse,
     AdminWeChatSyncResponse,
+    PublishJobStatus,
 )
 
 router = APIRouter(prefix="/admin/wechat", tags=["admin"], dependencies=[Depends(admin_guard)])
@@ -76,6 +78,7 @@ router = APIRouter(prefix="/admin/wechat", tags=["admin"], dependencies=[Depends
 Owner = Annotated[AdminPrincipal, Depends(require_owner)]
 Operator = Annotated[AdminPrincipal, Depends(require_admin)]
 Session = Annotated[AsyncSession, Depends(get_session)]
+_PUBLISH_JOB_STATUS: TypeAdapter[PublishJobStatus] = TypeAdapter(PublishJobStatus)
 
 
 def _settings(request: Request) -> Settings:
@@ -265,16 +268,20 @@ async def get_wechat_published(
     )
 
 
-async def _job(session: AsyncSession, job: WeChatPublishJobModel) -> AdminWeChatPublishJob:
-    account = await session.get(WeChatAccountModel, job.account_id)
+async def _job(
+    session: AsyncSession, job: WeChatPublishJobModel, *, account_name: str | None = None
+) -> AdminWeChatPublishJob:
+    if account_name is None:
+        account = await session.get(WeChatAccountModel, job.account_id)
+        account_name = account.name if account is not None else ""
     return AdminWeChatPublishJob(
         id=job.id,
         account_id=job.account_id,
-        account_name=account.name if account is not None else "",
+        account_name=account_name,
         media_id=job.media_id,
         title=job.title,
         scheduled_at=job.scheduled_at,
-        status=job.status,
+        status=_PUBLISH_JOB_STATUS.validate_python(job.status),
         article_url=job.article_url,
         error=job.error,
         created_by=job.created_by,
@@ -290,10 +297,44 @@ async def _job(session: AsyncSession, job: WeChatPublishJobModel) -> AdminWeChat
 
 @router.get("/publish-jobs", response_model=AdminWeChatPublishJobListResponse)
 async def get_wechat_publish_jobs(
-    _operator: Operator, session: Session, account_id: UUID | None = None
+    _operator: Operator,
+    session: Session,
+    request: Request,
+    account_id: UUID | None = None,
+    status: PublishJobStatus | None = None,
+    date_from: Annotated[date | None, Query(ge=date(1970, 1, 1), le=date(9999, 12, 30))] = None,
+    date_to: Annotated[date | None, Query(ge=date(1970, 1, 1), le=date(9999, 12, 30))] = None,
+    offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> AdminWeChatPublishJobListResponse:
-    jobs = await list_jobs(session, account_id=account_id)
-    return AdminWeChatPublishJobListResponse(items=[await _job(session, job) for job in jobs])
+    timezone = _settings(request).business_timezone
+    total, jobs = await list_jobs(
+        session,
+        account_id=account_id,
+        business_timezone=timezone,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        offset=offset,
+        limit=limit,
+    )
+    names: dict[UUID, str] = {}
+    if jobs:
+        account_rows = await session.execute(
+            select(WeChatAccountModel.id, WeChatAccountModel.name).where(
+                WeChatAccountModel.id.in_({job.account_id for job in jobs})
+            )
+        )
+        names = {account_id: name for account_id, name in account_rows}
+    return AdminWeChatPublishJobListResponse(
+        items=[
+            await _job(session, job, account_name=names.get(job.account_id, "")) for job in jobs
+        ],
+        total=total,
+        offset=offset,
+        limit=limit,
+        business_timezone=timezone,
+    )
 
 
 @router.post(

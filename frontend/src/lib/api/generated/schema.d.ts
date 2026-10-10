@@ -2961,8 +2961,16 @@ export interface components {
         };
         /** AdminWeChatPublishJobListResponse */
         AdminWeChatPublishJobListResponse: {
+            /** Business Timezone */
+            business_timezone: string;
             /** Items */
             items: components["schemas"]["AdminWeChatPublishJob"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** AdminWeChatPublishReconcileRequest */
         AdminWeChatPublishReconcileRequest: {
@@ -9457,6 +9465,11 @@ export interface operations {
         parameters: {
             query?: {
                 account_id?: string | null;
+                status?: ("scheduled" | "submitting" | "publishing" | "succeeded" | "failed" | "outcome_unknown" | "cancelled") | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                offset?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;

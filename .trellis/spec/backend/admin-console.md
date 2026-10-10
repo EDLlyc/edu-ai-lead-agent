@@ -267,3 +267,58 @@ otherwise report a safe error and retain the environment value.
 Wrong: build a new admin bundle into the directory served against the old production API.
 Correct: verify a separate bundle and isolated preview first; deploy the backend before the new
 frontend, and roll back their images/assets together while retaining the additive schema.
+
+## Publication history pagination and filters (2026-10-10)
+
+### 1. Scope / Trigger
+
+Operators must be able to inspect publication history older than the previous 50-row cap.
+This changes the read API only; submission, occupancy and reconciliation semantics stay intact.
+
+### 2. Signatures
+
+`GET /api/v1/admin/wechat/publish-jobs` accepts optional `account_id`, `status`, `date_from`,
+`date_to`, `offset` (default 0) and `limit` (default 50, UI 20). It returns `items`, `total`,
+`offset`, `limit`, and `business_timezone`. The generated OpenAPI schema is authoritative for
+numeric bounds and the seven-value `PublishJobStatus` enum. No new migration is required.
+
+### 3. Contracts
+
+Date filters apply to **created_at**, including both supplied calendar days in
+`Settings.business_timezone`. Translate to a UTC half-open interval from local midnight to the
+midnight after the end date; do not add a fixed 24 hours across DST. Count and page queries share
+the same filters. Sort by `created_at DESC, id DESC` for stable timestamp ties. Preload account
+names once instead of querying for every row. Validate stored status through the shared
+`PublishJobStatus` TypeAdapter at DTO conversion. Read requests do not call WeChat or write jobs.
+Filtered history must never narrow the independent all-history draft occupancy query.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+|---|---|
+| Invalid status, malformed/out-of-range date, invalid offset/limit | Controlled 422 |
+| date_from later than date_to | Controlled 422 |
+| Valid filter with no matches or offset beyond total | Empty items with matching total |
+| Unauthenticated caller | 401 |
+| Editor or owner reads valid history | Allowed, no mutation |
+| Filter hides an occupied draft's record | Draft remains occupied and cannot resubmit |
+
+### 5. Good / Base / Bad Cases
+
+- Good: 65 matching records produce four pages of 20/20/20/5 with total 65.
+- Base: omitted filters preserve the existing newest-50 response items while adding metadata.
+- Bad: interpreting local date strings as UTC, unstable ordering for ties, counting all accounts
+  while filtering page rows, or using the filtered page as proof a draft is available.
+
+### 6. Tests Required
+
+Real PostgreSQL/API tests cover stable ties, page beyond 50, counts/account/status/date filters,
+inclusive timezone boundaries, a 25-hour DST day, invalid inputs, and independent occupancy.
+Client tests assert wire query parameters. Browser/component tests cover stale filter/page
+responses, guard cancellation, last-page shrinking, retries and continued nonoverlapping polling.
+Regenerate backend OpenAPI and frontend types with worktree `PYTHONPATH=backend`.
+
+### 7. Wrong vs Correct
+
+Wrong: `created_at <= datetime.combine(date_to, midnight)` excludes most of the final day.
+Correct: `created_at < local_midnight(date_to + one_calendar_day).astimezone(UTC)` includes it.

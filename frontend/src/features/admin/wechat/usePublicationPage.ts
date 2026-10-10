@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AdminSessionExpiredError } from "../api";
-import type { PublishJob, WeChatApi } from "./api";
+import type { JobFilters, PublishJob, WeChatApi } from "./api";
 
 export type PublicationTab = "drafts" | "jobs" | "published";
 export const PUBLICATION_PAGE_SIZE = 20;
@@ -15,7 +15,10 @@ type PageData =
       readonly tab: "published";
       readonly page: Awaited<ReturnType<WeChatApi["published"]>>;
     }
-  | { readonly tab: "jobs"; readonly page: null };
+  | {
+      readonly tab: "jobs";
+      readonly page: Awaited<ReturnType<WeChatApi["jobsPage"]>>;
+    };
 
 type Snapshot = {
   readonly requestContext: {
@@ -33,14 +36,21 @@ export function usePublicationPage({
   api,
   accountId,
   tab,
+  filters,
   onSessionExpired,
 }: {
   readonly api: WeChatApi;
   readonly accountId: string | null;
   readonly tab: PublicationTab;
+  readonly filters: JobFilters;
   readonly onSessionExpired: () => void;
 }) {
-  const context = `${accountId ?? ""}/${tab}`;
+  const { status, dateFrom, dateTo } = filters;
+  const context = JSON.stringify([
+    accountId,
+    tab,
+    ...(tab === "jobs" ? [status, dateFrom, dateTo] : []),
+  ]);
   const [cursor, setCursor] = useState({ context, offset: 0 });
   const offset = cursor.context === context ? cursor.offset : 0;
   const [revision, setRevision] = useState(0);
@@ -54,19 +64,35 @@ export function usePublicationPage({
   useEffect(() => {
     if (accountId === null) return;
     let cancelled = false;
-    const load = async (): Promise<PageData> => {
+    const load = async (): Promise<{
+      data: PageData;
+      jobs: readonly PublishJob[];
+    }> => {
       if (tab === "drafts") {
-        return { tab, page: await api.drafts(accountId, offset) };
+        const [page, jobs] = await Promise.all([
+          api.drafts(accountId, offset),
+          api.jobs(accountId),
+        ]);
+        return { data: { tab, page }, jobs };
       }
       if (tab === "published") {
-        return { tab, page: await api.published(accountId, offset) };
+        const [page, jobs] = await Promise.all([
+          api.published(accountId, offset),
+          api.jobs(accountId),
+        ]);
+        return { data: { tab, page }, jobs };
       }
-      return { tab, page: null };
+      const page = await api.jobsPage(accountId, offset, {
+        status,
+        dateFrom,
+        dateTo,
+      });
+      return { data: { tab, page }, jobs: page.items };
     };
-    void Promise.all([load(), api.jobs(accountId)]).then(
-      ([data, jobs]) => {
+    void load().then(
+      ({ data, jobs }) => {
         if (cancelled) return;
-        if (data.page !== null && offset > 0 && offset >= data.page.total) {
+        if (offset > 0 && offset >= data.page.total) {
           // A deletion can remove the last page between requests. Load the new last page.
           setSnapshot(null);
           setCursor({
@@ -105,6 +131,9 @@ export function usePublicationPage({
     accountId,
     api,
     context,
+    status,
+    dateFrom,
+    dateTo,
     offset,
     onSessionExpired,
     requestContext,

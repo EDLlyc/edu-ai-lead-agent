@@ -22,13 +22,14 @@ from __future__ import annotations
 import re
 import socket
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 import structlog
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -753,12 +754,43 @@ async def cancel_job(
 
 
 async def list_jobs(
-    session: AsyncSession, *, account_id: UUID | None, limit: int = 50
-) -> list[WeChatPublishJobModel]:
-    statement = select(WeChatPublishJobModel).order_by(WeChatPublishJobModel.created_at.desc())
+    session: AsyncSession,
+    *,
+    account_id: UUID | None,
+    business_timezone: str,
+    status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> tuple[int, list[WeChatPublishJobModel]]:
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise WeChatAdminRejected("创建日期的开始日期不能晚于结束日期", "invalid_date_range")
+    # Bound the selected rows and count the exact same predicates. Business dates
+    # are inclusive; the UTC upper bound is the next local midnight (also across DST).
+    predicates = []
     if account_id is not None:
-        statement = statement.where(WeChatPublishJobModel.account_id == account_id)
-    return list((await session.scalars(statement.limit(limit))).all())
+        predicates.append(WeChatPublishJobModel.account_id == account_id)
+    if status is not None:
+        predicates.append(WeChatPublishJobModel.status == status)
+    zone = ZoneInfo(business_timezone)
+    if date_from is not None:
+        since = datetime.combine(date_from, time.min, zone).astimezone(UTC)
+        predicates.append(WeChatPublishJobModel.created_at >= since)
+    if date_to is not None:
+        until = datetime.combine(date_to + timedelta(days=1), time.min, zone).astimezone(UTC)
+        predicates.append(WeChatPublishJobModel.created_at < until)
+    total = await session.scalar(
+        select(func.count()).select_from(WeChatPublishJobModel).where(*predicates)
+    )
+    statement = (
+        select(WeChatPublishJobModel)
+        .where(*predicates)
+        .order_by(WeChatPublishJobModel.created_at.desc(), WeChatPublishJobModel.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return int(total or 0), list((await session.scalars(statement)).all())
 
 
 __all__ = [

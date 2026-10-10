@@ -109,3 +109,25 @@ requestDiscard(closeProviderEditor);
 Build previews into a task-specific directory with an explicit API origin. Do not overwrite
 `frontend/dist-admin` while another preview serves it, or retarget a production-connected preview
 to mock data. See the release handoff for the particular backend prerequisite and artifact hash.
+
+## History extension (2026-10-10)
+
+`WeChatApi.jobsPage(accountId, offset, filters)` returns the generated publication-job list response;
+the unfiltered `jobs(accountId)` array adapter remains available to draft/published views.
+All three tabs now have 20-row pagination. Publication records additionally filter by status and
+inclusive creation dates; render `business_timezone` returned by the API rather than assuming
+the browser's timezone. Account/filter changes reset offset; invalid ranges do not trigger a
+misleading successful empty state. Date/status changes and pagination use the unsaved-navigation
+guard when a manual reconciliation has edits. Keep the whole filter context in request identity.
+
+Audit initial loads, refreshes, filter changes, and append requests share a generation guard.
+Invalidate synchronously before starting another view; ignore obsolete successes, errors and
+finally handlers. A separate page-request identity prevents double loads and old finally blocks
+releasing a new lock. Append failure preserves rows and exposes retry at the same cursor.
+Current session expiry still logs out; an obsolete request cannot expire a newer view.
+
+`wechat.publish_rechecked` describes the query outcome, never publication success or source
+fetching. `wechat.publish_reconciled` displays the explicit published/not-published conclusion
+and note. Guard unknown nested audit-detail values before rendering; future events must not
+crash the table. Tests cover delayed success/error/expiry, refresh, A→B→A, retry, malformed
+future details, and the exact two publication audit descriptions.

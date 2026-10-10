@@ -13,6 +13,13 @@ export type WeChatAccountOption =
 export type WeChatDraft = components["schemas"]["AdminWeChatDraft"];
 export type WeChatPublished = components["schemas"]["AdminWeChatPublished"];
 export type PublishJob = components["schemas"]["AdminWeChatPublishJob"];
+export type PublishJobPage =
+  components["schemas"]["AdminWeChatPublishJobListResponse"];
+export type JobFilters = Readonly<{
+  status: PublishJob["status"] | "";
+  dateFrom: string;
+  dateTo: string;
+}>;
 export type WeChatStats = components["schemas"]["AdminWeChatStatsResponse"];
 export type PublishReconcile =
   components["schemas"]["AdminWeChatPublishReconcileRequest"];
@@ -54,6 +61,11 @@ export interface WeChatApi {
     readonly items: readonly WeChatPublished[];
   }>;
   readonly jobs: (accountId: string) => Promise<readonly PublishJob[]>;
+  readonly jobsPage: (
+    accountId: string,
+    offset: number,
+    filters: JobFilters,
+  ) => Promise<PublishJobPage>;
   readonly publish: (input: {
     readonly accountId: string;
     readonly mediaId: string;
@@ -175,6 +187,23 @@ export const wechatApi: WeChatApi = {
       }),
     );
     return check(result, "读取发布记录失败").items;
+  },
+  async jobsPage(accountId, offset, filters) {
+    const result = await reach(() =>
+      adminClient.GET("/api/v1/admin/wechat/publish-jobs", {
+        params: {
+          query: {
+            account_id: accountId,
+            offset,
+            limit: 20,
+            ...(filters.status === "" ? {} : { status: filters.status }),
+            ...(filters.dateFrom === "" ? {} : { date_from: filters.dateFrom }),
+            ...(filters.dateTo === "" ? {} : { date_to: filters.dateTo }),
+          },
+        },
+      }),
+    );
+    return check(result, "读取发布记录失败");
   },
   async publish(input) {
     const result = await reach(() =>

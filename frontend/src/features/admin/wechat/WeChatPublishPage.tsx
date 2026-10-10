@@ -12,6 +12,7 @@ import {
 import {
   JOB_STATUS_LABELS,
   wechatApi as defaultApi,
+  type JobFilters,
   type PublishJob,
   type PublishReconcile,
   type WeChatAccountOption,
@@ -31,6 +32,7 @@ const OPEN = new Set<PublishJob["status"]>([
   "publishing",
 ]);
 const REFRESH_MS = 15_000;
+const EMPTY_FILTERS: JobFilters = { status: "", dateFrom: "", dateTo: "" };
 
 function draftTitle(draft: WeChatDraft): string {
   const first = draft.articles[0]?.title ?? "（无标题）";
@@ -67,6 +69,7 @@ export function WeChatPublishPage({
   >(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [tab, setTab] = useState<PublicationTab>("drafts");
+  const [filters, setFilters] = useState<JobFilters>(EMPTY_FILTERS);
   const [pending, setPending] = useState<Pending>(null);
   const [reconciling, setReconciling] = useState<PublishJob | null>(null);
   const [when, setWhen] = useState(defaultLocalTime);
@@ -75,7 +78,15 @@ export function WeChatPublishPage({
   const [initialWhen, setInitialWhen] = useState(defaultLocalTime);
   const submitting = useRef(false);
   const { requestNavigation } = useUnsavedNavigation();
-  const page = usePublicationPage({ api, accountId, tab, onSessionExpired });
+  const page = usePublicationPage({
+    api,
+    accountId,
+    tab,
+    filters,
+    onSessionExpired,
+  });
+  const jobTimezone =
+    page.data?.tab === "jobs" ? page.data.page.business_timezone : null;
   const { refresh } = page;
   const drafts = page.data?.tab === "drafts" ? page.data.page.items : null;
   const published =
@@ -189,12 +200,16 @@ export function WeChatPublishPage({
             },
       );
       setPending(null);
+      setFilters(EMPTY_FILTERS);
+      page.changePage(0);
       setTab("jobs");
       refresh();
     } catch (error) {
       fail(error);
       // A lost browser response does not prove that the API never submitted the draft.
       setPending(null);
+      setFilters(EMPTY_FILTERS);
+      page.changePage(0);
       setTab("jobs");
       refresh();
     } finally {
@@ -329,6 +344,91 @@ export function WeChatPublishPage({
           </button>
         ))}
       </div>
+      {tab === "jobs" ? (
+        <div role="group" aria-label="发布记录筛选">
+          <div className={styles.filters}>
+            <label className={styles.inlineField}>
+              <span>发布状态</span>
+              <select
+                value={filters.status}
+                disabled={busy}
+                onChange={(event) => {
+                  const status = event.target.value as JobFilters["status"];
+                  changeContext(() => {
+                    page.changePage(0);
+                    setFilters({ ...filters, status });
+                  });
+                }}
+              >
+                <option value="">全部状态</option>
+                {Object.entries(JOB_STATUS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.inlineField}>
+              <span>创建日期起</span>
+              <input
+                type="date"
+                min="1970-01-01"
+                max={filters.dateTo || "9999-12-30"}
+                value={filters.dateFrom}
+                disabled={busy}
+                onChange={(event) => {
+                  const dateFrom = event.target.value;
+                  changeContext(() => {
+                    page.changePage(0);
+                    setFilters({ ...filters, dateFrom });
+                  });
+                }}
+              />
+            </label>
+            <label className={styles.inlineField}>
+              <span>创建日期止</span>
+              <input
+                type="date"
+                min={filters.dateFrom || "1970-01-01"}
+                max="9999-12-30"
+                value={filters.dateTo}
+                disabled={busy}
+                onChange={(event) => {
+                  const dateTo = event.target.value;
+                  changeContext(() => {
+                    page.changePage(0);
+                    setFilters({ ...filters, dateTo });
+                  });
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={
+                busy ||
+                (filters.status === "" &&
+                  filters.dateFrom === "" &&
+                  filters.dateTo === "")
+              }
+              onClick={() =>
+                changeContext(() => {
+                  page.changePage(0);
+                  setFilters(EMPTY_FILTERS);
+                })
+              }
+            >
+              清除筛选
+            </button>
+          </div>
+          <p className={styles.hint}>
+            按
+            {jobTimezone === "Asia/Shanghai"
+              ? "北京时间"
+              : (jobTimezone ?? "后台业务时区")}
+            筛选创建日期，包含起止当天。
+          </p>
+        </div>
+      ) : null}
       {message === null ? null : (
         <p
           className={message.kind === "error" ? styles.error : styles.success}
@@ -451,12 +551,17 @@ export function WeChatPublishPage({
         jobs === null ? (
           <p role="status">正在读取…</p>
         ) : jobs.length === 0 ? (
-          <p>还没有发布记录。</p>
+          <p>
+            {filters.status || filters.dateFrom || filters.dateTo
+              ? "没有符合筛选条件的发布记录。"
+              : "还没有发布记录。"}
+          </p>
         ) : (
           <table className={styles.table} data-responsive="cards">
             <thead>
               <tr>
                 <th scope="col">文章</th>
+                <th scope="col">创建时间</th>
                 <th scope="col">发布时间</th>
                 <th scope="col">状态</th>
                 <th scope="col">操作人</th>
@@ -478,6 +583,12 @@ export function WeChatPublishPage({
                         {job.title}
                       </a>
                     )}
+                  </td>
+                  <td data-label="创建时间">
+                    {new Date(job.created_at).toLocaleString("zh-CN", {
+                      timeZone: jobTimezone ?? "Asia/Shanghai",
+                      hour12: false,
+                    })}
                   </td>
                   <td data-label="发布时间">{formatTime(job.scheduled_at)}</td>
                   <td data-label="状态">
@@ -579,7 +690,7 @@ export function WeChatPublishPage({
           ))}
         </ol>
       )}
-      {accountId !== null && tab !== "jobs" ? (
+      {accountId !== null ? (
         <PageNavigation
           tab={tab}
           offset={page.offset}
@@ -603,7 +714,7 @@ function PageNavigation({
   busy,
   onPage,
 }: {
-  readonly tab: "drafts" | "published";
+  readonly tab: PublicationTab;
   readonly offset: number;
   readonly total: number | null;
   readonly count: number;
@@ -614,7 +725,13 @@ function PageNavigation({
   return (
     <nav
       className={styles.pagination}
-      aria-label={tab === "drafts" ? "草稿分页" : "已发布分页"}
+      aria-label={
+        tab === "drafts"
+          ? "草稿分页"
+          : tab === "jobs"
+            ? "发布记录分页"
+            : "已发布分页"
+      }
     >
       <span aria-live="polite">
         {total === null

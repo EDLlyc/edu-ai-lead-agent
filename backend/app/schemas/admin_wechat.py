@@ -100,6 +100,11 @@ class AdminWeChatPublishRequest(BaseModel):
     scheduled_at: datetime | None = None
 
 
+PublishJobStatus = Literal[
+    "scheduled", "submitting", "publishing", "succeeded", "failed", "outcome_unknown", "cancelled"
+]
+
+
 class AdminWeChatPublishJob(BaseModel):
     id: UUID
     account_id: UUID
@@ -107,15 +112,7 @@ class AdminWeChatPublishJob(BaseModel):
     media_id: str
     title: str
     scheduled_at: datetime
-    status: Literal[
-        "scheduled",
-        "submitting",
-        "publishing",
-        "succeeded",
-        "failed",
-        "outcome_unknown",
-        "cancelled",
-    ]
+    status: PublishJobStatus
     article_url: str | None
     error: str | None
     created_by: str
@@ -139,6 +136,10 @@ class AdminWeChatPublishReconcileRequest(BaseModel):
 
 class AdminWeChatPublishJobListResponse(BaseModel):
     items: list[AdminWeChatPublishJob]
+    total: int
+    offset: int
+    limit: int
+    business_timezone: str
 
 
 class AdminWeChatDailyStats(BaseModel):

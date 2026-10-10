@@ -1028,3 +1028,175 @@ async def test_0060_refuses_conflicting_history_without_deleting_it(
             )
         finally:
             await transaction.rollback()
+
+
+async def test_publish_job_history_paginates_all_rows_with_stable_ties_and_filters(
+    integration_context: IntegrationContext, wechat: FakeWeChat
+) -> None:
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        instant = datetime(2026, 10, 9, 16, tzinfo=UTC)
+        # All timestamps tie: deterministic UUID ordering must still yield every record once.
+        rows = [
+            WeChatPublishJobModel(
+                id=UUID(int=index + 1),
+                account_id=UUID(account_id),
+                media_id=f"history-{index}",
+                title=f"History {index}",
+                scheduled_at=instant,
+                created_at=instant,
+                updated_at=instant,
+                created_by="test",
+                status="failed" if index % 2 else "succeeded",
+            )
+            for index in range(65)
+        ]
+        async with integration_context.session_factory() as session:
+            session.add_all(rows)
+            await session.commit()
+        default = await owner.get(
+            "/api/v1/admin/wechat/publish-jobs", params={"account_id": account_id}
+        )
+        assert default.status_code == 200
+        assert default.json()["total"] == 65
+        assert default.json()["limit"] == 50
+        assert len(default.json()["items"]) == 50
+        ids = []
+        for offset in (0, 20, 40, 60):
+            result = await owner.get(
+                "/api/v1/admin/wechat/publish-jobs",
+                params={
+                    "account_id": account_id,
+                    "offset": offset,
+                    "limit": 20,
+                },
+            )
+            assert result.status_code == 200
+            page = result.json()
+            assert (page["total"], page["offset"], page["limit"]) == (65, offset, 20)
+            assert page["business_timezone"] == "Asia/Shanghai"
+            assert all(row["account_name"] == "赛先生" for row in page["items"])
+            ids.extend(row["id"] for row in page["items"])
+        assert ids == [str(UUID(int=index)) for index in range(65, 0, -1)]
+        selected = (
+            await owner.get(
+                "/api/v1/admin/wechat/publish-jobs",
+                params={
+                    "account_id": account_id,
+                    "status": "failed",
+                    "date_from": "2026-10-10",
+                    "date_to": "2026-10-10",
+                    "offset": 20,
+                    "limit": 20,
+                },
+            )
+        ).json()
+        assert selected["total"] == 32
+        assert len(selected["items"]) == 12
+        assert all(row["status"] == "failed" for row in selected["items"])
+        for params in ({"account_id": str(uuid4())}, {"account_id": account_id, "offset": 100}):
+            empty = (await owner.get("/api/v1/admin/wechat/publish-jobs", params=params)).json()
+            assert empty["items"] == []
+            assert empty["total"] == (0 if "offset" not in params else 65)
+        assert wechat.submitted == []
+
+
+@pytest.mark.parametrize(
+    "timezone,day,start,end",
+    [
+        ("Asia/Shanghai", "2026-10-10", "2026-10-09T16:00:00+00:00", "2026-10-10T16:00:00+00:00"),
+        # The configured timezone, including a 25-hour DST date, is authoritative.
+        (
+            "America/New_York",
+            "2026-11-01",
+            "2026-11-01T04:00:00+00:00",
+            "2026-11-02T05:00:00+00:00",
+        ),
+    ],
+)
+async def test_job_creation_dates_use_inclusive_business_days_and_preserve_occupancy(
+    integration_context: IntegrationContext,
+    wechat: FakeWeChat,
+    timezone: str,
+    day: str,
+    start: str,
+    end: str,
+) -> None:
+    app.state.settings = app.state.settings.model_copy(update={"business_timezone": timezone})
+    async with _logged_in(integration_context, "owner") as owner:
+        account_id = await _bind(owner)
+        since, until = datetime.fromisoformat(start), datetime.fromisoformat(end)
+        instants = [
+            since - timedelta(microseconds=1),
+            since,
+            until - timedelta(microseconds=1),
+            until,
+        ]
+        async with integration_context.session_factory() as session:
+            session.add_all(
+                [
+                    WeChatPublishJobModel(
+                        id=uuid4(),
+                        account_id=UUID(account_id),
+                        media_id="M1" if index == 0 else f"date-{index}",
+                        title=f"Boundary {index}",
+                        scheduled_at=since + timedelta(days=10),
+                        created_at=instant,
+                        updated_at=instant,
+                        created_by="test",
+                        status="succeeded" if index == 0 else "failed",
+                    )
+                    for index, instant in enumerate(instants)
+                ]
+            )
+            await session.commit()
+        result = await owner.get(
+            "/api/v1/admin/wechat/publish-jobs",
+            params={
+                "account_id": account_id,
+                "date_from": day,
+                "date_to": day,
+                "status": "failed",
+            },
+        )
+        assert result.status_code == 200
+        assert result.json()["total"] == 2
+        assert [row["title"] for row in result.json()["items"]] == ["Boundary 2", "Boundary 1"]
+        assert result.json()["business_timezone"] == timezone
+        lower_only = (
+            await owner.get("/api/v1/admin/wechat/publish-jobs", params={"date_from": day})
+        ).json()
+        upper_only = (
+            await owner.get("/api/v1/admin/wechat/publish-jobs", params={"date_to": day})
+        ).json()
+        assert lower_only["total"] == upper_only["total"] == 3
+        drafts = (await owner.get(f"/api/v1/admin/wechat/accounts/{account_id}/drafts")).json()
+        # A succeeded job excluded from history filters still occupies its draft.
+        assert drafts["items"][0]["open_job_id"] is not None
+        assert wechat.submitted == []
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"status": "typo"},
+        {"date_from": "2026-02-30"},
+        {"date_to": "not-a-date"},
+        {"date_from": "2026-10-11", "date_to": "2026-10-10"},
+        {"date_to": "9999-12-31"},
+        {"date_from": "0001-01-01"},
+        {"offset": "-1"},
+        {"offset": "1000001"},
+        {"offset": "1.5"},
+        {"limit": "0"},
+        {"limit": "101"},
+    ],
+)
+async def test_publish_history_rejects_invalid_filters_without_provider_calls(
+    integration_context: IntegrationContext, wechat: FakeWeChat, params: dict[str, str]
+) -> None:
+    async with _logged_in(integration_context, "editor") as editor:
+        response = await editor.get("/api/v1/admin/wechat/publish-jobs", params=params)
+        assert response.status_code == 422, response.text
+        assert "traceback" not in response.text.lower()
+        assert wechat.calls == []

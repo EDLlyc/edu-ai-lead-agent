@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/admin-console.md", "reason": "Guards, pagination and reflow contracts"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Generated wire types"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Meaningful behavior tests"}
+{"file": ".trellis/spec/backend/admin-console.md", "reason": "Admin auth, audit and publication safety"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Stable bounded SQL queries"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed API validation"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Contract propagation"}
+{"file": ".trellis/spec/guides/production-mainline.md", "reason": "Verified overlay and final predeploy gate"}

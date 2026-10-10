@@ -48,6 +48,8 @@ export function job(changes: Partial<PublishJob> = {}): PublishJob {
 }
 
 export function fakeWeChatApi(overrides: Partial<WeChatApi> = {}) {
+  const jobs =
+    overrides.jobs ?? vi.fn(() => Promise.resolve<readonly PublishJob[]>([]));
   return {
     status: vi.fn(() => Promise.resolve({ secretKeyConfigured: true })),
     accounts: vi.fn(() => Promise.resolve<readonly WeChatAccount[]>([ACCOUNT])),
@@ -74,7 +76,21 @@ export function fakeWeChatApi(overrides: Partial<WeChatApi> = {}) {
         ],
       }),
     ),
-    jobs: vi.fn(() => Promise.resolve<readonly PublishJob[]>([])),
+    jobs,
+    jobsPage: vi.fn<WeChatApi["jobsPage"]>(
+      async (accountId, offset, filters) => {
+        const items = (await jobs(accountId)).filter(
+          (item) => !filters.status || item.status === filters.status,
+        );
+        return {
+          items: items.slice(offset, offset + 20),
+          total: items.length,
+          offset,
+          limit: 20,
+          business_timezone: "Asia/Shanghai",
+        };
+      },
+    ),
     publish: vi.fn(() => Promise.resolve(job())),
     cancel: vi.fn(() => Promise.resolve(job({ status: "cancelled" }))),
     recheck: vi.fn(() => Promise.resolve(job({ status: "succeeded" }))),

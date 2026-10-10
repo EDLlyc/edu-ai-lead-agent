@@ -1,0 +1,60 @@
+{
+  "pages": [
+    {
+      "width": 390,
+      "section": "wechat-publish",
+      "viewport": 390,
+      "documentWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 390,
+      "clippedControls": []
+    },
+    {
+      "width": 390,
+      "section": "audit",
+      "viewport": 390,
+      "documentWidth": 390,
+      "mainWidth": 390,
+      "mainScrollWidth": 390,
+      "clippedControls": []
+    },
+    {
+      "width": 768,
+      "section": "wechat-publish",
+      "viewport": 768,
+      "documentWidth": 768,
+      "mainWidth": 560,
+      "mainScrollWidth": 560,
+      "clippedControls": []
+    },
+    {
+      "width": 768,
+      "section": "audit",
+      "viewport": 768,
+      "documentWidth": 768,
+      "mainWidth": 560,
+      "mainScrollWidth": 560,
+      "clippedControls": []
+    },
+    {
+      "width": 1366,
+      "section": "wechat-publish",
+      "viewport": 1366,
+      "documentWidth": 1366,
+      "mainWidth": 1158,
+      "mainScrollWidth": 1158,
+      "clippedControls": []
+    },
+    {
+      "width": 1366,
+      "section": "audit",
+      "viewport": 1366,
+      "documentWidth": 1366,
+      "mainWidth": 1158,
+      "mainScrollWidth": 1158,
+      "clippedControls": []
+    }
+  ],
+  "errors": [],
+  "blockedWrites": []
+}

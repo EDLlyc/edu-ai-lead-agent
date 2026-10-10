@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   AUDIT_PAGE_SIZE,
@@ -41,6 +41,8 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "wechat.publish_failed": "发布失败",
   "wechat.publish_outcome_unknown": "发布结果未知",
   "wechat.publish_cancelled": "取消定时发布",
+  "wechat.publish_rechecked": "查询发布结果",
+  "wechat.publish_reconciled": "人工核对发布结果",
 };
 
 const LIST_LABELS: Readonly<Record<string, string>> = {
@@ -105,6 +107,10 @@ const timeFormat = new Intl.DateTimeFormat("zh-CN", {
   hourCycle: "h23",
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function describe(event: AdminAuditEvent): string {
   const detail = event.detail;
   const parts: string[] = [];
@@ -148,29 +154,21 @@ function describe(event: AdminAuditEvent): string {
   if (typeof detail.article_url === "string" && detail.article_url !== "") {
     parts.push("已拿到文章链接");
   }
-  if (
-    event.action === "user.updated" &&
-    detail.changes !== null &&
-    typeof detail.changes === "object"
-  ) {
-    const changes = detail.changes as Record<
-      string,
-      { from?: unknown; to?: unknown }
-    >;
-    if (changes.display_name !== undefined) {
+  if (event.action === "user.updated" && isRecord(detail.changes)) {
+    const changes = detail.changes;
+    if (isRecord(changes.display_name)) {
       parts.push(
         `显示名：${String(changes.display_name.from)} → ${String(changes.display_name.to)}`,
       );
     }
-    if (changes.role !== undefined) {
+    if (isRecord(changes.role)) {
       const from = String(changes.role.from);
       const to = String(changes.role.to);
       parts.push(`角色：${ROLE_NAMES[from] ?? from} → ${ROLE_NAMES[to] ?? to}`);
     }
-  } else if (detail.changes !== null && typeof detail.changes === "object") {
-    for (const [list, change] of Object.entries(
-      detail.changes as Record<string, { added?: unknown; removed?: unknown }>,
-    )) {
+  } else if (isRecord(detail.changes)) {
+    for (const [list, change] of Object.entries(detail.changes)) {
+      if (!isRecord(change)) continue;
       const label = LIST_LABELS[list] ?? list;
       const added = Array.isArray(change.added) ? change.added.map(String) : [];
       const removed = Array.isArray(change.removed)
@@ -183,12 +181,34 @@ function describe(event: AdminAuditEvent): string {
   if (typeof detail.note === "string" && detail.note !== "") {
     parts.push(`备注：${detail.note}`);
   }
+  if (
+    event.action === "wechat.publish_reconciled" &&
+    typeof detail.result === "string"
+  ) {
+    const result =
+      detail.result === "published"
+        ? "已发布"
+        : detail.result === "not_published"
+          ? "未发布"
+          : detail.result;
+    parts.push(`核对结果：${result}`);
+  }
   if (typeof detail.ok === "boolean") {
     if (event.action === "wechat_account.verified") {
       parts.push(detail.ok ? "验证通过" : "验证没通过");
-    } else {
+    } else if (event.action === "wechat.publish_rechecked") {
+      parts.push(detail.ok ? "已查询微信发布状态" : "查询微信发布状态失败");
+    } else if (event.action === "source.previewed") {
       parts.push(detail.ok ? "能抓到文章" : "抓不到文章");
+    } else {
+      parts.push(detail.ok ? "操作成功" : "操作失败");
     }
+  }
+  if (
+    event.action === "wechat.publish_rechecked" &&
+    detail.ignored_newer_state === true
+  ) {
+    parts.push("记录已有更新，本次查询结果未覆盖最新状态");
   }
   if (typeof detail.sessions_ended === "number" && detail.sessions_ended > 0) {
     parts.push(`结束 ${detail.sessions_ended} 个在线会话`);
@@ -207,7 +227,22 @@ type State =
       readonly kind: "ready";
       readonly events: readonly AdminAuditEvent[];
       readonly more: boolean;
+      readonly page:
+        | { readonly kind: "idle" | "loading" }
+        | { readonly kind: "error"; readonly message: string };
     };
+
+type Snapshot = {
+  readonly api: AdminApi;
+  readonly onSessionExpired: () => void;
+  readonly filter: AuditKind | null;
+  readonly reloads: number;
+  readonly state: State;
+};
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "读取失败";
+}
 
 export function AuditLogPage({
   api,
@@ -216,69 +251,106 @@ export function AuditLogPage({
   readonly api: AdminApi;
   readonly onSessionExpired: () => void;
 }) {
-  const [state, setState] = useState<State>({ kind: "loading" });
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [filter, setFilter] = useState<AuditKind | null>(null);
   const [reloads, setReloads] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const generation = useRef(0);
+  const pageRequest = useRef<object | null>(null);
+  const state: State =
+    snapshot?.api === api &&
+    snapshot.onSessionExpired === onSessionExpired &&
+    snapshot.filter === filter &&
+    snapshot.reloads === reloads
+      ? snapshot.state
+      : { kind: "loading" };
 
-  const handle = (error: unknown) => {
-    if (error instanceof AdminSessionExpiredError) {
-      onSessionExpired();
-      return;
-    }
-    setState({
-      kind: "error",
-      message: error instanceof Error ? error.message : "读取失败",
-    });
+  const invalidate = () => {
+    generation.current += 1;
+    pageRequest.current = null;
+  };
+  const refresh = () => {
+    // Invalidate immediately, before a queued old response or the next effect can run.
+    invalidate();
+    setReloads((count) => count + 1);
   };
 
   useEffect(() => {
-    let cancelled = false;
+    const requestGeneration = ++generation.current;
+    const context = { api, onSessionExpired, filter, reloads };
     api.auditEvents(filter === null ? {} : { kind: filter }).then(
       (events) => {
-        if (!cancelled) {
-          setState({
+        if (requestGeneration !== generation.current) return;
+        setSnapshot({
+          ...context,
+          state: {
             kind: "ready",
             events,
             more: events.length === AUDIT_PAGE_SIZE,
-          });
-        }
+            page: { kind: "idle" },
+          },
+        });
       },
       (error: unknown) => {
-        if (cancelled) return;
+        if (requestGeneration !== generation.current) return;
         if (error instanceof AdminSessionExpiredError) {
           onSessionExpired();
           return;
         }
-        setState({
-          kind: "error",
-          message: error instanceof Error ? error.message : "读取失败",
+        setSnapshot({
+          ...context,
+          state: { kind: "error", message: errorMessage(error) },
         });
       },
     );
     return () => {
-      cancelled = true;
+      generation.current += 1;
+      pageRequest.current = null;
     };
   }, [api, onSessionExpired, filter, reloads]);
 
   const loadMore = async () => {
-    if (state.kind !== "ready" || state.events.length === 0) return;
-    setLoadingMore(true);
+    if (state.kind !== "ready" || !state.more || pageRequest.current !== null)
+      return;
+    const oldest = state.events[state.events.length - 1];
+    if (oldest === undefined) return;
+    const request = {};
+    const requestGeneration = generation.current;
+    const context = { api, onSessionExpired, filter, reloads };
+    const isCurrent = () =>
+      requestGeneration === generation.current &&
+      pageRequest.current === request;
+    pageRequest.current = request;
+    setSnapshot({ ...context, state: { ...state, page: { kind: "loading" } } });
     try {
-      const oldest = state.events[state.events.length - 1]!;
       const older = await api.auditEvents({
         ...(filter === null ? {} : { kind: filter }),
         before: oldest.occurred_at,
       });
-      setState({
-        kind: "ready",
-        events: [...state.events, ...older],
-        more: older.length === AUDIT_PAGE_SIZE,
+      if (!isCurrent()) return;
+      setSnapshot({
+        ...context,
+        state: {
+          kind: "ready",
+          events: [...state.events, ...older],
+          more: older.length === AUDIT_PAGE_SIZE,
+          page: { kind: "idle" },
+        },
       });
     } catch (error) {
-      handle(error);
+      if (!isCurrent()) return;
+      if (error instanceof AdminSessionExpiredError) {
+        onSessionExpired();
+        return;
+      }
+      setSnapshot({
+        ...context,
+        state: {
+          ...state,
+          page: { kind: "error", message: errorMessage(error) },
+        },
+      });
     } finally {
-      setLoadingMore(false);
+      if (pageRequest.current === request) pageRequest.current = null;
     }
   };
 
@@ -288,10 +360,7 @@ export function AuditLogPage({
         <h2 id="admin-section-title">操作记录</h2>
         <button
           type="button"
-          onClick={() => {
-            setState({ kind: "loading" });
-            setReloads((count) => count + 1);
-          }}
+          onClick={refresh}
           disabled={state.kind === "loading"}
         >
           刷新
@@ -308,8 +377,9 @@ export function AuditLogPage({
             aria-pressed={filter === item.kind}
             onClick={() => {
               if (filter === item.kind) return;
-              setState({ kind: "loading" });
+              invalidate();
               setFilter(item.kind);
+              setReloads((count) => count + 1);
             }}
           >
             {item.label}
@@ -319,9 +389,14 @@ export function AuditLogPage({
       {state.kind === "loading" ? (
         <p role="status">正在读取…</p>
       ) : state.kind === "error" ? (
-        <p className={styles.error} role="alert">
-          {state.message}
-        </p>
+        <>
+          <p className={styles.error} role="alert">
+            {state.message}
+          </p>
+          <button type="button" onClick={refresh}>
+            重试
+          </button>
+        </>
       ) : state.events.length === 0 ? (
         <p>还没有记录。</p>
       ) : (
@@ -353,16 +428,25 @@ export function AuditLogPage({
               </tbody>
             </table>
           </div>
+          {state.page.kind === "error" ? (
+            <p className={styles.error} role="alert">
+              加载更早的记录失败：{state.page.message}
+            </p>
+          ) : null}
           {state.more ? (
             <button
               type="button"
               className={styles.more}
-              disabled={loadingMore}
+              disabled={state.page.kind === "loading"}
               onClick={() => {
                 void loadMore();
               }}
             >
-              {loadingMore ? "正在加载…" : "加载更早的记录"}
+              {state.page.kind === "loading"
+                ? "正在加载…"
+                : state.page.kind === "error"
+                  ? "重试加载更早的记录"
+                  : "加载更早的记录"}
             </button>
           ) : (
             <p className={styles.hint}>没有更早的记录了。</p>
