@@ -1,0 +1,13 @@
+{
+  "source_baseline": "815bfd0",
+  "actual_status": "outcome_unknown",
+  "error_code": "single_journal_invalid",
+  "expected_status": "delivered",
+  "original_fake_writes": [
+    "inline",
+    "thumb",
+    "add"
+  ],
+  "retry_fake_writes": [],
+  "provider_calls": 0
+}

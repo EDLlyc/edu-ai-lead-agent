@@ -1,0 +1,180 @@
+{
+  "schema": "20261010_0061",
+  "tables": {
+    "governance_jobs": {
+      "columns": [
+        "status",
+        "lease_token",
+        "lease_expires_at",
+        "heartbeat_at"
+      ],
+      "statuses": [
+        {
+          "status": "review_required",
+          "count": 699,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": "2026-07-30 01:02:17.492334+00:00",
+          "heartbeat_at_max": "2026-10-10 03:03:43.885311+00:00"
+        },
+        {
+          "status": "succeeded",
+          "count": 5222,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": "2026-07-30 01:04:18.113177+00:00",
+          "heartbeat_at_max": "2026-10-10 03:04:29.937957+00:00"
+        }
+      ]
+    },
+    "official_account_article_runs": {
+      "columns": [
+        "status",
+        "lease_token",
+        "lease_expires_at",
+        "heartbeat_at"
+      ],
+      "statuses": [
+        {
+          "status": "failed",
+          "count": 5,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        },
+        {
+          "status": "ready",
+          "count": 20,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        },
+        {
+          "status": "result_unknown",
+          "count": 5,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        },
+        {
+          "status": "review_required",
+          "count": 1,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        }
+      ]
+    },
+    "official_account_weekly_dag_runs": {
+      "columns": [
+        "status"
+      ],
+      "statuses": [
+        {
+          "status": "terminal_failed",
+          "count": 2
+        }
+      ]
+    },
+    "official_account_weekly_dag_nodes": {
+      "columns": [
+        "status",
+        "lease_expires_at",
+        "heartbeat_at"
+      ],
+      "statuses": [
+        {
+          "status": "pending",
+          "count": 16,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        },
+        {
+          "status": "succeeded",
+          "count": 14,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        },
+        {
+          "status": "terminal_failed",
+          "count": 2,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        }
+      ]
+    },
+    "wechat_mp_draft_jobs": {
+      "columns": [
+        "status",
+        "lease_expires_at",
+        "heartbeat_at"
+      ],
+      "statuses": [
+        {
+          "status": "ready",
+          "count": 2,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "heartbeat_at_min": null,
+          "heartbeat_at_max": null
+        }
+      ]
+    },
+    "official_account_single_editions": {
+      "columns": [
+        "business_date",
+        "expires_at",
+        "status",
+        "lease_token",
+        "lease_expires_at"
+      ],
+      "statuses": [
+        {
+          "status": "delivered",
+          "count": 10,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "business_date_min": "2026-09-18",
+          "business_date_max": "2026-10-09",
+          "expires_at_min": "2026-09-18 08:00:00+00:00",
+          "expires_at_max": "2026-10-09 08:00:00+00:00"
+        },
+        {
+          "status": "outcome_unknown",
+          "count": 1,
+          "lease_token_non_null": 0,
+          "lease_expires_at_min": null,
+          "lease_expires_at_max": null,
+          "business_date_min": "2026-09-16",
+          "business_date_max": "2026-09-16",
+          "expires_at_min": "2026-09-16 08:00:00+00:00",
+          "expires_at_max": "2026-09-16 08:00:00+00:00"
+        }
+      ]
+    }
+  },
+  "stored_model_keys": 0,
+  "account_templates": [
+    {
+      "layout_template_id": "xiaosai-blue",
+      "count": 1
+    }
+  ]
+}

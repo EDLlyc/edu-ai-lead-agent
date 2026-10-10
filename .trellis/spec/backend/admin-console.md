@@ -124,6 +124,15 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
   test (`app/assets/official_account_layout_sample.html`) fails until then.
 - `wechat_accounts.layout_template_id` is read by the single-edition consumer by account
   fingerprint. The choice is pinned per edition in the draft journal, so retries never change it.
+- The runtime lookup is a bound single-column SQL read, independent of the newer admin ORM;
+  legacy consumers can use the existing account table without importing unrelated model changes.
+- A saved selection applies at the first upload attempt of a new automatic single draft. A valid
+  pin must name the supported layout version and a registered template; malformed pins fail closed.
+  A pre-template attempt with a valid original physical-write intent but no pin keeps the default
+  colour scheme, so an old add acknowledgement can still reconcile after expiry without replay.
+  Unknown account selections retain the default; unknown **persisted pin** identities do not.
+- Draft templates require neither the model encryption key nor the admin encryption key. Legacy
+  weekly/manual paths continue to use their existing default unless explicitly supplied a template.
 
 ## 模型配置 (item 8)
 
@@ -144,7 +153,8 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - Report only successfully decrypted/applied versions. Track attempted versions separately for the
   restart comparison. `model_key_consumers.load_errors` stores safe per-provider codes; null on a
   legacy heartbeat means unknown verification, not confirmed success. See the reliability contract
-  below. This repair is not deployed until its separate release is approved.
+  below. The diagnostic repair is live in the six-service release of 2026-10-10 13:40; remaining
+  legacy consumer connection is a separately reviewed four-service pipeline release.
 
 ## 公众号数据同步 timing (item 4)
 

@@ -104,3 +104,25 @@ migration, source seeds, or historical admission. Reviewed application incompati
 same-head rollback eligibility because the new V4/catalog prepared contracts are durable state.
 The runtime checker preserves expired lease-free unknown history as a separate degraded count;
 current unknowns and stale leases remain failures. Neither classification authorizes replay.
+
+## 8. Account layout integration and legacy journal compatibility (2026-10-10)
+
+The account's saved colour template is read by fingerprint immediately before single-edition
+delivery. The immutable edition pin is created under the existing account journal lock and used
+for every retry; prepared articles/images are not rewritten. A new choice cannot change an old
+article's add-request body or invalidate its acknowledgement.
+
+Before pins existed, the first durable physical-write intent was either the first inline image
+or the thumbnail. After verifying the edition/claim binding, a valid such intent with no pin
+freezes the original default template. Full add acknowledgements still reconcile after the cutoff;
+ambiguous writes never become replayable. Corrupt intents, unknown pin versions and unregistered
+pin IDs fail closed before new provider writes. Default/unknown **new selection** remains the
+identity transform, preserving the previous output contract.
+
+The narrow legacy-image release must preserve every non-overlaid source/assets file, old Settings
+defaults and live mode/mount configuration. It adds no migration or scheduler activation. Readiness
+checks inspect source, configuration, durable state and offline fixtures; they must not invoke
+`worker --once` or `--drain` against production, because those can claim paid or external work.
+Historical lease-free expired unknowns and terminal-parent legacy nodes remain explicit preserved
+history, not work to reopen. A nondefault pin or changed journal after cutover prevents blind
+rollback to a pre-template consumer: retain compatible code or stop that consumer for a forward fix.

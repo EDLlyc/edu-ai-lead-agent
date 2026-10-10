@@ -79,6 +79,73 @@ async def test_consumer_child_failure_is_bounded_and_does_not_invalidate_history
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("selected", ["jade-green", None])
+async def test_consumer_forwards_layout_for_the_exact_configured_account(
+    monkeypatch, tmp_path, selected
+):
+    account = wechat_draft_account_fingerprint("synthetic-account")
+    value = edition(
+        account=account,
+        role="application_case",
+        prepared_artifact=WeeklyDagArtifact(
+            opaque_ref="test-artifact-v1:" + "a" * 64,
+            fingerprint="a" * 64,
+            media_type="application/json",
+            byte_size=1,
+        ),
+    )
+    body = prepared()
+    repository = Repository()
+    repository.import_history = AsyncMock()
+    repository.claim = AsyncMock(return_value=value)
+    repository.reserve_article = AsyncMock(return_value=True)
+    repository.invalidate_history = AsyncMock()
+    engine, sessions = SimpleNamespace(dispose=AsyncMock()), object()
+    monkeypatch.setattr(runtime, "create_engine", Mock(return_value=engine))
+    monkeypatch.setattr(runtime, "create_session_factory", Mock(return_value=sessions))
+    monkeypatch.setattr(runtime, "PostgresSingleEditionRepository", Mock(return_value=repository))
+    client_module = importlib.import_module("app.infrastructure.wechat_official_account.client")
+    client = SimpleNamespace(aclose=AsyncMock())
+    monkeypatch.setattr(client_module, "WeChatOfficialAccountHttpClient", Mock(return_value=client))
+    artifact_module = importlib.import_module(
+        "app.infrastructure.wechat_official_account.prepared_artifacts"
+    )
+    monkeypatch.setattr(artifact_module, "load_prepared_draft_child", Mock(return_value=body))
+    layout_module = importlib.import_module("app.infrastructure.db.wechat_layout_templates")
+    lookup = AsyncMock(return_value=selected)
+    monkeypatch.setattr(layout_module, "layout_template_for_account", lookup)
+    delivery_module = importlib.import_module(
+        "app.application.services.wechat_single_edition_delivery"
+    )
+    delivery = AsyncMock()
+    monkeypatch.setattr(delivery_module, "deliver_single", delivery)
+    settings = SimpleNamespace(
+        official_account_single_enabled=True,
+        official_account_single_account_fingerprint=account,
+        wechat_mp_draft_worker_enabled=True,
+        wechat_mp_app_id=SecretStr("synthetic-account"),
+        wechat_mp_draft_artifact_root=str(tmp_path / "journal"),
+        wechat_mp_draft_weekly_inbox_root=str(tmp_path / "input" / "weekly-inbox"),
+        wechat_mp_max_image_bytes=1024,
+    )
+
+    assert await runtime.run_single_runtime(settings, plane="consumer", once=True) == 0
+    lookup.assert_awaited_once_with(sessions, account)
+    delivery.assert_awaited_once()
+    assert delivery.await_args.kwargs == {
+        "repository": repository,
+        "edition": value,
+        "prepared": body,
+        "journal": delivery.await_args.kwargs["journal"],
+        "client": client,
+        "layout_template_id": selected,
+    }
+    repository.invalidate_history.assert_not_awaited()
+    client.aclose.assert_awaited_once()
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "module_name,plane",
     [

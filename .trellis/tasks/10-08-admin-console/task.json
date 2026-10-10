@@ -32,7 +32,8 @@
     "10-09-admin-release-2",
     "10-10-admin-reliability",
     "10-10-admin-usability",
-    "10-10-admin-history-release"
+    "10-10-admin-history-release",
+    "10-10-admin-pipeline-integration"
   ],
   "parent": null,
   "relatedFiles": [],

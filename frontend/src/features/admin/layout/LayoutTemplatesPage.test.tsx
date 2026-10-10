@@ -56,14 +56,19 @@ describe("排版模板", () => {
       await screen.findByText("小赛蓝（默认）", { selector: "p strong" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /小赛蓝/ })).toBeChecked();
-    expect(screen.getByText(/现在还不会生效/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/未检测草稿服务的实时运行状态/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/重试沿用首次选择，已有草稿不变/),
+    ).toBeInTheDocument();
     const frame = await screen.findByTitle("排版预览：小赛蓝（默认）");
     expect(frame).toHaveAttribute("sandbox", "");
     expect(frame.getAttribute("srcdoc")).toContain(
       'data-template="xiaosai-blue"',
     );
     expect(
-      screen.getByRole("button", { name: "正在使用这个模板" }),
+      screen.getByRole("button", { name: "已保存这个模板" }),
     ).toBeDisabled();
 
     await user.click(screen.getByRole("radio", { name: /青绿/ }));
@@ -77,17 +82,17 @@ describe("排版模板", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: "给「赛先生」启用「青绿」" }),
+      screen.getByRole("button", { name: "给「赛先生」保存「青绿」" }),
     );
     expect(api.choose).toHaveBeenCalledWith(ACCOUNT.id, "jade-green");
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "「赛先生」已改用「青绿」，从下一篇自动生成的草稿开始生效",
+      "「赛先生」的模板已保存为「青绿」",
     );
     expect(
       screen.getByText("青绿", { selector: "p strong" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "正在使用这个模板" }),
+      screen.getByRole("button", { name: "已保存这个模板" }),
     ).toBeDisabled();
   });
 
@@ -120,7 +125,7 @@ describe("排版模板", () => {
       />,
     );
     await user.click(await screen.findByRole("radio", { name: /青绿/ }));
-    await user.click(screen.getByRole("button", { name: /启用「青绿」/ }));
+    await user.click(screen.getByRole("button", { name: /保存「青绿」/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "没有这个排版模板",
     );

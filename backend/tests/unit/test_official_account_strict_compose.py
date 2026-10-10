@@ -53,25 +53,26 @@ _IMAGE_SECRETS = {
     "VISUAL_EMBEDDING_API_KEY",
 }
 _WECOM_SECRETS = {"WECOM_CORP_SECRET", "WECOM_GROUP_WEBHOOK_KEY"}
-# Exact existing credential projection, independently captured before the policy fix.
+# Exact credential projection; console model encryption belongs only to its six consumers.
 _ROLE_SECRETS = {
     "backend-migrate": set(),
-    "acquisition-api": _IMAGE_SECRETS | _WECOM_SECRETS,
+    "acquisition-api": _IMAGE_SECRETS | _WECOM_SECRETS | {"MODEL_SECRET_KEY"},
     "acquisition-scheduler": set(),
     "acquisition-worker": set(),
     "governance-scheduler": set(),
-    "governance-worker": {"AI_PLATFORM_API_KEY"},
+    "governance-worker": {"AI_PLATFORM_API_KEY", "MODEL_SECRET_KEY"},
     "content-scheduler": set(),
-    "content-worker": _IMAGE_SECRETS,
+    "content-worker": _IMAGE_SECRETS | {"MODEL_SECRET_KEY"},
     "wecom-dispatcher": _WECOM_SECRETS,
     "wecom-infographic-producer": {
+        "MODEL_SECRET_KEY",
         "AI_PLATFORM_API_KEY",
         "COMFLY_API_KEY",
         "WECOM_GROUP_WEBHOOK_KEY",
     },
     "official-account-weekly-scheduler": set(),
-    "official-account-weekly-dag-worker": {"AI_PLATFORM_API_KEY"},
-    _ARTICLE_WORKER: _IMAGE_SECRETS,
+    "official-account-weekly-dag-worker": {"AI_PLATFORM_API_KEY", "MODEL_SECRET_KEY"},
+    _ARTICLE_WORKER: _IMAGE_SECRETS | {"MODEL_SECRET_KEY"},
     "wechat-official-account-draft-worker": {"WECHAT_MP_APP_SECRET"},
     "ip-asset-worker": _IMAGE_SECRETS,
     "official-account-local-fixture": set(),
@@ -128,6 +129,7 @@ def _rendered(mode: str) -> tuple[str, dict[str, dict[str, str]]]:
     }
     env.update({key: "synthetic-test-only" for key in _IMAGE_SECRETS | _WECOM_SECRETS})
     env["WECHAT_MP_APP_SECRET"] = "synthetic-test-only"
+    env["MODEL_SECRET_KEY"] = "c3ludGhldGljLXRlc3Qtb25seS1tb2RlbC1rZXktMDAwMDA"
     result = subprocess.run(
         [
             "docker",

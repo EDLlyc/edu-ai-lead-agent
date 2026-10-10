@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import String, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from app.infrastructure.db.models import WeChatAccountModel
 
 
 async def layout_template_for_account(
@@ -15,9 +13,11 @@ async def layout_template_for_account(
 
     async with sessions() as session:
         chosen: str | None = await session.scalar(
-            select(WeChatAccountModel.layout_template_id).where(
-                WeChatAccountModel.account_fingerprint == account_fingerprint
-            )
+            text(
+                "SELECT layout_template_id FROM wechat_accounts "
+                "WHERE account_fingerprint = :account_fingerprint"
+            ).columns(layout_template_id=String),
+            {"account_fingerprint": account_fingerprint},
         )
     return chosen
 

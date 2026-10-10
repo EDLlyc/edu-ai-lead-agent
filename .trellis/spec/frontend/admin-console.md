@@ -131,3 +131,15 @@ fetching. `wechat.publish_reconciled` displays the explicit published/not-publis
 and note. Guard unknown nested audit-detail values before rendering; future events must not
 crash the table. Tests cover delayed success/error/expiry, refresh, A→B→A, retry, malformed
 future details, and the exact two publication audit descriptions.
+
+## Layout selection is saved configuration
+
+The template API proves a saved account selection, not draft-worker liveness. Show “已保存” and a
+save-success message; do not infer “正在使用” or “已生效” from that response. Explain that supported
+automatic single drafts use the choice at first upload, retries retain the original choice and
+existing drafts remain unchanged. Keep a concise note that the page does not check worker runtime
+state. Remove a dated deployment warning only with the matching reviewed consumer upgrade; this
+saved-state wording remains accurate when a worker disconnects or a release is rolled back.
+
+Model-service release verification additionally binds heartbeats to the current container host
+and process start. A green row from a different old host cannot prove a replacement connected.

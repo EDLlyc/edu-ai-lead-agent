@@ -27,7 +27,12 @@ from app.application.services.wechat_official_account_draft import (
     WeChatOfficialAccountDraftOnlyService,
     WeChatPreparedDraft,
 )
-from app.domain.official_account_layout_templates import LAYOUT_TEMPLATE_VERSION, layout_template
+from app.domain.official_account_layout_templates import (
+    DEFAULT_LAYOUT_TEMPLATE_ID,
+    LAYOUT_TEMPLATE_VERSION,
+    is_layout_template,
+    layout_template,
+)
 from app.domain.official_account_strict_layout import strict_escaped_upload_url
 
 
@@ -199,7 +204,9 @@ class JournaledSingleDraftClient:
         return WeChatDraftCreated(_media_id(await self._step("add", asdict(article), send)))
 
 
-def _pinned_layout(journal: ManualDraftJournal, edition: SingleEdition, chosen: str | None) -> str:
+def _pinned_layout(
+    journal: ManualDraftJournal, edition: SingleEdition, chosen: str | None, *, binding: str
+) -> str:
     """The 排版模板 of an edition is fixed at its first delivery attempt.
 
     Every write intent records the article body, so a retry with another template would read
@@ -210,10 +217,29 @@ def _pinned_layout(journal: ManualDraftJournal, edition: SingleEdition, chosen: 
     pinned = journal.read(name)
     if pinned is not None:
         template = pinned.get("template")
-        require(isinstance(template, str), "single_layout_pin_changed")
+        require(
+            pinned.get("version") == LAYOUT_TEMPLATE_VERSION
+            and isinstance(template, str)
+            and is_layout_template(template),
+            "single_layout_pin_changed",
+        )
         assert isinstance(template, str)
         return template
     template = layout_template(chosen).id
+    # Older workers wrote no layout pin. Their first physical write was an inline
+    # upload (when body media exists) or a thumb upload. Preserve their default body
+    # so partial attempts and even expired add ACKs can still be reconciled.
+    for step in ("inline-0", "thumb"):
+        intent = journal.read(f"single-{edition.id.hex}-{step}-1-intent.json")
+        if intent is not None:
+            require(
+                intent.get("binding") == binding
+                and intent.get("step") == step
+                and intent.get("attempt") == 1
+                and isinstance(intent.get("request"), dict),
+                "single_write_binding_changed",
+            )
+            template = DEFAULT_LAYOUT_TEMPLATE_ID
     journal.write(name, {"template": template, "version": LAYOUT_TEMPLATE_VERSION})
     return template
 
@@ -248,7 +274,9 @@ async def deliver_single(
         receipt = await WeChatOfficialAccountDraftOnlyService(
             client=observed,
             clock=clock,
-            layout_template_id=_pinned_layout(journal, edition, layout_template_id),
+            layout_template_id=_pinned_layout(
+                journal, edition, layout_template_id, binding=observed.binding
+            ),
         ).create_prepared(prepared)
         await repository.save(
             replace(

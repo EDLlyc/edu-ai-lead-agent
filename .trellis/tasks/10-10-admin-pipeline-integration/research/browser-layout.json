@@ -1,0 +1,24 @@
+{
+  "checks": [
+    "390px: four previews, saved selection, truthful notice, no overflow",
+    "768px: four previews, saved selection, truthful notice, no overflow",
+    "1366px: four previews, saved selection, truthful notice, no overflow"
+  ],
+  "screens": [
+    {
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "width": 768,
+      "overflow": false
+    },
+    {
+      "width": 1366,
+      "overflow": false
+    }
+  ],
+  "errors": [],
+  "interceptedSaves": 3,
+  "blockedWrites": []
+}

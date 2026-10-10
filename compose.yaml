@@ -272,6 +272,7 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}
       OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION: ${OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION:-}
       OFFICIAL_ACCOUNT_LOCAL_LEGACY_GENERATED_VISUAL_POLICY_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED:-false}
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
@@ -390,12 +391,15 @@ services:
   governance-worker:
     profiles: ["governance"]
     <<: *app-runtime
+    # The bounded legacy pipeline release has its own validated production pin.
+    image: ${ADMIN_PIPELINE_IMAGE:-${APP_IMAGE:-edu-ai-lead-agent-backend:local}}
     restart: unless-stopped
     depends_on:
       backend-migrate:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}
       GOVERNANCE_WORKER_ENABLED: ${GOVERNANCE_WORKER_ENABLED:-false}
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
     command: ["python", "-m", "app.governance_worker_main"]
@@ -403,6 +407,8 @@ services:
   official-account-weekly-dag-worker:
     profiles: ["official-account-weekly-dag"]
     <<: *app-runtime
+    # The bounded legacy pipeline release has its own validated production pin.
+    image: ${ADMIN_PIPELINE_IMAGE:-${APP_IMAGE:-edu-ai-lead-agent-backend:local}}
     restart: unless-stopped
     stop_grace_period: 90s
     depends_on:
@@ -410,6 +416,7 @@ services:
         condition: service_completed_successfully
     environment:
       <<: [*backend-environment, *single-edition]
+      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}
       OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION: ${OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION:-}
       OFFICIAL_ACCOUNT_LOCAL_LEGACY_GENERATED_VISUAL_POLICY_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED:-false}
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
@@ -471,6 +478,8 @@ services:
   wechat-official-account-draft-worker:
     profiles: ["wechat-official-account-draft"]
     <<: *app-runtime
+    # The bounded legacy pipeline release has its own validated production pin.
+    image: ${ADMIN_PIPELINE_IMAGE:-${APP_IMAGE:-edu-ai-lead-agent-backend:local}}
     restart: unless-stopped
     stop_grace_period: 90s
     depends_on:
@@ -526,6 +535,7 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}
       CONTENT_WORKER_ENABLED: ${CONTENT_WORKER_ENABLED:-false}
       # Project delivery intent without injecting WeCom credentials into the content worker.
       CONTENT_COPY_PROVIDER_REQUIRED: ${WECOM_AUTO_DELIVERY_ENABLED:-false}
@@ -586,12 +596,15 @@ services:
   official-account-local-worker:
     profiles: ["official-account-local"]
     <<: *app-runtime
+    # The bounded legacy pipeline release has its own validated production pin.
+    image: ${ADMIN_PIPELINE_IMAGE:-${APP_IMAGE:-edu-ai-lead-agent-backend:local}}
     restart: unless-stopped
     depends_on:
       backend-migrate:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}
       OFFICIAL_ACCOUNT_LOCAL_ENABLED: "true"
       OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED: "true"
       OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION: ${OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION:-}
@@ -747,6 +760,7 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}
       WECOM_ENABLED: ${WECOM_ENABLED:-false}
       WECOM_AUTO_DELIVERY_ENABLED: ${WECOM_AUTO_DELIVERY_ENABLED:-false}
       WECOM_DELIVERY_PROVIDER: ${WECOM_DELIVERY_PROVIDER:-self_built_app}

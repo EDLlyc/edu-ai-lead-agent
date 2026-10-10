@@ -2,13 +2,27 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from datetime import timedelta
+from hashlib import sha256
 from pathlib import Path
+from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
-from app.application.ports.wechat_official_account import WeChatMpTransientError
-from app.application.services.wechat_single_edition_delivery import deliver_single
+from app.application.ports.wechat_official_account import (
+    WeChatMpOutcomeUnknownError,
+    WeChatMpTransientError,
+)
+from app.application.services.wechat_official_account_draft import (
+    WeChatOfficialAccountDraftOnlyService,
+)
+from app.application.services.wechat_single_edition_delivery import (
+    JournaledSingleDraftClient,
+    deliver_single,
+)
 from app.domain.official_account_layout_templates import (
     DEFAULT_LAYOUT_TEMPLATE_ID,
+    LAYOUT_TEMPLATE_VERSION,
     LAYOUT_TEMPLATES,
     RENDERER_COLOURS,
     apply_layout_template,
@@ -155,7 +169,8 @@ async def test_a_retry_keeps_the_template_of_the_first_attempt(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_without_a_choice_the_draft_is_byte_identical(tmp_path):
+@pytest.mark.parametrize("chosen", [None, "unknown-template"])
+async def test_without_a_valid_choice_the_draft_is_byte_identical(tmp_path, chosen):
     client = Client()
     journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
     try:
@@ -166,9 +181,221 @@ async def test_without_a_choice_the_draft_is_byte_identical(tmp_path):
             journal=journal,
             client=client,
             clock=lambda: NOW,
+            layout_template_id=chosen,
         )
     finally:
         journal.close()
     assert client.article.content == (
         '<section style="color:#0D57C8"><img src="https://mmbiz.qpic.cn/test.jpg"/></section>'
     )
+
+
+def _legacy_body(with_media):
+    body = _coloured()
+    return (
+        body
+        if with_media
+        else replace(body, body_html='<section style="color:#0D57C8">正文</section>', body_media=())
+    )
+
+
+async def _legacy_attempt(journal, value, body, client):
+    # Run the pre-template path: durable claim/intents/ACKs, but no layout pin.
+    observed = JournaledSingleDraftClient(
+        client=client,
+        journal=journal,
+        edition=value,
+        prepared=body,
+        authorize=AsyncMock(return_value=True),
+        clock=lambda: NOW,
+    )
+    return await WeChatOfficialAccountDraftOnlyService(
+        client=observed, clock=lambda: NOW
+    ).create_prepared(body)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_media", [True, False])
+async def test_pre_template_add_ack_reconciles_after_expiry_without_rewriting_history(
+    tmp_path, with_media
+):
+    value, body, original = edition(), _legacy_body(with_media), Client()
+    journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
+    pin = f"single-{value.id.hex}-layout.json"
+    try:
+        await _legacy_attempt(journal, value, body, original)
+        assert journal.read(pin) is None
+        original_files = {path: path.read_bytes() for path in tmp_path.rglob("*.json")}
+        retry, repository = Client(), Repository()
+        await deliver_single(
+            repository=repository,
+            edition=value,
+            prepared=body,
+            journal=journal,
+            client=retry,
+            clock=lambda: NOW + timedelta(days=1),
+            layout_template_id="jade-green",
+        )
+        assert retry.calls == []
+        assert repository.value.status == "delivered"
+        assert repository.value.receipt_fingerprint == sha256(b"draft_id").hexdigest()
+        assert journal.read(pin) == {
+            "template": DEFAULT_LAYOUT_TEMPLATE_ID,
+            "version": LAYOUT_TEMPLATE_VERSION,
+        }
+        assert all(path.read_bytes() == contents for path, contents in original_files.items())
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_media", [True, False])
+@pytest.mark.parametrize("rejected_step", ["thumb", "add"])
+async def test_pre_template_rejected_attempt_keeps_default_and_reuses_media(
+    tmp_path, with_media, rejected_step
+):
+    value, body = edition(), _legacy_body(with_media)
+    rejection = WeChatMpTransientError(endpoint="draft_add", provider_code=-1)
+    original = Client(rejection if rejected_step == "thumb" else None)
+    if rejected_step == "add":
+        original.add_draft = AsyncMock(side_effect=rejection)
+    journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
+    try:
+        with pytest.raises(WeChatMpTransientError):
+            await _legacy_attempt(journal, value, body, original)
+        retry, repository = Client(), Repository()
+        await deliver_single(
+            repository=repository,
+            edition=value,
+            prepared=body,
+            journal=journal,
+            client=retry,
+            clock=lambda: NOW + timedelta(minutes=1),
+            layout_template_id="jade-green",
+        )
+        assert retry.calls == (["thumb", "add"] if rejected_step == "thumb" else ["add"])
+        assert repository.value.status == "delivered"
+        assert 'style="color:#0D57C8"' in retry.article.content
+        assert journal.read(f"single-{value.id.hex}-layout.json")["template"] == (
+            DEFAULT_LAYOUT_TEMPLATE_ID
+        )
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_pre_template_unknown_add_remains_unknown_without_replay(tmp_path):
+    value, body, original = edition(), _coloured(), Client()
+    original.add_draft = AsyncMock(side_effect=WeChatMpTransientError(endpoint="draft_add"))
+    journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
+    try:
+        with pytest.raises(WeChatMpOutcomeUnknownError):
+            await _legacy_attempt(journal, value, body, original)
+        retry, repository = Client(), Repository()
+        await deliver_single(
+            repository=repository,
+            edition=value,
+            prepared=body,
+            journal=journal,
+            client=retry,
+            clock=lambda: NOW + timedelta(days=1),
+            layout_template_id="jade-green",
+        )
+        assert original.add_draft.await_count == 1
+        assert retry.calls == []
+        assert repository.value.status == "outcome_unknown"
+        assert repository.value.error_code == "wechat_mp_outcome_unknown"
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pin",
+    [
+        {"template": "jade-green"},
+        {"template": "jade-green", "version": "official-account-layout-template-v2"},
+        {"template": "unknown", "version": LAYOUT_TEMPLATE_VERSION},
+        {"template": None, "version": LAYOUT_TEMPLATE_VERSION},
+        {"template": 1, "version": LAYOUT_TEMPLATE_VERSION},
+    ],
+)
+async def test_invalid_layout_pin_fails_closed_before_provider_calls(tmp_path, pin):
+    value, client, repository = edition(), Client(), Repository()
+    journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
+    name = f"single-{value.id.hex}-layout.json"
+    try:
+        journal.write(name, pin)
+        await deliver_single(
+            repository=repository,
+            edition=value,
+            prepared=_coloured(),
+            journal=journal,
+            client=client,
+            clock=lambda: NOW,
+            layout_template_id="jade-green",
+        )
+        assert client.calls == []
+        assert repository.value.status == "outcome_unknown"
+        assert repository.value.error_code == "single_journal_invalid"
+        assert journal.read(name) == pin
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_layout_recovery_cannot_accept_another_editions_claim(tmp_path):
+    value, body = edition(), _coloured()
+    journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
+    try:
+        await _legacy_attempt(journal, value, body, Client())
+        other = replace(value, id=uuid4())
+        client, repository = Client(), Repository()
+        await deliver_single(
+            repository=repository,
+            edition=other,
+            prepared=body,
+            journal=journal,
+            client=client,
+            clock=lambda: NOW,
+            layout_template_id="jade-green",
+        )
+        assert client.calls == []
+        assert repository.value.error_code == "single_article_already_owned"
+        assert journal.read(f"single-{other.id.hex}-layout.json") is None
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_field", ["binding", "step", "attempt", "request"])
+async def test_layout_recovery_rejects_a_malformed_legacy_intent(tmp_path, invalid_field):
+    value, body, client, repository = edition(), _coloured(), Client(), Repository()
+    journal = LocalManualDraftJournal(tmp_path, ACCOUNT)
+    try:
+        observed = JournaledSingleDraftClient(
+            client=client,
+            journal=journal,
+            edition=value,
+            prepared=body,
+            authorize=AsyncMock(return_value=True),
+            clock=lambda: NOW,
+        )
+        intent = {"binding": observed.binding, "step": "thumb", "attempt": 1, "request": {}}
+        intent[invalid_field] = None
+        journal.write(f"single-{value.id.hex}-thumb-1-intent.json", intent)
+        await deliver_single(
+            repository=repository,
+            edition=value,
+            prepared=body,
+            journal=journal,
+            client=client,
+            clock=lambda: NOW,
+            layout_template_id="jade-green",
+        )
+        assert client.calls == []
+        assert repository.value.status == "outcome_unknown"
+        assert repository.value.error_code == "single_journal_invalid"
+        assert journal.read(f"single-{value.id.hex}-layout.json") is None
+    finally:
+        journal.close()

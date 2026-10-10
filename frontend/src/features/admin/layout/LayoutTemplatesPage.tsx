@@ -107,7 +107,7 @@ export function LayoutTemplatesPage({
       );
       setMessage({
         kind: "ok",
-        text: `「${saved.name}」已改用「${nameOf(saved.layout_template_id)}」，从下一篇自动生成的草稿开始生效`,
+        text: `「${saved.name}」的模板已保存为「${nameOf(saved.layout_template_id)}」`,
       });
     } catch (error) {
       fail(error);
@@ -142,22 +142,19 @@ export function LayoutTemplatesPage({
         )}
       </header>
       <p className={styles.lede}>
-        系统自动生成的公众号草稿按这里选的模板配色。只换颜色：版式、文字和图片都不变，顶部和底部的横幅图片也保持原样。换模板后，从下一篇草稿开始生效，已经生成的草稿不变。
+        支持模板的自动单篇草稿流程会在新草稿首次上传时读取这里的选择；重试沿用首次选择，已有草稿不变。只换配色：版式、文字和图片都不变，顶部和底部的横幅图片也保持原样。
       </p>
-      {/* Production's draft worker still runs the 2026-09-28 image, which does not apply
-          templates. Remove this notice in the release that upgrades it. */}
       <p className={styles.notice}>
-        现在还不会生效：自动生成公众号草稿的服务还在 9 月 28
-        日的版本上，等它升级后，这里选的模板才会用上。可以先预览、先选好。
+        本页显示已保存的配置，未检测草稿服务的实时运行状态；生成后请在草稿箱核对效果。
       </p>
       {account === null && templates !== null ? (
         <p className={styles.notice} role="status">
           还没有可用的公众号，可以先预览；请管理员在「公众号 ·
-          账号」里绑定后再启用。
+          账号」里绑定后再保存选择。
         </p>
       ) : account === null ? null : (
         <p>
-          「{account.name}」正在使用：
+          「{account.name}」已保存的模板：
           <strong>{nameOf(account.layout_template_id)}</strong>
         </p>
       )}
@@ -197,7 +194,7 @@ export function LayoutTemplatesPage({
                   <strong>
                     {template.name}
                     {account?.layout_template_id === template.id ? (
-                      <span className={styles.badge}>使用中</span>
+                      <span className={styles.badge}>已保存</span>
                     ) : null}
                   </strong>
                   <span className={styles.swatches} aria-hidden="true">
@@ -219,10 +216,10 @@ export function LayoutTemplatesPage({
                 }}
               >
                 {busy
-                  ? "正在启用…"
+                  ? "正在保存…"
                   : account.layout_template_id === selected
-                    ? "正在使用这个模板"
-                    : `给「${account.name}」启用「${nameOf(selected)}」`}
+                    ? "已保存这个模板"
+                    : `给「${account.name}」保存「${nameOf(selected)}」`}
               </button>
             )}
           </fieldset>

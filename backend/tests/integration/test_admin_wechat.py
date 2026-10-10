@@ -654,6 +654,20 @@ async def test_an_editor_picks_the_layout_template_the_draft_worker_uses(
         == "jade-green"
     )
     assert await layout_template_for_account(sessions, "f" * 64) is None
+    # The configured fingerprint is a bound SQL value, never interpolated SQL.
+    assert await layout_template_for_account(sessions, "' OR 1=1 --") is None
+    # Preserve the existing lookup contract: console enablement is not worker routing.
+    async with sessions() as session:
+        await session.execute(
+            update(WeChatAccountModel)
+            .where(WeChatAccountModel.id == UUID(account_id))
+            .values(enabled=False)
+        )
+        await session.commit()
+    assert (
+        await layout_template_for_account(sessions, wechat_draft_account_fingerprint(APP_ID))
+        == "jade-green"
+    )
     async with sessions() as session:
         audit = (
             await session.scalars(

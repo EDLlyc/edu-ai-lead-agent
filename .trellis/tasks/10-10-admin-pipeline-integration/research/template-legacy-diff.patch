@@ -1,0 +1,114 @@
+--- legacy/app/infrastructure/official_account_single_runtime.py
++++ candidate/app/infrastructure/official_account_single_runtime.py
+@@ -153,6 +153,9 @@
+             from app.domain.wechat_official_account_draft_jobs import (
+                 wechat_draft_account_fingerprint,
+             )
++            from app.infrastructure.db.wechat_layout_templates import (
++                layout_template_for_account,
++            )
+             from app.infrastructure.wechat_official_account.client import (
+                 WeChatOfficialAccountHttpClient,
+             )
+@@ -227,6 +230,9 @@
+                                     prepared=prepared,
+                                     journal=journal,
+                                     client=client,
++                                    layout_template_id=await layout_template_for_account(
++                                        sessions, account
++                                    ),
+                                 )
+                     except (ManualDraftError, ValueError, OSError):
+                         await repository.invalidate_history(account, now=datetime.now(UTC))
+--- legacy/app/application/services/wechat_single_edition_delivery.py
++++ candidate/app/application/services/wechat_single_edition_delivery.py
+@@ -27,6 +27,7 @@
+     WeChatOfficialAccountDraftOnlyService,
+     WeChatPreparedDraft,
+ )
++from app.domain.official_account_layout_templates import LAYOUT_TEMPLATE_VERSION, layout_template
+ from app.domain.official_account_strict_layout import strict_escaped_upload_url
+ 
+ 
+@@ -198,6 +199,25 @@
+         return WeChatDraftCreated(_media_id(await self._step("add", asdict(article), send)))
+ 
+ 
++def _pinned_layout(journal: ManualDraftJournal, edition: SingleEdition, chosen: str | None) -> str:
++    """The 排版模板 of an edition is fixed at its first delivery attempt.
++
++    Every write intent records the article body, so a retry with another template would read
++    as a changed binding; an operator switching templates only affects later editions.
++    """
++
++    name = f"single-{edition.id.hex}-layout.json"
++    pinned = journal.read(name)
++    if pinned is not None:
++        template = pinned.get("template")
++        require(isinstance(template, str), "single_layout_pin_changed")
++        assert isinstance(template, str)
++        return template
++    template = layout_template(chosen).id
++    journal.write(name, {"template": template, "version": LAYOUT_TEMPLATE_VERSION})
++    return template
++
++
+ async def deliver_single(
+     *,
+     repository: SingleEditionRepository,
+@@ -206,6 +226,7 @@
+     journal: ManualDraftJournal,
+     client: WeChatOfficialAccountDraftClient,
+     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
++    layout_template_id: str | None = None,
+ ) -> None:
+     async def authorize() -> bool:
+         return await repository.heartbeat(edition, now=clock(), lease_seconds=300)
+@@ -225,7 +246,9 @@
+             clock=clock,
+         )
+         receipt = await WeChatOfficialAccountDraftOnlyService(
+-            client=observed, clock=clock
++            client=observed,
++            clock=clock,
++            layout_template_id=_pinned_layout(journal, edition, layout_template_id),
+         ).create_prepared(prepared)
+         await repository.save(
+             replace(
+--- legacy/app/application/services/wechat_official_account_draft.py
++++ candidate/app/application/services/wechat_official_account_draft.py
+@@ -48,6 +48,7 @@
+ )
+ from app.application.services.official_account_weekly_edition import load_finalized_v2_child
+ from app.domain.official_account_editor_handoff import CONTEXT_RIGHTS_NOTICE_TEXT
++from app.domain.official_account_layout_templates import apply_layout_template
+ from app.domain.official_account_strict_layout import (
+     STRICT_LAYOUT_PROJECTION_V2_VERSION,
+     strict_escaped_upload_url,
+@@ -185,12 +186,14 @@
+         client: WeChatOfficialAccountDraftClient,
+         max_image_bytes: int = WECHAT_MP_MAX_IMAGE_BYTES,
+         clock: Callable[[], datetime] | None = None,
++        layout_template_id: str | None = None,
+     ) -> None:
+         self._client = client
+         self._preparer = WeChatOfficialAccountDraftPreparer(
+             max_image_bytes=max_image_bytes,
+         )
+         self._clock = clock or (lambda: datetime.now(UTC))
++        self._layout_template_id = layout_template_id
+ 
+     async def create_draft(self, source: WeChatDraftLocalSource) -> WeChatDraftReceipt:
+         prepared = self.prepare(source)
+@@ -241,7 +244,10 @@
+         *,
+         created_at: datetime,
+     ) -> WeChatDraftReceipt:
+-        rewritten = _hide_generated_context_rights_notice(prepared.body_html)
++        rewritten = apply_layout_template(
++            _hide_generated_context_rights_notice(prepared.body_html),
++            self._layout_template_id,
++        )
+         if prepared.visual_pipeline_version is not None:
+             if prepared.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS:
+                 raise WeChatMpDraftPreparationError()
