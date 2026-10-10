@@ -409,3 +409,39 @@ Completed U1-U6 frontend usability improvements in isolated admin worktree. Full
 ### Status
 
 [OK] **Completed**
+
+
+## Session 99: Admin history fixes and combined production release
+
+**Date**: 2026-10-10
+**Task**: Admin history fixes and combined production release
+**Branch**: `fix/admin-history-release-20261010`
+
+### Summary
+
+Fixed audit history races/labels and added paginated status/date-filtered publication records; deployed these plus prior reliability/usability batches at 13:40 CST.
+
+### Main Changes
+
+- Six services now run da052082; schema 0061; preserved sources/account/credentials and legacy services; verified database/config/frontend backups.
+- Refreshed production preview5180 and isolated read-only demo5181; production route reload/asset hashes/auth refusals verified.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a68c7d` | (see git log) |
+| `fdcc8f1` | (see git log) |
+
+### Testing
+
+- [OK] Frontend 371 tests, PostgreSQL admin 63 tests, lint/types/API parity, 16 browser interaction/history scenarios, 6 responsive checks and independent review passed.
+- [OK] Predeploy gate 10 passed/0 failed/1 private-asset skip on 0a68c7d; offline image smoke, live health/logs, read-only role contracts and fresh consumer diagnostics passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Deferred: template-worker application/upgrade, overview dashboard, poster styles and public domain/TLS. No real publication or model probe was performed.
