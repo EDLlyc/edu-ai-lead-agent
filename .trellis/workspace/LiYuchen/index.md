@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 100
+- **Total Sessions**: 101
 - **Last Active**: 2026-10-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~470 | Active |
+| `journal-2.md` | ~492 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 101 | 2026-10-10 | 运营后台字体排版与手机导航上线 | `6b5465e`, `23d2c42` | `fix/admin-typography-20261010` |
 | 100 | 2026-10-10 | 公众号模板生效与六个模型服务接入 | `f062b82`, `075e44b`, `f400417` | `fix/admin-pipeline-integration-20261010` |
 | 99 | 2026-10-10 | Admin history fixes and combined production release | `0a68c7d`, `fdcc8f1` | `fix/admin-history-release-20261010` |
 | 98 | 2026-10-10 | Admin usability: mobile layout, unsaved guards and pagination | `3eeedc6` | `feat/admin-usability-20261010` |
