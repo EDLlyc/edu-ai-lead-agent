@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 99
+- **Total Sessions**: 100
 - **Last Active**: 2026-10-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~447 | Active |
+| `journal-2.md` | ~470 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 100 | 2026-10-10 | 公众号模板生效与六个模型服务接入 | `f062b82`, `075e44b`, `f400417` | `fix/admin-pipeline-integration-20261010` |
 | 99 | 2026-10-10 | Admin history fixes and combined production release | `0a68c7d`, `fdcc8f1` | `fix/admin-history-release-20261010` |
 | 98 | 2026-10-10 | Admin usability: mobile layout, unsaved guards and pagination | `3eeedc6` | `feat/admin-usability-20261010` |
 | 97 | 2026-10-10 | 运营后台首批可靠性修复与隔离预览 | `d555011` | `fix/admin-reliability-20261010` |

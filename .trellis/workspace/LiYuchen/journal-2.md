@@ -445,3 +445,26 @@ Fixed audit history races/labels and added paginated status/date-filtered public
 ### Next Steps
 
 - Deferred: template-worker application/upgrade, overview dashboard, poster styles and public domain/TLS. No real publication or model probe was performed.
+
+
+## Session 100: 公众号模板生效与六个模型服务接入
+
+**Date**: 2026-10-10
+**Task**: 公众号模板生效与六个模型服务接入
+**Branch**: `fix/admin-pipeline-integration-20261010`
+
+### Summary
+
+上线四服务旧镜像最小覆盖6226855a：自动单篇模板首次上传固定、旧回执安全恢复，剩余三个模型消费者接入。完整门禁、371前端测试、36数据库集成、实际镜像离线验证和17发布回归通过。首次切换发现旧容器与共享配置两项版本漂移，按完整运行哈希精确恢复并新增停机前校验；最终两次间隔70秒的六服务心跳、完整源码和数据/草稿保全检查通过。备份admin-pipeline-20261010T063121Z，前端及5180/5181预览已更新；未实际发文、上传、调用模型或轮换密钥。仅保留本地node_modules工具依赖链接，未推送远端。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f062b82` | (see git log) |
+| `075e44b` | (see git log) |
+| `f400417` | (see git log) |
+
+### Status
+
+[OK] **Completed**
