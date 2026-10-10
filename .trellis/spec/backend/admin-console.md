@@ -141,6 +141,23 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - Watched processes report the versions they loaded to `model_key_consumers` every minute. The
   page derives "已生效" from those reports, never from the API's own state. A service listed in
   `MODEL_KEY_SERVICES` that does not report is shown as not connected (env keys).
+- Known limitation in release `9eaaaf3`: the overlay records a version before decrypting its
+  value, so a decryption failure can keep the env key while reporting the stored version.
+  Heartbeats alone do not prove successful decryption. Initial deployment verified an empty
+  key table and the same `MODEL_SECRET_KEY` in all three consumers. A follow-up must report only
+  successfully loaded versions and test bad/mismatched ciphertext before relying on that
+  status after an encryption failure; see the release-2 review.
+
+## 公众号数据同步 timing (item 4)
+
+- With `ADMIN_SECRET_KEY` configured, the API checks statistics/publishing work every 20 seconds.
+  After 10:00 Asia/Shanghai, an enabled account with no successful sync today can sync now,
+  including when it was first bound on the same day; do not promise a next-day-only first sync.
+- Account import verifies credentials and stores the encrypted binding and audit record. It
+  creates no publish job. The automatic statistics calls are read-only at WeChat and persist
+  local statistics; publication requires an explicit queued publish job.
+- Verify first deployment with `stats_synced_on`, `stats_sync_error` and the publish-job count,
+  rather than only a successful credential check.
 
 ## Frontend
 

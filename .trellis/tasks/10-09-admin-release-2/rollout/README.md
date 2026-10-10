@@ -1,7 +1,10 @@
 # Rollout: 运营后台 release 9eaaaf3 (polish + 公众号 3/4/5 + 排版模板 + 模型配置)
 
-**Not deployed yet.** It needs the owner's go-ahead and runs outside slot hours
-(06:00–08:30, 11:00–13:30, 17:00–19:30 CST).
+**Deployed 2026-10-10 10:03 CST**, with the owner's approval “同意上线。”
+Image `sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249`;
+see [actual results and backup locations](../result.md). The steps below describe the original
+cutover from 0054; do not rerun account import or key generation on the deployed system.
+Deployments run outside slot hours (06:00–08:30, 11:00–13:30, 17:00–19:30 CST).
 
 - 42 backend files from `feat/admin-console-20261008` @ 9eaaaf3, overlaid on the running image
   `5a5fb24c` (= mainline a8d0af6 app): 24 new files and 18 changed, with no deletions and no
@@ -10,8 +13,10 @@
   - all 18 base hashes match `acquisition-api`, and none of the 24 new files exist;
   - `Crypto` and `psycopg` 3.3.4 are importable;
   - the DB is at `20261008_0054`.
-- Gate: `predeploy gate PASS @ 1a4851c+dirty`, i.e. the 9eaaaf3 tree. The offline smoke passed
-  on the branch.
+- Final gate: `predeploy gate PASS @ 12cccd6+dirty: 10 passed, 0 failed, 1 skipped`
+  (2026-10-10T01:56:42Z), with application bytes unchanged from 9eaaaf3. The built image's
+  offline smoke and all 42 file hashes passed. The skip is the locally absent private visual
+  asset manifest; see `../research/review-20261010.md`.
 - Migrations 0055–0059 are additive (new tables plus defaulted columns), so the old image runs
   unchanged on the new schema: migrate first, then switch.
 - Behaviour without operator data is unchanged:
@@ -60,8 +65,9 @@ scheduler, and the acquisition scheduler.
    - `acquisition-api` environment gets `ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:-}` and
      `MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}`.
    - `content-worker` and `wecom-infographic-producer` get `MODEL_SECRET_KEY: ${MODEL_SECRET_KEY:-}`.
-   - Verify with `docker compose config --no-interpolate | grep -n "SECRET_KEY: \${"`. It must
-     show 4 lines and no values.
+   - Validate with `docker compose --profile '*' config --quiet`; all profiles are needed to
+     include the two workers. Parse resolved config in memory and report only whether the four
+     explicit mappings match; never emit resolved environment values.
 8. **Image.** Set `APP_IMAGE` in `.release.env` to the new image's digest.
 9. **Migrate.** `docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env run --rm --no-deps backend-migrate`.
    Afterwards the head is `20261009_0059` and `sources` still has the same enabled seeds.
@@ -85,8 +91,9 @@ scheduler, and the acquisition scheduler.
         -m app.wechat_accounts_main import-env --name "<名称>"
       rm -f "$f"'
     ```
-    It prints `已绑定 …（…，密钥末四位 ••••）`. Then the 数据 page syncs after 10:00 the next day,
-    or now with 立即同步.
+    Capture the output privately and report success without the app ID or secret suffix.
+    The API checks every 20 seconds: after 10:00, an enabled account not synced today can sync
+    immediately, including on its binding day. Otherwise it waits until 10:00 or 立即同步.
 13. **Do not publish anything.** A real 发布 happens only when the owner says so.
 14. **Tell the others and record it.**
     - Send the new digest to the other sessions. The exhibit connector `IMAGES` pin needs it.

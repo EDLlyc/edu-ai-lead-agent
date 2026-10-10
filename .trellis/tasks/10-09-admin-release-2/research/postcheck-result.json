@@ -1,0 +1,89 @@
+{
+  "at": "2026-10-10T10:05:49.058139+08:00",
+  "application": {
+    "consumers": [
+      {
+        "service": "acquisition-api",
+        "versions": {},
+        "age_seconds": "58"
+      },
+      {
+        "service": "content-worker",
+        "versions": {},
+        "age_seconds": "0"
+      },
+      {
+        "service": "wecom-infographic-producer",
+        "versions": {},
+        "age_seconds": "2"
+      }
+    ],
+    "accounts": [
+      {
+        "name": "赛先生",
+        "enabled": true,
+        "last_verified_at": "2026-10-10 02:03:30.827946+00:00",
+        "stats_synced_on": "2026-10-10",
+        "stats_sync_error": null
+      }
+    ],
+    "model_api_keys": 0,
+    "wechat_publish_jobs": 0,
+    "wechat_article_stats": 21,
+    "wechat_account_daily_stats": 30,
+    "drafts": {
+      "ok": true,
+      "total": 6,
+      "sample_count": 1
+    },
+    "published": {
+      "ok": true,
+      "total": 14,
+      "sample_count": 1
+    }
+  },
+  "services": {
+    "edu-ai-lead-agent-acquisition-api-1": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249",
+      "tracebacks": 0,
+      "model_key_errors": 0
+    },
+    "edu-ai-lead-agent-acquisition-worker-1": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249",
+      "tracebacks": 0,
+      "model_key_errors": 0
+    },
+    "edu-ai-lead-agent-content-scheduler-1": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249",
+      "tracebacks": 0,
+      "model_key_errors": 0
+    },
+    "edu-ai-lead-agent-content-worker-1": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249",
+      "tracebacks": 0,
+      "model_key_errors": 0
+    },
+    "edu-ai-lead-agent-wecom-infographic-producer-1": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249",
+      "tracebacks": 0,
+      "model_key_errors": 0
+    },
+    "edu-ai-lead-agent-wecom-dispatcher-1": {
+      "running": true,
+      "restarts": 0,
+      "image": "sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249",
+      "tracebacks": 0,
+      "model_key_errors": 0
+    }
+  }
+}

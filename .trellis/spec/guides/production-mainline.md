@@ -9,7 +9,9 @@
 - Start every feature, fix and release branch from `mainline`; merge back into it after deploy.
 - The production database follows mainline's migration chain (…0048 → 0049 wecom_news_infographics →
   0050 infographic_advisory → 0051 human_pick_lanes → 0052 admin_console → 0053 operator_sources →
-  0054 operator_keywords). New migrations go on top of it.
+  0054 operator_keywords → 0055 wechat_accounts_publish → 0056 wechat_stats →
+  0057 wechat_layout_template → 0058 model_api_keys → 0059 model_key_consumers).
+  New migrations go on top of it.
 
 ## Deploying
 
@@ -26,6 +28,37 @@
   `docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env up -d --no-deps …`.
 - Avoid restarting workers while an acquisition, copy or long-image job is running.
 - Several sessions may deploy: tell the others the new digest and build only `FROM` the running one.
+
+## Live since 2026-10-10 10:03 (image `sha256:24e96708…`, 运营后台 release 2)
+
+- Owner approved “同意上线。” Six services now run
+  `offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:24e967081b2e9b303a1f295e7e99eacd24ed96304d5cbb5bd3645270fe159249`:
+  acquisition-api, acquisition-worker, content-scheduler, content-worker,
+  wecom-infographic-producer and wecom-dispatcher. This is 5a5fb24c plus the 42 backend files
+  pinned to `9eaaaf3`; both base and release hashes and image smoke passed.
+- DB is `20261009_0059`; all 10 enabled seeds were preserved. ADMIN_SECRET_KEY is mapped only
+  to the API; one MODEL_SECRET_KEY is mapped to the API, content worker and infographic producer.
+  All three report fresh heartbeats; model keys remain environment-backed (zero stored keys).
+- Account “赛先生” is bound using the existing production credentials, verified and encrypted.
+  First statistics sync completed 10-10 without error. Read-only checks returned 6 drafts and
+  14 published records; no publish job was created. Binding after 10:00 can start a same-day
+  statistics sync on the next 20-second loop.
+- All six services passed health/log checks with zero restarts. The predeploy gate passed
+  (10 passed / 0 failed / 1 skipped for absent local private visual assets), plus 45 admin tests,
+  frontend lint/types/build, backend lint/types and API schema parity.
+- Seven older services remain on 83a41e41 with their container identities preserved, as do
+  Postgres/MinIO. Layout choices are stored but do not apply until the old draft worker is
+  separately upgraded. Model rotation reaches only the three reporting services; other key
+  holders still need valid environment keys. Cron images remain unchanged.
+- Frontend files are installed at `/var/www/edu-ai-admin`. Local preview is
+  `http://127.0.0.1:5180/admin/`, via an SSH tunnel to the loopback API. Public HTTPS remains
+  pending domain/certificate setup; internal API routes remain private.
+- Backup directory: `/var/backups/edu-ai/admin-release-2-20261010T015738Z` (root-only configs,
+  custom-format database dump with verified restore listing, and sanitized cutover receipts).
+  Restore its `.env`, `.release.env`, `compose.yaml` and recreate only the six services to
+  roll back. Retain the additive schema and bound account; do not downgrade 0055–0059.
+- Evidence: release task `10-09-admin-release-2`, `result.md` and `research/` (archived after
+  completion). The local exhibit connector allows the new digest; it was not restarted.
 
 ## Live since 2026-10-08 17:28 (image `sha256:5a5fb24c…`, 运营后台 items 0–2, release bdb0963)
 
