@@ -163,13 +163,22 @@ export function ModelsPage({
         </button>
       </header>
       <p className={styles.lede}>
-        这里只换 API
-        key。接口地址和模型名固定在代码里（文案、审核和图片向量都依赖它们），要换需要发版。换
-        key 前会先用新 key
-        发一个很小的请求，通过才保存；保存后，相关服务做完手头的任务会自动重启，大约
-        2
-        分钟开始加载。是否已生效以各服务的加载状态为准；加载失败时保留服务器配置。
+        更换 API key 前先测试连接；保存后，以各服务的加载状态确认生效。
       </p>
+      <details className={styles.guidance}>
+        <summary>使用说明：测试、加载与接口配置</summary>
+        <ul>
+          <li>测试会用新 key 发一个很小的请求，通过后才能保存。</li>
+          <li>
+            保存后，相关服务做完手头的任务会自动重启，大约 2 分钟开始加载。
+            加载失败时保留服务器配置，请查看下方各服务的状态。
+          </li>
+          <li>
+            这里只换
+            key。接口地址和模型名固定在代码里，文案、审核和图片向量都依赖它们；更换需要发版。
+          </li>
+        </ul>
+      </details>
       {configured === false ? (
         <p className={styles.notice} role="status">
           服务器还没配置加密密钥（MODEL_SECRET_KEY），现在只能查看。请联系开发人员配置后再来换
@@ -279,7 +288,7 @@ function ConsumerTable({
                   未接入：还在旧版本上，用服务器配置的 key
                 </td>
               )}
-              <td>
+              <td className={styles.metadata}>
                 {consumer.seen_at === null ? "—" : formatTime(consumer.seen_at)}
               </td>
             </tr>
@@ -348,7 +357,7 @@ function ProviderCard({
   const titleId = `model-provider-${provider.id}`;
   return (
     <li aria-labelledby={titleId}>
-      <h3 id={titleId} className={styles.subheading}>
+      <h3 id={titleId} className={styles.cardHeading}>
         {provider.name}
         <small>（{provider.used_for}）</small>
       </h3>
@@ -387,6 +396,7 @@ function ProviderCard({
         <span className={styles.rowActions}>
           <button
             type="button"
+            className={styles.primary}
             disabled={!canChange || busy}
             onClick={() => {
               onClear();
@@ -430,6 +440,7 @@ function ProviderCard({
             ) : (
               <button
                 type="button"
+                className={styles.secondary}
                 disabled={!canChange || busy}
                 onClick={() => setConfirming("env")}
               >

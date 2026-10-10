@@ -142,8 +142,14 @@ export function LayoutTemplatesPage({
         )}
       </header>
       <p className={styles.lede}>
-        支持模板的自动单篇草稿流程会在新草稿首次上传时读取这里的选择；重试沿用首次选择，已有草稿不变。只换配色：版式、文字和图片都不变，顶部和底部的横幅图片也保持原样。
+        预览配色，再为公众号保存模板。版式、文字、图片和首尾横幅保持原样。
       </p>
+      <details className={styles.guidance}>
+        <summary>使用说明：新草稿、重试与已有草稿</summary>
+        <p>
+          支持模板的自动单篇草稿流程会在新草稿首次上传时读取这里的选择；重试沿用首次选择，已有草稿不变。
+        </p>
+      </details>
       <p className={styles.notice}>
         本页显示已保存的配置，未检测草稿服务的实时运行状态；生成后请在草稿箱核对效果。
       </p>

@@ -59,9 +59,11 @@ describe("排版模板", () => {
     expect(
       screen.getByText(/未检测草稿服务的实时运行状态/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/重试沿用首次选择，已有草稿不变/),
-    ).toBeInTheDocument();
+    const uploadRules = screen.getByText(/重试沿用首次选择，已有草稿不变/);
+    expect(uploadRules).not.toBeVisible();
+    await user.click(screen.getByText("使用说明：新草稿、重试与已有草稿"));
+    expect(uploadRules).toBeVisible();
+    expect(uploadRules).toHaveTextContent("新草稿首次上传时读取这里的选择");
     const frame = await screen.findByTitle("排版预览：小赛蓝（默认）");
     expect(frame).toHaveAttribute("sandbox", "");
     expect(frame.getAttribute("srcdoc")).toContain(

@@ -179,7 +179,9 @@ export function AccountsPage({
                 <th scope="col">角色</th>
                 <th scope="col">状态</th>
                 <th scope="col">最近登录</th>
-                <th scope="col">在线</th>
+                <th className={styles.numeric} scope="col">
+                  在线
+                </th>
                 <th scope="col">操作</th>
               </tr>
             </thead>
@@ -188,7 +190,7 @@ export function AccountsPage({
                 const self = account.username === me;
                 return (
                   <tr key={account.username} data-enabled={account.active}>
-                    <td>
+                    <td className={styles.cellTitle}>
                       {account.username}
                       {self ? "（我）" : ""}
                     </td>
@@ -201,12 +203,12 @@ export function AccountsPage({
                           ? "锁定中"
                           : "正常"}
                     </td>
-                    <td>
+                    <td className={styles.metadata}>
                       {account.last_login_at === null
                         ? "从未登录"
                         : formatTime(account.last_login_at)}
                     </td>
-                    <td>{account.live_sessions}</td>
+                    <td className={styles.numeric}>{account.live_sessions}</td>
                     <td>
                       {editing === account.username ? (
                         <EditAccountForm
@@ -233,7 +235,11 @@ export function AccountsPage({
                           {CONFIRM_TEXT[pending.action]}
                           <button
                             type="button"
-                            className={styles.primary}
+                            className={
+                              pending.action === "disable"
+                                ? styles.danger
+                                : styles.primary
+                            }
                             disabled={busy}
                             onClick={() => {
                               void run(pending);
@@ -281,6 +287,9 @@ export function AccountsPage({
                           {self ? null : (
                             <button
                               type="button"
+                              className={
+                                account.active ? styles.danger : undefined
+                              }
                               onClick={() =>
                                 requestNavigation(() => {
                                   setEditing(null);

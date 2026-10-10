@@ -419,7 +419,9 @@ export function AuditLogPage({
               <tbody>
                 {state.events.map((event) => (
                   <tr key={event.id} data-action={event.action}>
-                    <td>{timeFormat.format(new Date(event.occurred_at))}</td>
+                    <td className={styles.metadata}>
+                      {timeFormat.format(new Date(event.occurred_at))}
+                    </td>
                     <td>{event.username}</td>
                     <td>{ACTION_LABELS[event.action] ?? event.action}</td>
                     <td>{describe(event)}</td>

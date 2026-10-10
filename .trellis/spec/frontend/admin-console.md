@@ -52,6 +52,27 @@ retryable state, never an empty successful list. Stop obsolete polling on contex
 
 ### Presentation and environment
 
+Keep console typography in the `AdminApp` `.admin` wrapper, including the unsaved dialog and
+login. Use system Chinese sans-serif fallbacks and `font-synthesis: weight`: the shared app's
+`font-synthesis: none` can leave Chinese headings visibly regular when only a regular CJK face is
+installed. Do not change shared global styles or the isolated article-preview document to fix it.
+Page headings are 26 px desktop / 24 px mobile, sections 18 px, body 15–16 px and secondary text
+13–14 px at the default root size; use rem units and preserve mobile input readability.
+
+`AdminNavigation` retains the grouped desktop sidebar. At `(max-width: 720px)`, expose the current
+group/page in a disclosure button with `aria-expanded` / `aria-controls`; closed links must be
+hidden from both keyboard navigation and the accessibility tree. All permitted destinations
+remain reachable without horizontal scrolling. Route changes still go through `useAdminHistory`:
+collapse only after approved navigation, preserving expanded state and entered values on a dirty
+cancel. Escape returns focus to the toggle. After accepted navigation or responsive breakpoint
+changes, focus must remain on a visible control; revisiting a path must not reopen a stale menu.
+
+Use native `details` / `summary` for secondary model/template instructions. Keep live failures,
+unknown results, publication safeguards and the saved-configuration/runtime caveat visible.
+First-upload and pinned-retry semantics must remain discoverable in the template instructions.
+Use tabular, aligned numeric table cells, subdued time metadata and textual action labels;
+do not truncate operational descriptions to make rows shorter.
+
 Source/job tables opt in to mobile cards using `data-responsive="cards"` and per-cell `data-label`.
 Comparison tables use a `tableScroll` region with `tabIndex={0}`, `role="region"`, and an accessible
 name. Fix content sizing; never mask page overflow. Verify 390, 768, and 1366 px with long names.
@@ -94,6 +115,10 @@ Assert user-visible values, focus, history length/location, late-response isolat
 failed-save retention, scoped cancellation, forced expiry, and absence of credential persistence.
 Run frontend lint/types/tests, generated API parity, both Vite entries, and real browser navigation /
 reflow against isolated fixtures. Browser inspection must include expanded forms and long labels.
+For navigation changes, include Escape/Tab, accepted and cancelled dirty navigation, focus after
+desktop/mobile resize, role-filtered links and A→B→A history. Check 320 px and enlarged text in
+addition to the normal width matrix. CSS-only assertions do not establish visible font weight or
+keyboard accessibility; inspect the rendered page.
 
 ## 7. Wrong vs Correct
 

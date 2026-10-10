@@ -251,17 +251,25 @@ export function WeChatStatsPage({
                   <tr>
                     <th scope="col">文章</th>
                     <th scope="col">发布日期</th>
-                    <th scope="col">阅读人数</th>
-                    <th scope="col">分享</th>
-                    <th scope="col">收藏</th>
-                    <th scope="col">送达阅读率</th>
+                    <th className={styles.numeric} scope="col">
+                      阅读人数
+                    </th>
+                    <th className={styles.numeric} scope="col">
+                      分享
+                    </th>
+                    <th className={styles.numeric} scope="col">
+                      收藏
+                    </th>
+                    <th className={styles.numeric} scope="col">
+                      送达阅读率
+                    </th>
                     <th scope="col">主要来源</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stats.articles.map((article) => (
                     <tr key={article.msgid}>
-                      <td>
+                      <td className={styles.cellTitle}>
                         {article.url === null ? (
                           article.title
                         ) : (
@@ -274,11 +282,17 @@ export function WeChatStatsPage({
                           </a>
                         )}
                       </td>
-                      <td>{formatDate(article.publish_date)}</td>
-                      <td>{article.read_user}</td>
-                      <td>{article.share_user}</td>
-                      <td>{article.collection_user}</td>
-                      <td>{percent(article.read_delivery_rate)}</td>
+                      <td className={styles.metadata}>
+                        {formatDate(article.publish_date)}
+                      </td>
+                      <td className={styles.numeric}>{article.read_user}</td>
+                      <td className={styles.numeric}>{article.share_user}</td>
+                      <td className={styles.numeric}>
+                        {article.collection_user}
+                      </td>
+                      <td className={styles.numeric}>
+                        {percent(article.read_delivery_rate)}
+                      </td>
                       <td>{topSources(article.read_sources)}</td>
                     </tr>
                   ))}
@@ -412,26 +426,42 @@ function DailyReadsChart({ rows }: { readonly rows: readonly StatsDay[] }) {
             <thead>
               <tr>
                 <th scope="col">日期</th>
-                <th scope="col">阅读</th>
-                <th scope="col">分享</th>
-                <th scope="col">点赞</th>
-                <th scope="col">在看</th>
-                <th scope="col">评论</th>
+                <th className={styles.numeric} scope="col">
+                  阅读
+                </th>
+                <th className={styles.numeric} scope="col">
+                  分享
+                </th>
+                <th className={styles.numeric} scope="col">
+                  点赞
+                </th>
+                <th className={styles.numeric} scope="col">
+                  在看
+                </th>
+                <th className={styles.numeric} scope="col">
+                  评论
+                </th>
               </tr>
             </thead>
             <tbody>
               {[...rows].reverse().map((row) => (
                 <tr key={row.date}>
-                  <td>{shortDate(row.date)}</td>
+                  <td className={styles.metadata}>{shortDate(row.date)}</td>
                   {row.values === null ? (
                     <td colSpan={5}>缺少数据</td>
                   ) : (
                     <>
-                      <td>{row.values.read_user}</td>
-                      <td>{row.values.share_user}</td>
-                      <td>{row.values.like_user}</td>
-                      <td>{row.values.zaikan_user}</td>
-                      <td>{row.values.comment_count}</td>
+                      <td className={styles.numeric}>{row.values.read_user}</td>
+                      <td className={styles.numeric}>
+                        {row.values.share_user}
+                      </td>
+                      <td className={styles.numeric}>{row.values.like_user}</td>
+                      <td className={styles.numeric}>
+                        {row.values.zaikan_user}
+                      </td>
+                      <td className={styles.numeric}>
+                        {row.values.comment_count}
+                      </td>
                     </>
                   )}
                 </tr>

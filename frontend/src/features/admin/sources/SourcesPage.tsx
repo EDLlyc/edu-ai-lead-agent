@@ -191,14 +191,19 @@ export function SourcesPage({
           <p role="status">正在读取…</p>
         )
       ) : (
-        <table className={styles.table} data-responsive="cards">
+        <table
+          className={`${styles.table} ${styles.sourceTable}`}
+          data-responsive="cards"
+        >
           <thead>
             <tr>
               <th scope="col">名称</th>
               <th scope="col">类型</th>
               <th scope="col">可信度</th>
               <th scope="col">最近一次抓取</th>
-              <th scope="col">7 天新增</th>
+              <th className={styles.numeric} scope="col">
+                7 天新增
+              </th>
               <th scope="col">状态</th>
               <th scope="col">操作</th>
             </tr>
@@ -207,7 +212,7 @@ export function SourcesPage({
             {sources.map((source) => (
               <Fragment key={source.id}>
                 <tr data-enabled={source.enabled}>
-                  <td data-label="名称">
+                  <td className={styles.cellTitle} data-label="名称">
                     <a
                       href={source.entry_url}
                       target="_blank"
@@ -216,11 +221,20 @@ export function SourcesPage({
                       {source.display_name}
                     </a>
                   </td>
-                  <td data-label="类型">{kindLabel(source)}</td>
-                  <td data-label="可信度">{TIER_LABELS[source.tier]}</td>
+                  <td className={styles.compactCell} data-label="类型">
+                    {kindLabel(source)}
+                  </td>
+                  <td className={styles.compactCell} data-label="可信度">
+                    {TIER_LABELS[source.tier]}
+                  </td>
                   <td data-label="最近一次抓取">{latestJobLabel(source)}</td>
-                  <td data-label="7 天新增">{source.new_last_7_days}</td>
-                  <td data-label="状态">
+                  <td
+                    className={`${styles.numeric} ${styles.compactCell}`}
+                    data-label="7 天新增"
+                  >
+                    {source.new_last_7_days}
+                  </td>
+                  <td className={styles.compactCell} data-label="状态">
                     {source.archived_at !== null
                       ? "已删除"
                       : source.enabled
@@ -237,7 +251,11 @@ export function SourcesPage({
                         {CONFIRM_TEXT[pending.action]}
                         <button
                           type="button"
-                          className={styles.primary}
+                          className={
+                            pending.action === "archive"
+                              ? styles.danger
+                              : styles.primary
+                          }
                           disabled={busy}
                           onClick={() => {
                             void confirm(pending);
@@ -257,6 +275,7 @@ export function SourcesPage({
                       <span className={styles.rowActions}>
                         <button
                           type="button"
+                          className={styles.secondary}
                           aria-expanded={openArticles?.id === source.id}
                           onClick={() => {
                             void toggleArticles(source.id);
@@ -289,6 +308,7 @@ export function SourcesPage({
                             </button>
                             <button
                               type="button"
+                              className={styles.danger}
                               onClick={() =>
                                 setPending({ id: source.id, action: "archive" })
                               }

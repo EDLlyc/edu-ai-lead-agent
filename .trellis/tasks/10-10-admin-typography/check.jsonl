@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/admin-console.md", "reason": "Existing admin, dirty/history, publication and environment invariants"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Composition, accessible controls and scoped styling"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "State/effect contracts and cleanup"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend checks and real keyboard/reflow acceptance"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse existing styling/navigation helpers"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "No behavior or data contract change"}
+{"file": ".trellis/tasks/10-10-admin-typography/research/baseline.md", "reason": "Measured visual issues and fixture sources"}

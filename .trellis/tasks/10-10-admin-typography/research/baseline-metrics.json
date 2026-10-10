@@ -1,0 +1,422 @@
+[
+  {
+    "page": "sources",
+    "viewport": 1440,
+    "pageWidth": 1440,
+    "heading": {
+      "tag": "H2",
+      "text": "新闻源",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 129.671875,
+      "left": 232,
+      "width": 63,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 207,
+      "clientWidth": 207,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "wechat-publish",
+    "viewport": 1440,
+    "pageWidth": 1440,
+    "heading": {
+      "tag": "H2",
+      "text": "公众号 · 发布",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 126.0625,
+      "left": 232,
+      "width": 127.390625,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 5
+      },
+      {
+        "family": "DejaVu Sans",
+        "postScriptName": "DejaVuSans-Bold",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 207,
+      "clientWidth": 207,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "wechat-stats",
+    "viewport": 1440,
+    "pageWidth": 1440,
+    "heading": {
+      "tag": "H2",
+      "text": "公众号 · 数据",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 130.765625,
+      "left": 232,
+      "width": 127.390625,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 5
+      },
+      {
+        "family": "DejaVu Sans",
+        "postScriptName": "DejaVuSans-Bold",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 207,
+      "clientWidth": 207,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "models",
+    "viewport": 1440,
+    "pageWidth": 1440,
+    "heading": {
+      "tag": "H2",
+      "text": "模型配置",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 129.671875,
+      "left": 232,
+      "width": 84,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 4
+      }
+    ],
+    "menu": {
+      "scrollWidth": 207,
+      "clientWidth": 207,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "layout-templates",
+    "viewport": 1440,
+    "pageWidth": 1440,
+    "heading": {
+      "tag": "H2",
+      "text": "公众号 · 排版模板",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 130.765625,
+      "left": 232,
+      "width": 169.390625,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 7
+      },
+      {
+        "family": "DejaVu Sans",
+        "postScriptName": "DejaVuSans-Bold",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 207,
+      "clientWidth": 207,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "audit",
+    "viewport": 1440,
+    "pageWidth": 1440,
+    "heading": {
+      "tag": "H2",
+      "text": "操作记录",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 129.671875,
+      "left": 232,
+      "width": 84,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 4
+      }
+    ],
+    "menu": {
+      "scrollWidth": 207,
+      "clientWidth": 207,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "sources",
+    "viewport": 390,
+    "pageWidth": 390,
+    "heading": {
+      "tag": "H2",
+      "text": "新闻源",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 239.03125,
+      "left": 16,
+      "width": 63,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 884,
+      "clientWidth": 390,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "wechat-publish",
+    "viewport": 390,
+    "pageWidth": 390,
+    "heading": {
+      "tag": "H2",
+      "text": "公众号 · 发布",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 239.03125,
+      "left": 16,
+      "width": 127.390625,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 5
+      },
+      {
+        "family": "DejaVu Sans",
+        "postScriptName": "DejaVuSans-Bold",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 884,
+      "clientWidth": 390,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "wechat-stats",
+    "viewport": 390,
+    "pageWidth": 390,
+    "heading": {
+      "tag": "H2",
+      "text": "公众号 · 数据",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 239.03125,
+      "left": 16,
+      "width": 127.390625,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 5
+      },
+      {
+        "family": "DejaVu Sans",
+        "postScriptName": "DejaVuSans-Bold",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 884,
+      "clientWidth": 390,
+      "selectedVisible": true
+    }
+  },
+  {
+    "page": "models",
+    "viewport": 390,
+    "pageWidth": 390,
+    "heading": {
+      "tag": "H2",
+      "text": "模型配置",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 239.03125,
+      "left": 16,
+      "width": 84,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 4
+      }
+    ],
+    "menu": {
+      "scrollWidth": 884,
+      "clientWidth": 390,
+      "selectedVisible": false
+    }
+  },
+  {
+    "page": "layout-templates",
+    "viewport": 390,
+    "pageWidth": 390,
+    "heading": {
+      "tag": "H2",
+      "text": "公众号 · 排版模板",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 239.03125,
+      "left": 16,
+      "width": 169.390625,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 7
+      },
+      {
+        "family": "DejaVu Sans",
+        "postScriptName": "DejaVuSans-Bold",
+        "custom": false,
+        "glyphs": 3
+      }
+    ],
+    "menu": {
+      "scrollWidth": 884,
+      "clientWidth": 390,
+      "selectedVisible": false
+    }
+  },
+  {
+    "page": "audit",
+    "viewport": 390,
+    "pageWidth": 390,
+    "heading": {
+      "tag": "H2",
+      "text": "操作记录",
+      "font": "Inter, \"SF Pro Text\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": "20.8px",
+      "weight": "700",
+      "lineHeight": "32.24px",
+      "color": "rgb(23, 37, 42)",
+      "background": "rgba(0, 0, 0, 0)",
+      "top": 239.03125,
+      "left": 16,
+      "width": 84,
+      "height": 32.234375
+    },
+    "fontFaces": [
+      {
+        "family": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "custom": false,
+        "glyphs": 4
+      }
+    ],
+    "menu": {
+      "scrollWidth": 884,
+      "clientWidth": 390,
+      "selectedVisible": false
+    }
+  }
+]

@@ -1,0 +1,40 @@
+{
+  "matrix_cases": 50,
+  "additional_table_widths": [
+    901,
+    1024
+  ],
+  "interactions": [
+    "all 11 mobile destinations; Escape and Tab; navigation collapse; dirty cancel retains value/focus; discard navigates/focuses toggle",
+    "desktop/mobile resize preserves visible focus",
+    "all 4 article template bodies remain unchanged and sandboxed",
+    "200% text resize, 390 CSS pixels",
+    "long source names at 320; editor role only 7 permitted destinations"
+  ],
+  "errors": [],
+  "blocked_writes": [],
+  "model_metrics": [
+    {
+      "key": "models",
+      "width": 390,
+      "pageWidth": 390,
+      "headingSize": "24px",
+      "headingWeight": "700",
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
+      "fontSynthesis": "weight",
+      "headingTop": 226.921875,
+      "firstCardTop": 415.09375
+    },
+    {
+      "key": "models",
+      "width": 1440,
+      "pageWidth": 1440,
+      "headingSize": "26px",
+      "headingWeight": "700",
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
+      "fontSynthesis": "weight",
+      "headingTop": 133.21875,
+      "firstCardTop": 289.4375
+    }
+  ]
+}

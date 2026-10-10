@@ -85,6 +85,7 @@ async function traverse(delta: number) {
 }
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
 });
 
@@ -121,6 +122,35 @@ describe("unsaved operator changes", () => {
     expect(window.localStorage.length).toBe(0);
     expect(window.sessionStorage.length).toBe(0);
     view.unmount();
+  });
+
+  it("keeps the mobile menu and edits after cancellation, then collapses with visible focus after discard", async () => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const user = userEvent.setup();
+    open();
+    await user.type(await screen.findByLabelText("添加关注词"), "继续保留");
+    const toggle = screen.getByRole("button", {
+      name: "内容来源 关键词 切换页面",
+    });
+    await user.click(toggle);
+    await user.click(screen.getByRole("link", { name: "新闻源" }));
+    await user.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByLabelText("添加关注词")).toHaveValue("继续保留");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "新闻源" })).toHaveFocus();
+    expect(window.location.pathname).toBe("/admin/keywords");
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "放弃修改并继续" }));
+    await screen.findByRole("heading", { name: "新闻源" });
+    expect(
+      screen.getByRole("button", { name: "内容来源 新闻源 切换页面" }),
+    ).toHaveFocus();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(beforeUnload()).toBe(false);
   });
 
   it("retains edits after failed save and clears the guard only after successful save", async () => {

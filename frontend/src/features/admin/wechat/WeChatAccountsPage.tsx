@@ -170,7 +170,7 @@ export function WeChatAccountsPage({
             <tbody>
               {accounts.map((account) => (
                 <tr key={account.id} data-enabled={account.enabled}>
-                  <td>{account.name}</td>
+                  <td className={styles.cellTitle}>{account.name}</td>
                   <td>
                     <code>{account.app_id}</code>
                   </td>
@@ -234,6 +234,9 @@ export function WeChatAccountsPage({
                         </button>
                         <button
                           type="button"
+                          className={
+                            account.enabled ? styles.danger : undefined
+                          }
                           disabled={busy !== null}
                           onClick={() => {
                             void act(

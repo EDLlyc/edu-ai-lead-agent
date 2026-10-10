@@ -127,6 +127,23 @@ function fakeApi(overrides: Partial<ModelsApi> = {}) {
 }
 
 describe("模型配置", () => {
+  it("keeps live status visible while making secondary setup guidance available on demand", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    render(<ModelsPage api={api} onSessionExpired={vi.fn()} />);
+    expect(await screen.findByText(/有 1 个服务还没接入/)).toBeVisible();
+    const guidance = screen.getByText(
+      /加载失败时保留服务器配置，请查看下方各服务的状态/,
+    );
+    expect(guidance).not.toBeVisible();
+    await user.click(screen.getByText("使用说明：测试、加载与接口配置"));
+    expect(guidance).toBeVisible();
+    expect(screen.getByText(/测试会用新 key 发一个很小的请求/)).toBeVisible();
+    expect(screen.getByText(/接口地址和模型名固定在代码里/)).toBeVisible();
+    expect(api.test).not.toHaveBeenCalled();
+    expect(api.save).not.toHaveBeenCalled();
+  });
+
   it("saves a new key only after it passes a test", async () => {
     const user = userEvent.setup();
     const api = fakeApi();

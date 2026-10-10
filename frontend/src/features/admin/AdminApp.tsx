@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AdminLoginPage } from "./AdminLoginPage";
+import { AdminNavigation } from "./AdminNavigation";
 import { adminApi, type AdminApi, type AdminMe } from "./api";
 import { AccountsPage } from "./accounts/AccountsPage";
 import { MyAccountPage } from "./accounts/MyAccountPage";
@@ -60,16 +61,18 @@ type AdminAppProps = {
 export function AdminApp(props: AdminAppProps) {
   const mode = adminDataMode(import.meta.env.VITE_ADMIN_DATA_MODE);
   return (
-    <UnsavedChangesProvider>
-      <div
-        className={styles.environmentBadge}
-        data-mode={mode}
-        aria-label="数据环境"
-      >
-        {ADMIN_ENVIRONMENT_LABELS[mode]}
-      </div>
-      <AdminSession {...props} />
-    </UnsavedChangesProvider>
+    <div className={styles.admin}>
+      <UnsavedChangesProvider>
+        <div
+          className={styles.environmentBadge}
+          data-mode={mode}
+          aria-label="数据环境"
+        >
+          {ADMIN_ENVIRONMENT_LABELS[mode]}
+        </div>
+        <AdminSession {...props} />
+      </UnsavedChangesProvider>
+    </div>
   );
 }
 
@@ -176,40 +179,12 @@ function AdminSession({
           </button>
         </div>
       </header>
-      <nav className={styles.menu} aria-label="后台菜单">
-        {groupSections(sections).map(([group, items]) => (
-          <div className={styles.menuGroup} key={group}>
-            <p>{group}</p>
-            <ul>
-              {items.map((section) => (
-                <li key={section.key}>
-                  <a
-                    href={`/admin/${section.key}`}
-                    aria-current={
-                      section.key === current?.key ? "page" : undefined
-                    }
-                    onClick={(event) => {
-                      if (
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.button !== 0
-                      ) {
-                        return;
-                      }
-                      event.preventDefault();
-                      navigate(`/admin/${section.key}`);
-                    }}
-                  >
-                    {section.title}
-                    {section.plan === null ? null : <small>待上线</small>}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </nav>
+      <AdminNavigation
+        sections={sections}
+        current={current}
+        path={path}
+        navigate={navigate}
+      />
       <main className={styles.content} id="admin-content">
         {forbidden ? (
           <p className={styles.notice} role="status">
@@ -250,18 +225,6 @@ function AdminSession({
       </main>
     </div>
   );
-}
-
-function groupSections(
-  sections: readonly AdminSection[],
-): readonly (readonly [string, readonly AdminSection[]])[] {
-  const groups = new Map<string, AdminSection[]>();
-  for (const section of sections) {
-    const items = groups.get(section.group) ?? [];
-    items.push(section);
-    groups.set(section.group, items);
-  }
-  return [...groups.entries()];
 }
 
 function PlannedSection({ section }: { readonly section: AdminSection }) {
