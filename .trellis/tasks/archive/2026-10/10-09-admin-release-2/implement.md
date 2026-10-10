@@ -11,7 +11,7 @@ User approval: “同意上线。” The existing rollout/README.md is the detai
 - [x] Bind the existing WeChat account; read-only authenticated/API checks; verify no publish jobs.
 - [x] Restore localhost frontend access via production tunnel and check login rendering.
 - [x] Record actual evidence, limitations and rollback locations.
-- [ ] Reconcile mainline and push origin at release closeout.
+- [x] Reconcile mainline and push origin (release receipt a136a6d pushed successfully).
 
 Rollback uses the saved configuration and previous immutable image, leaving additive schema in
 place. Do not deploy during the three documented push windows or with active affected jobs.
