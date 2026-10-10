@@ -43,6 +43,29 @@
   and substituting only those two proved the original full runtime hashes for all four targets.
   Preserve these overrides until a separately reviewed upgrade changes their contracts.
 
+## Frontend updated 2026-10-10 16:26 (typography and mobile navigation)
+
+- Admin assets at `/var/www/edu-ai-admin` now come from `6b5465e`: scoped Chinese font/weight
+  fallback, 26/24 px page titles, consistent cards/tables/actions, accessible mobile grouped menu
+  with the current page, and native model/template instruction disclosures. Existing dirty-edit,
+  role, publication and saved-layout contracts remain intact. No external fonts or dependencies.
+- This was a frontend-only atomic directory exchange. All 16 project container IDs, images,
+  process starts/restarts and `.env` / `.release.env` / `compose.yaml` hashes were identical before
+  and after. The backend image split, schema 0061 and pipeline overrides below still apply.
+- Gate: `predeploy gate PASS @ 6b5465e+dirty: 10 passed, 0 failed, 1 skipped
+  (2026-10-10T08:21:03+00:00)`. The only untracked path was the `frontend/node_modules` tooling
+  symlink; tracked source exactly matched the commit. Skip is the existing private-asset manifest.
+  Frontend 376 tests, lint/types, both API parity checks, normal/admin builds and independent review
+  passed. Browser review covered 50 page/width cases plus 901/1024 px table checks, 320 px and 200%
+  text enlargement, keyboard/dirty/focus/roles, and four unchanged sandboxed article templates.
+- Backup `/var/backups/edu-ai/admin-typography-20261010T081308Z/frontend`; exact previous assets also
+  remain `/var/www/edu-ai-admin.before-20261010T081308Z`. Restore frontend only by exchanging those
+  directories after verifying their hashes; no DB/config/container rollback is involved.
+- Previews 5180 (production API) and 5181 (isolated read-only demo) serve verified new bundles.
+  Production login/reload, protected GET 401, unknown route/asset 404, full asset hashes and demo
+  labels/history passed browser checks. No publication, sync, provider call or credential action.
+  Evidence is in archived task `10-10-admin-typography`, including reviewed release/check scripts.
+
 ## Live since 2026-10-10 14:33 (pipeline image `sha256:6226855a…`, templates + six model consumers)
 
 - Four former legacy services now run

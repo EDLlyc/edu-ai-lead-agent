@@ -1,0 +1,21 @@
+cd backend &&  python -m evals.gate.runner
+# Pre-deploy gate: PASS
+
+- Commit: `6b5465e+dirty`
+- Started: 2026-10-10T08:21:03+00:00
+
+| Step | Result | Seconds | Detail |
+|---|---|---|---|
+| `topic_golden` | passed | 1.0 | - |
+| `same_topic_golden` | passed | 0.1 | - |
+| `topic_rerank` | passed | 0.4 | - |
+| `brand_retrieval` | passed | 0.1 | - |
+| `agent_workbench` | passed | 2.2 | - |
+| `image_quality` | passed | 0.2 | - |
+| `ip_asset_retrieval` | passed | 0.2 | - |
+| `visual_retrieval` | passed | 0.1 | - |
+| `ip_asset_grounded_seed` | passed | 1.6 | - |
+| `ip_asset_grounded_authoring` | skipped | 0.7 | needs the private visual asset manifest |
+| `unit_and_contract_tests` | passed | 299.1 | 0 known failure(s), no new failure |
+
+predeploy gate PASS @ 6b5465e+dirty: 10 passed, 0 failed, 1 skipped (2026-10-10T08:21:03+00:00)

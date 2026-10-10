@@ -15,12 +15,12 @@
   "branch": "fix/admin-typography-20261010",
   "base_branch": "mainline",
   "worktree_path": "/root/projects/edu-ai-lead-agent/.trellis/worktrees/admin-typography-20261010",
-  "commit": null,
+  "commit": "6b5465e50c2b10fe9afd1c8e7fa3e3f91514ba74",
   "pr_url": null,
   "subtasks": [],
   "children": [],
   "parent": "10-08-admin-console",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "R1–R5 accepted. Frontend-only release and stable previews verified at 2026-10-10 16:26 CST; backend/configuration invariants unchanged.",
   "meta": {}
 }
