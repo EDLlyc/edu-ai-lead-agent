@@ -1,16 +1,18 @@
 import { useState, type FormEvent } from "react";
 
-import type { AdminApi, AdminMe } from "./api";
+import { ExhibitEntryLink } from "./ExhibitEntryLink";
 import styles from "./Admin.module.css";
 
 export function AdminLoginPage({
-  api,
   notice,
-  onLoggedIn,
+  onLogin,
+  sessionCheckFailed,
+  onRetrySessionCheck,
 }: {
-  readonly api: AdminApi;
   readonly notice: string | null;
-  readonly onLoggedIn: (me: AdminMe) => void;
+  readonly onLogin: (username: string, password: string) => Promise<void>;
+  readonly sessionCheckFailed: boolean;
+  readonly onRetrySessionCheck: () => void;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -19,10 +21,11 @@ export function AdminLoginPage({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      onLoggedIn(await api.login(username.trim(), password));
+      await onLogin(username.trim(), password);
     } catch (failure) {
       setPassword("");
       setError(failure instanceof Error ? failure.message : "登录失败");
@@ -45,6 +48,14 @@ export function AdminLoginPage({
             {notice}
           </p>
         )}
+        {sessionCheckFailed ? (
+          <div className={styles.notice} role="alert">
+            <p>登录状态检查失败，当前登录状态未确认。保留已填写内容。</p>
+            <button type="button" disabled={busy} onClick={onRetrySessionCheck}>
+              重新检查登录状态
+            </button>
+          </div>
+        ) : null}
         <label className={styles.field}>
           <span>用户名</span>
           <input
@@ -75,6 +86,7 @@ export function AdminLoginPage({
           {busy ? "正在登录…" : "登录"}
         </button>
         <p className={styles.hint}>账号由管理员在服务器上开通。</p>
+        <ExhibitEntryLink />
       </form>
     </section>
   );

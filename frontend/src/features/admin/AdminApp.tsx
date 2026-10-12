@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-
 import { AdminLoginPage } from "./AdminLoginPage";
 import { AdminNavigation } from "./AdminNavigation";
-import { adminApi, type AdminApi, type AdminMe } from "./api";
+import { adminApi, type AdminApi } from "./api";
+import { ExhibitEntryLink } from "./ExhibitEntryLink";
+import { useAdminSession } from "./useAdminSession";
 import { AccountsPage } from "./accounts/AccountsPage";
 import { MyAccountPage } from "./accounts/MyAccountPage";
 import {
@@ -38,12 +38,6 @@ import {
   visibleSections,
   type AdminSection,
 } from "./sections";
-
-type Session =
-  | { readonly kind: "checking" }
-  | { readonly kind: "unreachable"; readonly message: string }
-  | { readonly kind: "anonymous"; readonly notice: string | null }
-  | { readonly kind: "signed-in"; readonly me: AdminMe };
 
 const ROLE_LABELS = { owner: "管理员", editor: "编辑" } as const;
 
@@ -85,38 +79,9 @@ function AdminSession({
   layoutApi = defaultLayoutApi,
   modelsApi = defaultModelsApi,
 }: AdminAppProps) {
-  const [session, setSession] = useState<Session>({ kind: "checking" });
+  const { session, check, login, logout, expire } = useAdminSession(api);
   const { path, navigate } = useAdminHistory();
-  const { requestNavigation, clearAll } = useUnsavedNavigation();
-
-  useEffect(() => {
-    let cancelled = false;
-    api.me().then(
-      (me) => {
-        if (cancelled) return;
-        setSession(
-          me === null
-            ? { kind: "anonymous", notice: null }
-            : { kind: "signed-in", me },
-        );
-      },
-      (error: unknown) => {
-        if (cancelled) return;
-        setSession({
-          kind: "unreachable",
-          message: error instanceof Error ? error.message : "读取登录状态失败",
-        });
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
-
-  const expire = useCallback(() => {
-    clearAll();
-    setSession({ kind: "anonymous", notice: "登录已过期，请重新登录" });
-  }, [clearAll]);
+  const { requestNavigation } = useUnsavedNavigation();
 
   if (session.kind === "checking") {
     return (
@@ -127,17 +92,24 @@ function AdminSession({
   }
   if (session.kind === "unreachable") {
     return (
-      <p className={`${styles.center} ${styles.error}`} role="alert">
-        {session.message}
-      </p>
+      <div className={styles.center}>
+        <p className={styles.error} role="alert">
+          连不上后台服务，当前登录状态未确认，请重试。
+        </p>
+        <button type="button" className={styles.primary} onClick={check}>
+          重新检查登录状态
+        </button>
+        <ExhibitEntryLink />
+      </div>
     );
   }
   if (session.kind === "anonymous") {
     return (
       <AdminLoginPage
-        api={api}
         notice={session.notice}
-        onLoggedIn={(me) => setSession({ kind: "signed-in", me })}
+        onLogin={login}
+        sessionCheckFailed={session.status === "check-failed"}
+        onRetrySessionCheck={check}
       />
     );
   }
@@ -150,34 +122,50 @@ function AdminSession({
   const forbidden = requested !== null && requested !== current?.key;
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} key={`${me.username}:${me.role}`}>
       <header className={styles.topbar}>
         <p className={styles.brand}>
           <strong>运营后台</strong>
           <span>赛先生 · AI 内容生产</span>
         </p>
         <div className={styles.account}>
+          <ExhibitEntryLink />
           <span>
             {me.display_name}（{ROLE_LABELS[me.role]}）
           </span>
           <button
             type="button"
+            disabled={session.status === "logging-out"}
             onClick={() => {
               requestNavigation(() => {
-                // Even if the API is unreachable, leave the page; the cookie expires anyway.
-                void api
-                  .logout()
-                  .catch(() => undefined)
-                  .then(() => {
-                    clearAll();
-                    setSession({ kind: "anonymous", notice: "已退出" });
-                  });
+                void logout();
               });
             }}
           >
-            退出
+            {session.status === "logging-out" ? "正在退出…" : "退出"}
           </button>
         </div>
+        {session.status === "rechecking" ? (
+          <p className={styles.sessionNotice} role="status">
+            正在重新检查登录状态…
+          </p>
+        ) : session.status === "check-failed" ? (
+          <div
+            className={`${styles.sessionNotice} ${styles.notice}`}
+            role="alert"
+          >
+            <span>
+              登录状态检查失败，当前登录状态未确认。保留上次账号和未保存内容。
+            </span>
+            <button type="button" onClick={check}>
+              重新检查登录状态
+            </button>
+          </div>
+        ) : session.status === "logout-failed" ? (
+          <p className={`${styles.sessionNotice} ${styles.error}`} role="alert">
+            退出未确认，服务器会话可能仍有效。请再次点击「退出」重试。
+          </p>
+        ) : null}
       </header>
       <AdminNavigation
         sections={sections}

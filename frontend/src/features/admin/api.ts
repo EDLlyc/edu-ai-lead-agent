@@ -16,7 +16,7 @@ export class AdminSessionExpiredError extends Error {
 
 /** Everything the 运营后台 asks the API; injected so tests never touch the network. */
 export interface AdminApi {
-  readonly me: () => Promise<AdminMe | null>;
+  readonly me: (signal?: AbortSignal) => Promise<AdminMe | null>;
   readonly login: (username: string, password: string) => Promise<AdminMe>;
   readonly logout: () => Promise<void>;
   readonly auditEvents: (
@@ -60,9 +60,9 @@ export async function reach<T>(call: () => Promise<T>): Promise<T> {
 }
 
 export const adminApi: AdminApi = {
-  async me() {
+  async me(signal) {
     const { data, response } = await reach(() =>
-      adminClient.GET("/api/v1/admin/auth/me"),
+      adminClient.GET("/api/v1/admin/auth/me", { signal: signal ?? null }),
     );
     if (response.status === 401) return null;
     if (data === undefined) throw new Error("读取登录状态失败，请刷新重试");
@@ -78,7 +78,12 @@ export const adminApi: AdminApi = {
     return data;
   },
   async logout() {
-    await reach(() => adminClient.POST("/api/v1/admin/auth/logout"));
+    const { response } = await reach(() =>
+      adminClient.POST("/api/v1/admin/auth/logout"),
+    );
+    // Only the contract's no-content acknowledgement confirms server-side revocation.
+    if (response.status !== 204 || response.redirected)
+      throw new Error("退出未确认，请重试");
   },
   async auditEvents(query = {}) {
     const { data, response } = await reach(() =>

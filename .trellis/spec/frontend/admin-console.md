@@ -168,3 +168,63 @@ saved-state wording remains accurate when a worker disconnects or a release is r
 
 Model-service release verification additionally binds heartbeats to the current container host
 and process start. A green row from a different old host cannot prove a replacement connected.
+
+## Companion navigation and session restoration (2026-10-12)
+
+### 1. Scope / Trigger
+
+Connect the existing authenticated admin to a public exhibit without a second account store or
+SSO provider. Public viewing does not grant editing or publishing permissions.
+
+### 2. Signatures
+
+Optional build-time `VITE_EXHIBIT_ENTRY_URL` supplies the `返回展厅` anchor on login and signed-in
+pages. Existing `AdminApi.me/login/logout` remains the session authority; backend endpoints,
+HttpOnly cookie scope and security attributes are unchanged.
+`AdminApi.me(signal?: AbortSignal)` lets the session owner abort obsolete reads. Hidden/pagehide
+invalidates reads; it must not cancel a pending login or logout mutation.
+
+### 3. Contracts
+
+Accept bounded site-relative or HTTP(S) URLs without userinfo/query/fragment; reject malformed
+values, protocol-relative links, HTTPS downgrade and mixed loopback hostnames. An absent/invalid
+value hides the entry. Normal same-tab departure uses `requestNavigation`; modified clicks retain
+native new-tab behavior. Never carry credentials or session tokens in URLs or browser storage.
+
+Recheck the existing server session on restoration/focus/visibility. Coalesce overlapping checks
+and invalidate obsolete completions when login, logout, expiry, API replacement or unmount wins.
+A previously anonymous login page must also recheck: another tab may now hold a valid session.
+Keep its entered fields mounted during pending/failed checks, offer a visible retry on failure,
+and let an in-flight login retain request ownership instead of starting another check.
+A network failure is not a confirmed 401. Logout is successful only after server confirmation;
+failed logout stays visible and retryable, never silently reports `已退出`.
+
+### 4. Validation & Error Matrix
+
+- Valid session on return: restore admin without another password prompt.
+- Confirmed 401: clear unsaved registrations and show login.
+- Failed session check: explicit connection/retry state, not a false logout confirmation.
+- Failed logout: retain truthful session status and a retry path.
+- Old check resolves after newer login/logout: ignore it.
+- Dirty normal departure: cancel retains edits; confirm discards and leaves.
+
+### 5. Good / Base / Bad Cases
+
+Good: exhibit → login once → exhibit → same admin origin restores the cookie session.
+Base: no companion URL keeps standalone admin usable. Bad: a swallowed logout failure claims
+the shared session ended, or a late `me()` response resurrects a logged-out identity.
+
+### 6. Tests Required
+
+Cover URL validation, both entry states, dirty cancel/confirm, native modified clicks, recheck
+single-flight and stale completion isolation, logout failure/retry and real HTTP error handling.
+Include anonymous restoration after another tab signs in, failed-check field retention/retry,
+and anonymous checks superseded by a still-pending login.
+Use injected APIs and isolated browser interception; fixture passwords must never reach a
+production proxy. Clearly separate fixture sign-in evidence from anonymous real-server checks.
+
+### 7. Wrong vs Correct
+
+Wrong: `logout().catch(() => undefined).then(showLoggedOut)`.
+Correct: validate the logout response, show success only on confirmation and expose a retryable
+error otherwise; invalidate older session checks before changing authentication state.
