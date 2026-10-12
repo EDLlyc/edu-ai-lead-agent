@@ -32,6 +32,10 @@ from app.domain.ministry_education_priority import (
 from app.domain.ministry_education_priority import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY as _MOE_SCIENCE_TOP1_PRIORITY_POLICY,
 )
+from app.domain.national_tech_policy_signal import (
+    NATIONAL_TECH_POLICY_RULE_VERSION,
+    evaluate_national_tech_policy,
+)
 from app.domain.science_policy_priority import (
     SCIENCE_POLICY_PRIORITY_RULE_VERSION,
     evaluate_science_policy_priority,
@@ -65,8 +69,15 @@ SAFETY_INDUSTRY_TOPIC_SCORING_VERSION = "scoring-v1-preview.14-negative-incident
 # 14-day repeat window, so a delivered story cannot return while it is still fresh (10 days).
 GOV_YAOWEN_TOPIC_SCORING_VERSION = "scoring-v1-preview.15-gov-yaowen-topic-gate"
 GOV_YAOWEN_RECENT_SELECTION_WINDOW_DAYS = 14
+# `.17` = `.15` + a central-level policy document about science, technology or education from the
+# authenticated gov.cn 要闻 source is a priority item that bypasses the ordinary threshold. (`.16`
+# exists only on an undeployed branch; this version deliberately does not reuse that number.)
+NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION = "scoring-v1-preview.17-national-tech-policy"
+GOV_YAOWEN_TOPIC_SCORING_VERSIONS = frozenset(
+    {GOV_YAOWEN_TOPIC_SCORING_VERSION, NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION}
+)
 SAFETY_INDUSTRY_TOPIC_SCORING_VERSIONS = frozenset(
-    {SAFETY_INDUSTRY_TOPIC_SCORING_VERSION, GOV_YAOWEN_TOPIC_SCORING_VERSION}
+    {SAFETY_INDUSTRY_TOPIC_SCORING_VERSION, *GOV_YAOWEN_TOPIC_SCORING_VERSIONS}
 )
 EDUCATION_POLICY_TOPIC_SCORING_VERSIONS = frozenset(
     {EDUCATION_POLICY_TOPIC_SCORING_VERSION, *SAFETY_INDUSTRY_TOPIC_SCORING_VERSIONS}
@@ -75,7 +86,7 @@ EDUCATION_POLICY_TOPIC_SCORING_VERSIONS = frozenset(
 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS = frozenset(
     {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS}
 )
-DEFAULT_TOPIC_SCORING_VERSION = GOV_YAOWEN_TOPIC_SCORING_VERSION
+DEFAULT_TOPIC_SCORING_VERSION = NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -86,6 +97,7 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     GOV_YAOWEN_TOPIC_SCORING_VERSION,
+    NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -96,6 +108,7 @@ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     GOV_YAOWEN_TOPIC_SCORING_VERSION,
+    NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION,
 )
 LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     THRESHOLD_059_TOPIC_SCORING_VERSION,
@@ -105,6 +118,7 @@ LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     GOV_YAOWEN_TOPIC_SCORING_VERSION,
+    NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
 HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
@@ -376,6 +390,7 @@ class TopicScoringConfig:
             EDUCATION_POLICY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
             SAFETY_INDUSTRY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
             GOV_YAOWEN_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+            NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         expected_priority_rule = (
             QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
@@ -454,7 +469,14 @@ class TopicScoringConfig:
 
     @property
     def has_government_yaowen_topic_gate(self) -> bool:
-        return self.version == GOV_YAOWEN_TOPIC_SCORING_VERSION and self.has_safety_industry_rules
+        return self.version in GOV_YAOWEN_TOPIC_SCORING_VERSIONS and self.has_safety_industry_rules
+
+    @property
+    def has_national_tech_policy(self) -> bool:
+        return (
+            self.version == NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION
+            and self.has_government_yaowen_topic_gate
+        )
 
     @property
     def penalty_weights(self) -> Mapping[str, float]:
@@ -503,8 +525,10 @@ class TopicScoringConfig:
             metadata["negative_incident_rule_version"] = NEGATIVE_INCIDENT_RULE_VERSION
             metadata["industrial_technology_rule_version"] = INDUSTRIAL_TECHNOLOGY_RULE_VERSION
             metadata["research_accessibility_rule_version"] = RESEARCH_ACCESSIBILITY_RULE_VERSION
-        if self.version == GOV_YAOWEN_TOPIC_SCORING_VERSION:
+        if self.version in GOV_YAOWEN_TOPIC_SCORING_VERSIONS:
             metadata["government_yaowen_topic_rule_version"] = GOVERNMENT_YAOWEN_TOPIC_RULE_VERSION
+        if self.version == NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION:
+            metadata["national_tech_policy_rule_version"] = NATIONAL_TECH_POLICY_RULE_VERSION
         return metadata
 
     @classmethod
@@ -960,16 +984,27 @@ def score_topic_candidate(
         and candidate.science_tech_editorial_cohort
         is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
     )
+    # A central-level policy document from the authenticated gov.cn 要闻 source (`.17`). Hard vetoes
+    # always win; the document headline, not a summary remark, decides.
+    national_tech_policy_priority = (
+        config.has_national_tech_policy
+        and not veto_codes
+        and candidate.topic_priority_policy == GOV_CN_YAOWEN_PRIORITY_POLICY
+        and evaluate_national_tech_policy(candidate.priority_title).matched
+    )
     editorially_qualified = (
         not config.uses_tiered_editorial_features
         or candidate.science_tech_editorial_cohort is not ScienceTechEditorialCohort.OUT_OF_SCOPE
         or education_policy_priority
+        or national_tech_policy_priority
     )
     eligible_without_source_priority = (
         editorially_qualified and not veto_codes and (passes_threshold or hard_tech_pool_bypass)
     )
     if education_policy_priority and education_policy is not None:
         priority_applied, priority_reason = True, education_policy.reason_code
+    elif national_tech_policy_priority:
+        priority_applied, priority_reason = True, "national_tech_policy"
     else:
         priority_applied, priority_reason = _priority_state(
             candidate,
@@ -986,8 +1021,14 @@ def score_topic_candidate(
         and not passes_threshold
         and config.has_authenticated_ministry_priority
     )
+    national_tech_policy_threshold_bypass = (
+        national_tech_policy_priority and not education_policy_priority and not passes_threshold
+    )
     threshold_bypass_applied = (
-        education_policy_threshold_bypass or ministry_threshold_bypass or hard_tech_pool_bypass
+        education_policy_threshold_bypass
+        or ministry_threshold_bypass
+        or hard_tech_pool_bypass
+        or national_tech_policy_threshold_bypass
     )
     threshold_bypass_reason = (
         "education_policy_signal"
@@ -996,6 +1037,8 @@ def score_topic_candidate(
         if ministry_threshold_bypass
         else "governed_broad_hard_tech_pool"
         if hard_tech_pool_bypass
+        else "national_tech_policy"
+        if national_tech_policy_threshold_bypass
         else None
     )
     eligible = (

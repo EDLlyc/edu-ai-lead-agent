@@ -233,12 +233,17 @@ def test_government_yaowen_topic_gate_uses_the_headline(
         assert signal.reason_code == reason
 
 
-def test_default_is_v15_with_14_day_repeat_window() -> None:
-    config = build_topic_scoring_config(Settings(_env_file=None))
+def test_v15_keeps_its_gate_and_14_day_repeat_window() -> None:
+    config = _config(GOV_YAOWEN_TOPIC_SCORING_VERSION)
 
     assert config.version == GOV_YAOWEN_TOPIC_SCORING_VERSION
     assert config.has_safety_industry_rules and config.has_government_yaowen_topic_gate
-    assert config.recent_selection_window_days == 14
+    assert (
+        build_topic_scoring_config(
+            Settings(_env_file=None, content_scoring_version=config.version)
+        ).recent_selection_window_days
+        == 14
+    )
     assert _config().recent_selection_window_days == 7
     metadata = config.as_metadata()
     assert metadata["government_yaowen_topic_rule_version"] == "gov-yaowen-topic-v1"

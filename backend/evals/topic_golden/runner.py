@@ -26,6 +26,7 @@ from app.domain.topic_safety_signals import is_industrial_technology_title
 from app.domain.topic_selection import (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     GOV_YAOWEN_TOPIC_SCORING_VERSION,
+    NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     TopicCandidate,
@@ -42,12 +43,13 @@ CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 REPORT_VERSION = "topic-golden-v1"
 AS_OF = datetime(2026, 9, 28, 1, 0, tzinfo=UTC)
 # `.11` pre-education-policy baseline, `.13` education policy, `.14` safety/industry,
-# `.15` current default.
+# `.15` gov.cn 要闻 topic gate, `.17` current default (national tech policy documents).
 COMPARED_VERSIONS = (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     GOV_YAOWEN_TOPIC_SCORING_VERSION,
+    NATIONAL_TECH_POLICY_TOPIC_SCORING_VERSION,
 )
 _SOURCE_TRUST_WEIGHTS = {"A": 1.0, "B": 0.75}
 

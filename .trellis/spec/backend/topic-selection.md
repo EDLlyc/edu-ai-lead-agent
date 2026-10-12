@@ -183,7 +183,7 @@ Both build on the production `.11` identities (not `.12`). `.13`
 provincial education policy/reform/planning news is editorially qualified with the highest
 priority (ordering groups national -2, provincial -1, then the unchanged historical groups), may
 bypass only the numeric threshold, and may fill every slot ordinal. `.14`
-(`scoring-v1-preview.14-negative-incident-industrial-tech`, current default) keeps all of `.13` and
+(`scoring-v1-preview.14-negative-incident-industrial-tech`) keeps all of `.13` and
 adds, in `app/domain/topic_safety_signals.py`:
 
 - `negative-incident-v1`: criminal/legal enforcement or rumour text anywhere, or a people-casualty
@@ -217,6 +217,30 @@ same-day story (or a better-ranked eligible candidate of the same run), or that 
 headline phrase after removing 【…】 column prefixes and generic phrases, is excluded with
 `same_day_similar_topic` before the model rerank. v1 runs never read fingerprints. Regression evidence:
 `backend/evals/topic_golden` (`make topic-golden-eval`).
+
+## China Government yaowen gate (`.15`) and national tech policy (`.17`)
+
+`.15` (`scoring-v1-preview.15-gov-yaowen-topic-gate`) keeps `.14`, gives China Government yaowen
+priority only to science/technology/education/industry headlines (`gov-yaowen-topic-v1`; diplomatic,
+trade and water-investment headlines lose it), and widens the repeated-story window to 14 days.
+`.17` (`scoring-v1-preview.17-national-tech-policy`, current default) keeps all of `.15` and adds
+`national-tech-policy-signal-v1` in `app/domain/national_tech_policy_signal.py`, judged on the
+headline only, in this order: empty -> excluded (会议/座谈/会见/考察/调研/致信/经贸/磋商/任免…) -> issuer
+(中共中央/国务院/中办国办…) -> document type (意见/方案/规划/纲要/行动计划/办法/通知…) -> subject
+(新质生产力/科技/创新/人工智能/数字经济/教育/人才…). Reason code `national_tech_policy`.
+
+- Why: the central document 《中共中央 国务院关于发展新质生产力的意见》 scored 0.56 (< 0.59) on
+  2026-10-12, so under `.15` it was neither eligible nor prioritised and ranked 44-80.
+- Effect: a candidate from the authenticated yaowen policy source with a qualifying headline and **no
+  veto** is eligible, `priority_applied` (reason `national_tech_policy`), may bypass only the numeric
+  threshold (`threshold_bypass_reason` `national_tech_policy`), and sorts in the first priority group.
+  The numeric score is unchanged; a hard veto (negative incident, unresolved governance, no eligible
+  evidence, repeat window) still wins.
+- Replay: older versions must not change; `.17` is a new frozenset identity, `.16` is reserved for
+  the undeployed off-audience veto branch. Metadata key `national_tech_policy_rule_version`.
+- Known gap (golden cases n09/n10, synthetic): a tech-worded 会议/考察 headline can still get the
+  existing `.15` yaowen priority (`qualified_government_yaowen_priority`); `.17` neither adds to nor
+  removes that, it only refuses to treat such a headline as a national policy document.
 
 ## Parallel content-slot selection
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from evals.topic_golden.runner import build_report, load_cases, main
@@ -46,6 +47,25 @@ def test_gov_yaowen_gate_stops_diplomacy_and_economy_jumping_the_queue() -> None
     for case_id in ("g05-new-industrialisation-yaowen", "g08-gov-yaowen-advanced-manufacturing"):
         assert case_id not in current["failed_case_ids"]
     assert current["must_select_priority"] == previous["must_select_priority"]
+
+
+def test_national_tech_policy_rule_selects_the_central_document_without_loosening_meetings() -> (
+    None
+):
+    report = build_report(load_cases())
+    by_version = {
+        version["scoring_version"]: version
+        for version in cast("list[dict[str, Any]]", report["versions"])
+    }
+    previous = by_version["scoring-v1-preview.15-gov-yaowen-topic-gate"]
+    current = by_version["scoring-v1-preview.17-national-tech-policy"]
+    case_id = "g09-central-new-quality-productive-forces-opinion"
+
+    assert case_id in previous["failed_case_ids"]
+    assert case_id not in current["failed_case_ids"]
+    # No other case changes outcome: the rule only adds the central policy document.
+    assert set(current["failed_case_ids"]) == set(previous["failed_case_ids"]) - {case_id}
+    assert (previous["must_select_priority"], current["must_select_priority"]) == ("7/8", "8/8")
 
 
 def _write(tmp_path: Path, **overrides: object) -> Path:
