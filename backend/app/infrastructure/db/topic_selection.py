@@ -614,14 +614,48 @@ async def load_governed_topic_candidates(
             )
         ).all()
     )
+    # A suggested event match is not membership: an incoming review must not veto an
+    # already confirmed event. Only assignments for the selected version's members and
+    # each membership's owning policy participate; a later confirmation resolves a review.
+    # A version may retain members created under an older policy. Keep the
+    # decision cutoff separate from version-time membership so replay cannot see future
+    # assignments or members added after the selected immutable projection.
+    latest_member_assignment = (
+        select(EventAssignmentDecisionModel.outcome)
+        .where(
+            EventAssignmentDecisionModel.selected_event_id == EventMembershipModel.event_id,
+            EventAssignmentDecisionModel.normalized_article_id
+            == EventMembershipModel.normalized_article_id,
+            EventAssignmentDecisionModel.policy_version == EventMembershipModel.policy_version,
+            EventAssignmentDecisionModel.created_at <= governed_event_cutoff,
+        )
+        .order_by(
+            EventAssignmentDecisionModel.created_at.desc(),
+            EventAssignmentDecisionModel.id.desc(),
+        )
+        .limit(1)
+        .correlate(EventMembershipModel)
+        .scalar_subquery()
+    )
     unresolved_events = set(
         (
             await session.scalars(
-                select(EventAssignmentDecisionModel.selected_event_id)
+                select(EventMembershipModel.event_id)
+                .join(
+                    EventClusterVersionModel,
+                    and_(
+                        EventClusterVersionModel.event_id == EventMembershipModel.event_id,
+                        EventClusterVersionModel.id.in_(event_version_ids),
+                    ),
+                )
                 .where(
-                    EventAssignmentDecisionModel.selected_event_id.in_(event_ids),
-                    EventAssignmentDecisionModel.outcome == "review_required",
-                    EventAssignmentDecisionModel.created_at <= governed_event_cutoff,
+                    EventMembershipModel.event_id.in_(event_ids),
+                    EventMembershipModel.created_at <= EventClusterVersionModel.created_at,
+                    or_(
+                        EventMembershipModel.active.is_(True),
+                        EventMembershipModel.superseded_at > EventClusterVersionModel.created_at,
+                    ),
+                    latest_member_assignment == "review_required",
                 )
                 .distinct()
             )
