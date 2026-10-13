@@ -55,6 +55,11 @@ def _cookie_secure(settings: Settings) -> bool:
     return settings.app_env != "development" if configured is None else configured
 
 
+def _cookie_path(settings: Settings) -> str:
+    """Host-only on the admin API path unless a shared domain is configured."""
+    return "/" if settings.admin_session_cookie_domain else COOKIE_PATH
+
+
 def _me(principal: AdminPrincipal) -> AdminMeResponse:
     return AdminMeResponse(
         username=principal.username,
@@ -78,10 +83,11 @@ async def post_admin_login(
         SESSION_COOKIE_NAME,
         login.token,
         max_age=int(SESSION_LIFETIME.total_seconds()),
-        path=COOKIE_PATH,
         httponly=True,
         samesite="strict",
         secure=_cookie_secure(_settings(request)),
+        path=_cookie_path(_settings(request)),
+        domain=_settings(request).admin_session_cookie_domain,
     )
     return _me(login.principal)
 
@@ -98,10 +104,11 @@ async def post_admin_logout(
     response.headers["Cache-Control"] = "no-store"
     response.delete_cookie(
         SESSION_COOKIE_NAME,
-        path=COOKIE_PATH,
         httponly=True,
         samesite="strict",
         secure=_cookie_secure(_settings(request)),
+        path=_cookie_path(_settings(request)),
+        domain=_settings(request).admin_session_cookie_domain,
     )
     return response
 

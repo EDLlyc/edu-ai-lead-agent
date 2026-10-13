@@ -103,6 +103,32 @@ async def test_login_sets_a_strict_http_only_cookie_and_logout_ends_it(
     client.cookies.clear()
 
 
+async def test_shared_cookie_domain_scopes_login_and_logout_to_the_whole_site(
+    integration_context: IntegrationContext, client: AsyncClient
+) -> None:
+    original = app.state.settings
+    app.state.settings = original.model_copy(update={"admin_session_cookie_domain": "example.com"})
+    try:
+        username = await _user(integration_context)
+        login = await client.post(
+            "/api/v1/admin/auth/login",
+            json={"username": username, "password": PASSWORD},
+            headers=WRITE,
+        )
+        assert login.status_code == 200
+        cookie = login.headers["set-cookie"]
+        assert "Domain=example.com" in cookie
+        assert "Path=/;" in cookie or cookie.rstrip().endswith("Path=/")
+        assert "Path=/api/v1/admin" not in cookie
+        assert "HttpOnly" in cookie and "SameSite=strict" in cookie
+        logout = await client.post("/api/v1/admin/auth/logout", headers=WRITE)
+        cleared = logout.headers["set-cookie"]
+        assert "Domain=example.com" in cleared and "Max-Age=0" in cleared
+    finally:
+        app.state.settings = original
+        client.cookies.clear()
+
+
 async def test_writes_without_the_guard_header_are_refused(
     integration_context: IntegrationContext, client: AsyncClient
 ) -> None:

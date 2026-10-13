@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     business_timezone: str = "Asia/Shanghai"
     # 运营后台 session cookie; unset means Secure everywhere except development.
     admin_session_cookie_secure: bool | None = None
+    # Share the 运营后台 login with sibling hosts (e.g. the exhibit behind nginx auth_request).
+    # Unset keeps the cookie host-only on /api/v1/admin. A value such as "example.com" scopes it
+    # to the whole registrable domain on path "/", so every sibling host must be trusted.
+    admin_session_cookie_domain: str | None = Field(
+        default=None,
+        max_length=253,
+        pattern=r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+    )
     # Encrypts secrets entered in the 运营后台 (WeChat AppSecret). url-safe base64 of 32 bytes;
     # unset means the WeChat account pages refuse to store anything.
     admin_secret_key: SecretStr | None = None
