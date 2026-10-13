@@ -14,6 +14,11 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - **Sessions**: `admin_sessions` stores only `sha256(token)`; the session lasts 12 h.
   - Cookie `edu_admin_session` is httpOnly, `SameSite=Strict`, `Path=/api/v1/admin`.
   - `Secure` unless `APP_ENV=development`; override with `ADMIN_SESSION_COOKIE_SECURE`.
+  - Optional `ADMIN_SESSION_COOKIE_DOMAIN` (a bare registrable domain such as `example.com`; unset
+    by default): the cookie becomes `Domain=<it>; Path=/` so a sibling host can reuse the login (the
+    exhibit's nginx `auth_request`, `deploy/admin-console/edu-exhibit.conf.template`). Every host under
+    that domain is then trusted. Logout clears the cookie with the same domain/path. Session is a fixed
+    12 h, so a wall screen signs out twice a day.
 - **Login**: unknown user, wrong password, locked and disabled accounts all return the same 401
   `admin_login_rejected` after a scrypt-cost check.
   - 5 wrong passwords in a row lock the account for 15 min.

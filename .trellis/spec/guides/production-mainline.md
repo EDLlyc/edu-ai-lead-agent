@@ -43,6 +43,26 @@
   and substituting only those two proved the original full runtime hashes for all four targets.
   Preserve these overrides until a separately reviewed upgrade changes their contracts.
 
+## Live since 2026-10-13 (national tech policy `.17` + long-image failure logging)
+
+- **API/scheduler/worker** run overlay image `sha256:a3a3e7f7…` (commit `5926b69`, `FROM` `193f040c…`):
+  scoring `scoring-v1-preview.17-national-tech-policy`, pinned by `CONTENT_SCORING_VERSION` in `.env`
+  (a code default alone is ignored). Record and rollback:
+  `.trellis/tasks/10-12-national-policy-priority-board-pick/deployment.md`. The first real scoring
+  batch under `.17` is still to be verified.
+- **`wecom-infographic-producer`** runs overlay image `sha256:e0513020…` (commit `a026004`, `FROM`
+  `da05208…`). It is a `profiles: ["infographic"]` service that does **not** follow `APP_IMAGE`;
+  recreate it with a per-command `APP_IMAGE` and `CONTENT_SCORING_VERSION` override (running value),
+  never by plain `compose up`, or it jumps to the API image and a scoring value its code rejects.
+  Failed long images now log `news_infographic_stage_unknown` (error class, closed error code,
+  http_status, response_kind; never messages). Read the cause with
+  `docker logs edu-ai-lead-agent-wecom-infographic-producer-1 | grep news_infographic_stage_unknown`.
+  Record and rollback: `.trellis/tasks/10-13-long-image-stage-unknown-log/deployment.md`.
+- In deploy scripts, `x=$(cmd | grep -c …)` returns 1 on zero matches and fires an inherited `ERR`
+  trap inside the substitution (it rolled the first producer attempt back). Use `|| true`.
+- Not deployed yet: `ADMIN_SESSION_COOKIE_DOMAIN` and the exhibit nginx gate (commit `0a3ff0e`),
+  waiting for domain, certificate and security group (`.trellis/tasks/10-12-exhibit-admin-local-smoke/deploy-plan.md`).
+
 ## Frontend updated 2026-10-10 16:26 (typography and mobile navigation)
 
 - Admin assets at `/var/www/edu-ai-admin` now come from `6b5465e`: scoped Chinese font/weight
