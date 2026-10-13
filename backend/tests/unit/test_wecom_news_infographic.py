@@ -8,6 +8,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from hashlib import sha256
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -504,3 +505,22 @@ def test_supplement_requires_own_confirmed_original_two_messages() -> None:
     base.image_status = "delivered"
     poster.sequence_ordinal = 2
     assert not _valid_ready_pair(poster, base, window, settings=settings)
+
+
+def test_stage_unknown_log_fields_are_closed_and_body_free() -> None:
+    from app.core.errors import AppError, ImageProviderRejectedError
+
+    rejected = ImageProviderRejectedError(http_status=400, response_kind="json")
+    assert infographic_service._safe_error_code(rejected) == rejected.code
+    assert infographic_service._safe_http_status(rejected) == 400
+    assert infographic_service._safe_response_kind(rejected) == "json"
+
+    plain = RuntimeError("secret prompt text sk-live-123")
+    assert infographic_service._safe_error_code(plain) is None
+    assert infographic_service._safe_http_status(plain) is None
+    assert infographic_service._safe_response_kind(plain) is None
+
+    spoofed = SimpleNamespace(http_status=True, response_kind="x" * 200)
+    assert infographic_service._safe_http_status(spoofed) is None
+    assert infographic_service._safe_response_kind(spoofed) is None
+    assert infographic_service._safe_error_code(AppError("c" * 200, "m")) is None

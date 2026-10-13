@@ -15,6 +15,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
+import structlog.testing
 from app.api.v1.routes.wecom_deliveries import read_wecom_infographic_status
 from app.application.ports.image_generation import ImageGenerationRequest, ImageGenerationResult
 from app.application.ports.image_validation import (
@@ -938,7 +939,15 @@ async def test_three_siblings_reconcile_independently_and_unknown_is_not_replaye
             raise TimeoutError("simulated ambiguous poster OCR result")
 
     fake_models.before_ocr = interrupt_second_region
-    assert await trial_producer.execute_next("synthetic-producer")
+    with structlog.testing.capture_logs() as captured_logs:
+        assert await trial_producer.execute_next("synthetic-producer")
+    stage_unknown_logs = [
+        entry for entry in captured_logs if entry["event"] == "news_infographic_stage_unknown"
+    ]
+    assert len(stage_unknown_logs) == 1
+    assert stage_unknown_logs[0]["error_type"] == "TimeoutError"
+    assert stage_unknown_logs[0]["error_code"] is None
+    assert "simulated ambiguous poster OCR result" not in str(stage_unknown_logs[0])
     async with integration_context.session_factory() as session:
         interrupted = await session.scalar(
             select(NewsInfographicJobModel).where(NewsInfographicJobModel.base_job_id == job_ids[1])

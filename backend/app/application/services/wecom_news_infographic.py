@@ -97,6 +97,7 @@ from app.application.services.wecom_infographic_quality import (
     normalize_advisory_warnings,
 )
 from app.core.config import Settings
+from app.core.errors import AppError
 from app.domain.content_slots import HUMAN_PICK_TRIGGER
 from app.domain.news_infographic import (
     InfographicInputError,
@@ -123,6 +124,24 @@ _POSTER_OCR_VERSION = "poster-region-ocr-v1"
 _POSTER_VISUAL_RUBRIC_VERSION = "wecom-news-poster-visual-v2-evidence-first"
 _APP_ROOT = Path(__file__).resolve().parents[3]
 logger = structlog.get_logger()
+
+
+def _safe_error_code(exc: BaseException) -> str | None:
+    """Return the closed application error code; never an exception message."""
+    code = exc.code if isinstance(exc, AppError) else None
+    return code if isinstance(code, str) and len(code) <= 80 else None
+
+
+def _safe_http_status(exc: BaseException) -> int | None:
+    status = getattr(exc, "http_status", None)
+    return status if isinstance(status, int) and not isinstance(status, bool) else None
+
+
+def _safe_response_kind(exc: BaseException) -> str | None:
+    kind = getattr(exc, "response_kind", None)
+    return kind if isinstance(kind, str) and len(kind) <= 40 else None
+
+
 _REFERENCE_ROOT = _APP_ROOT.parent if _APP_ROOT.name == "backend" else _APP_ROOT
 _REFERENCE_PATH = (
     _REFERENCE_ROOT / "private/brand-materials/05-visual-assets/赛先生小赛-携手奔跑.png"
@@ -668,8 +687,18 @@ class NewsInfographicProducer:
             await self._produce(job_id, token)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             # The provider may have accepted a call; never replay a claimed job automatically.
+            # Record only closed, body-free facts so the cause is visible without leaking text.
+            logger.warning(
+                "news_infographic_stage_unknown",
+                job_id=str(job_id),
+                error_type=type(exc).__name__,
+                error_code=_safe_error_code(exc),
+                http_status=_safe_http_status(exc),
+                response_kind=_safe_response_kind(exc),
+                cause_type=type(exc.__cause__).__name__ if exc.__cause__ is not None else None,
+            )
             await self._finish(
                 job_id, token, status="result_unknown", code="production_stage_unknown"
             )
