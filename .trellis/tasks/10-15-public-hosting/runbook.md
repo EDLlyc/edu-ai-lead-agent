@@ -125,3 +125,13 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
   `index-D0SiKVTa.js`. `overlay-password/activate.sh` waits out the content slot windows instead of refusing.
   Backup `backups/account-password-20261015.a3e54G` (compose/.env/.release.env `*.before`, `www.before`).
 - Only owners can create accounts or reset others' passwords; editors can only change their own.
+
+## 新闻审核 in the console (2026-10-15 18:25, commit 1b926bb)
+- Overlay `…:news-review-1b926bb` (id `0ab05e2e…`) FROM `e008f5f8…` with 14 files (visitor-display news pool services/db,
+  `news_reviews` store, `admin_news_reviews` route, patched `api_main.py` and `models.py`, migration 0062). Only
+  `acquisition-api` recreated, effective env unchanged. `alembic upgrade` 0061 -> 0062 adds table `news_reviews`
+  (empty). Console `index-BOZyDchv.js`.
+- Backup `backups/news-review-20261015.5Dh3KA/`: `db-before.dump` (pg_dump -Fc), compose/.env/.release.env `*.before`,
+  `www.before`. Rollback = `alembic downgrade 20261010_0061` in the new container (drops the table), restore the three
+  files and recreate acquisition-api on `e008f5f8…`, restore `www.before`; `activate.sh` does it on any failure.
+- Phase 3 (人工加推 from the console) is not built. Exhibit article tests are not on mainline (model drift).
