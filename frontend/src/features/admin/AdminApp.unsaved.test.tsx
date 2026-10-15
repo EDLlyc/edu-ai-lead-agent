@@ -205,7 +205,7 @@ describe("unsaved operator changes", () => {
     );
     await user.type(await screen.findByLabelText("当前密码"), "fake-current");
     await user.type(
-      screen.getByLabelText("新密码（至少 10 位）"),
+      screen.getByLabelText("新密码（至少 8 位）"),
       "fake-next-password",
     );
     await user.type(

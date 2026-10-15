@@ -11,6 +11,7 @@ import {
   type AccountWithPassword,
   type AdminAccount,
 } from "./api";
+import { PasswordHint } from "./PasswordHint";
 
 const ROLE_LABELS: Readonly<Record<AccountRole, string>> = {
   owner: "管理员",
@@ -23,7 +24,8 @@ type Pending = {
 } | null;
 
 const CONFIRM_TEXT = {
-  reset: "确认重设密码？旧密码立即失效，这个账号的登录全部退出。",
+  reset:
+    "确认重设密码？旧密码立即失效，这个账号的登录全部退出。可以自己输入新密码，留空则由系统生成。",
   disable: "确认停用？这个账号会立即退出，不能再登录，操作记录保留。",
   enable: "确认启用？",
 } as const;
@@ -46,6 +48,7 @@ export function AccountsPage({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
+  const [chosenPassword, setChosenPassword] = useState("");
   const [issued, setIssued] = useState<
     (AccountWithPassword & { readonly reason: "created" | "reset" }) | null
   >(null);
@@ -92,9 +95,13 @@ export function AccountsPage({
     try {
       if (action.action === "reset") {
         setIssued({
-          ...(await api.resetPassword(action.username)),
+          ...(await api.resetPassword(
+            action.username,
+            chosenPassword === "" ? undefined : chosenPassword,
+          )),
           reason: "reset",
         });
+        setChosenPassword("");
       } else {
         const updated = await api.setActive(
           action.username,
@@ -135,7 +142,7 @@ export function AccountsPage({
         </button>
       </header>
       <p className={styles.lede}>
-        管理员什么都能改；编辑能管新闻源和关键词，看不到操作记录和账号。新建或重设时系统生成初始密码，只显示这一次。
+        管理员什么都能改；编辑能管新闻源和关键词，看不到操作记录和账号。新建或重设时可以自己输入密码；留空则由系统生成，并只显示这一次。
       </p>
       {message === null ? null : (
         <p
@@ -233,6 +240,26 @@ export function AccountsPage({
                           aria-label="确认操作"
                         >
                           {CONFIRM_TEXT[pending.action]}
+                          {pending.action === "reset" ? (
+                            <>
+                              <input
+                                type="password"
+                                aria-label="新密码（可不填）"
+                                autoComplete="new-password"
+                                maxLength={128}
+                                disabled={busy}
+                                placeholder="新密码（可不填）"
+                                value={chosenPassword}
+                                onChange={(event) =>
+                                  setChosenPassword(event.target.value)
+                                }
+                              />
+                              <PasswordHint
+                                password={chosenPassword}
+                                username={pending.username}
+                              />
+                            </>
+                          ) : null}
                           <button
                             type="button"
                             className={
@@ -250,7 +277,10 @@ export function AccountsPage({
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => setPending(null)}
+                            onClick={() => {
+                              setPending(null);
+                              setChosenPassword("");
+                            }}
                           >
                             取消
                           </button>
@@ -275,6 +305,7 @@ export function AccountsPage({
                               requestNavigation(() => {
                                 setEditing(null);
                                 setCreating(false);
+                                setChosenPassword("");
                                 setPending({
                                   username: account.username,
                                   action: "reset",
@@ -339,23 +370,33 @@ function IssuedPassword({
           {issued.account.username}）的密码：
         </strong>
       </p>
-      <p className={styles.password}>
-        <code>{issued.initialPassword}</code>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard?.writeText(issued.initialPassword).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            );
-          }}
-        >
-          {copied ? "已复制" : "复制"}
-        </button>
-      </p>
-      <p className={styles.hint}>
-        这个密码只显示这一次，请转交本人，并提醒对方登录后在「我的账号」里改成自己的密码。
-      </p>
+      {issued.initialPassword === null ? (
+        <p className={styles.hint}>
+          密码已设为你输入的那个，系统不会再显示。请把它告诉本人，并提醒对方登录后在「我的账号」里改成自己的密码。
+        </p>
+      ) : (
+        <>
+          <p className={styles.password}>
+            <code>{issued.initialPassword}</code>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(issued.initialPassword ?? "")
+                  .then(
+                    () => setCopied(true),
+                    () => setCopied(false),
+                  );
+              }}
+            >
+              {copied ? "已复制" : "复制"}
+            </button>
+          </p>
+          <p className={styles.hint}>
+            这个密码只显示这一次，请转交本人，并提醒对方登录后在「我的账号」里改成自己的密码。
+          </p>
+        </>
+      )}
       <button type="button" className={styles.primary} onClick={onDone}>
         我已记下
       </button>
@@ -377,8 +418,12 @@ function CreateAccountForm({
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<AccountRole>("editor");
+  const [password, setPassword] = useState("");
   const { requestDiscard } = useUnsavedChanges(
-    username !== "" || displayName !== "" || role !== "editor",
+    username !== "" ||
+      displayName !== "" ||
+      role !== "editor" ||
+      password !== "",
     onCancel,
   );
   const [busy, setBusy] = useState(false);
@@ -392,6 +437,7 @@ function CreateAccountForm({
           username: username.trim(),
           displayName: displayName.trim(),
           role,
+          ...(password === "" ? {} : { password }),
         }),
       );
     } catch (error) {
@@ -445,10 +491,22 @@ function CreateAccountForm({
             <option value="owner">管理员（全部权限）</option>
           </select>
         </label>
+        <label className={styles.field}>
+          <span>密码（可不填，留空由系统生成）</span>
+          <input
+            disabled={busy}
+            type="password"
+            autoComplete="new-password"
+            maxLength={128}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
       </div>
+      <PasswordHint password={password} username={username} />
       <div className={styles.actions}>
         <button type="submit" className={styles.primary} disabled={busy}>
-          {busy ? "正在新建…" : "新建并生成密码"}
+          {busy ? "正在新建…" : password === "" ? "新建并生成密码" : "新建账号"}
         </button>
         <button
           type="button"

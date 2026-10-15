@@ -282,7 +282,7 @@ async def test_the_account_command_line_creates_resets_and_disables(
     ) == [f"已创建 {name}（editor）"]
     with pytest.raises(CommandError, match="已存在"):
         await run("create", name, "--name", "x", "--role", "owner", "--password-stdin", stdin="y\n")
-    with pytest.raises(CommandError, match="10-128"):
+    with pytest.raises(CommandError, match="8-128"):
         await run("set-password", name, "--password-stdin", stdin="short\n")
     # A typed password must be confirmed.
     with pytest.raises(CommandError, match="不一样"):

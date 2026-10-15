@@ -11,8 +11,8 @@ export type AdminAccount = components["schemas"]["AdminAccountResponse"];
 export type AccountRole = AdminAccount["role"];
 export interface AccountWithPassword {
   readonly account: AdminAccount;
-  /** Shown once; the server keeps only a hash. */
-  readonly initialPassword: string;
+  /** Shown once when the server generated it; `null` when the owner chose the password. */
+  readonly initialPassword: string | null;
 }
 
 /** Everything the 账号管理 page asks the API; injected so tests never touch the network. */
@@ -22,8 +22,13 @@ export interface AccountsApi {
     readonly username: string;
     readonly displayName: string;
     readonly role: AccountRole;
+    /** The owner's own choice; omitted means the server generates one. */
+    readonly password?: string;
   }) => Promise<AccountWithPassword>;
-  readonly resetPassword: (username: string) => Promise<AccountWithPassword>;
+  readonly resetPassword: (
+    username: string,
+    password?: string,
+  ) => Promise<AccountWithPassword>;
   readonly setActive: (
     username: string,
     active: boolean,
@@ -63,21 +68,28 @@ export const accountsApi: AccountsApi = {
           username: input.username,
           display_name: input.displayName,
           role: input.role,
+          password: input.password ?? null,
         },
       }),
     );
     const data = check(result, "新建失败");
-    return { account: data.account, initialPassword: data.initial_password };
+    return {
+      account: data.account,
+      initialPassword: data.initial_password ?? null,
+    };
   },
-  async resetPassword(username) {
+  async resetPassword(username, password) {
     const result = await reach(() =>
-      adminClient.POST(
-        "/api/v1/admin/accounts/{username}/reset-password",
-        path(username),
-      ),
+      adminClient.POST("/api/v1/admin/accounts/{username}/reset-password", {
+        ...path(username),
+        ...(password === undefined ? {} : { body: { password } }),
+      }),
     );
     const data = check(result, "重设失败");
-    return { account: data.account, initialPassword: data.initial_password };
+    return {
+      account: data.account,
+      initialPassword: data.initial_password ?? null,
+    };
   },
   async setActive(username, active) {
     const result = await reach(() =>

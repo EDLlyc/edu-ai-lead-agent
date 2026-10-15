@@ -193,7 +193,7 @@ async def test_changing_my_password_keeps_this_session_and_ends_the_others(owner
         )
         assert wrong.status_code == 422
         assert wrong.json()["error"]["code"] == "admin_current_password_wrong"
-        for new_password, message in [("short", "10–128"), (PASSWORD, "不能和当前密码一样")]:
+        for new_password, message in [("short", "8–128"), (PASSWORD, "不能和当前密码一样")]:
             refused = await here.post(
                 "/api/v1/admin/auth/password",
                 json={"current_password": PASSWORD, "new_password": new_password},
@@ -267,3 +267,62 @@ async def test_a_source_lists_its_latest_articles(
         assert fetched == sorted(fetched, reverse=True)
         missing = await admin.get(f"/api/v1/admin/sources/{uuid4()}/articles")
         assert missing.status_code == 404
+
+
+async def test_an_owner_can_choose_the_password_and_only_common_ones_are_refused(
+    owner: str,
+) -> None:
+    async with _client() as admin, _client() as teacher:
+        assert await _login(admin, owner, PASSWORD) == 200
+        name = f"c{uuid4().hex[:8]}"
+        url = "/api/v1/admin/accounts"
+
+        for refused, message in [
+            ("12345678", "太常见"),
+            ("short", "8–128"),
+            (name, "和用户名一样"),
+        ]:
+            response = await admin.post(
+                url,
+                json={
+                    "username": name,
+                    "display_name": "李",
+                    "role": "editor",
+                    "password": refused,
+                },
+                headers=WRITE,
+            )
+            assert response.status_code == 422, refused
+            assert message in response.json()["error"]["message"]
+        listed = await admin.get(url)
+        assert all(item["username"] != name for item in listed.json()["items"])
+
+        # A weak but uncommon password is the owner's call; it is never echoed back.
+        created = await admin.post(
+            url,
+            json={"username": name, "display_name": "李", "role": "editor", "password": "19900101"},
+            headers=WRITE,
+        )
+        assert created.status_code == 201
+        assert created.json()["initial_password"] is None
+        assert "19900101" not in created.text
+        assert await _login(teacher, name, "19900101") == 200
+
+        refused_reset = await admin.post(
+            f"{url}/{name}/reset-password", json={"password": "password"}, headers=WRITE
+        )
+        assert refused_reset.status_code == 422
+        assert await _login(teacher, name, "19900101") == 200
+
+        reset = await admin.post(
+            f"{url}/{name}/reset-password", json={"password": "my own words 7"}, headers=WRITE
+        )
+        assert reset.status_code == 200
+        assert reset.json()["initial_password"] is None
+        assert (await teacher.get("/api/v1/admin/auth/me")).status_code == 401
+        teacher.cookies.clear()
+        assert await _login(teacher, name, "19900101") == 401
+        assert await _login(teacher, name, "my own words 7") == 200
+
+        generated = await admin.post(f"{url}/{name}/reset-password", headers=WRITE)
+        assert len(generated.json()["initial_password"]) == 14

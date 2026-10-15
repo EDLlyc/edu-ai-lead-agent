@@ -113,7 +113,8 @@ async def create_account(
     display_name: str,
     role: AdminRole,
     now: datetime,
-) -> tuple[AccountView, str]:
+    password: str | None = None,
+) -> tuple[AccountView, str | None]:
     try:
         name = normalize_username(username)
         shown = check_display_name(display_name)
@@ -121,7 +122,14 @@ async def create_account(
         raise AccountInputError(_input_message(error)) from error
     if await load_user_by_username(session, name) is not None:
         raise ConflictError("这个用户名已经有了（停用的账号也占用用户名），请换一个")
-    password = generate_initial_password()
+    generated: str | None = None
+    if password is None:
+        generated = password = generate_initial_password()
+    else:
+        try:
+            check_new_password(password, username=name)
+        except AdminInputError as error:
+            raise AccountInputError(_input_message(error)) from error
     user = await add_user(
         session,
         username=name,
@@ -142,14 +150,29 @@ async def create_account(
     )
     view = await _view(session, user, now)
     await session.commit()
-    return view, password
+    return view, generated
 
 
 async def reset_account_password(
-    session: AsyncSession, *, principal: AdminPrincipal, username: str, now: datetime
-) -> str:
+    session: AsyncSession,
+    *,
+    principal: AdminPrincipal,
+    username: str,
+    now: datetime,
+    password: str | None = None,
+) -> str | None:
+    """Set a new password: the owner's own choice, or a generated one that is returned once."""
+
     user = await _require(session, username)
-    password = generate_initial_password()
+    generated: str | None = None
+    if password is None:
+        generated = password = generate_initial_password()
+    else:
+        try:
+            check_new_password(password, username=user.username)
+        except AdminInputError as error:
+            await session.rollback()
+            raise AccountInputError(_input_message(error)) from error
     await set_admin_password(
         session,
         user=user,
@@ -159,7 +182,7 @@ async def reset_account_password(
         actor=principal.username,
     )
     await session.commit()
-    return password
+    return generated
 
 
 async def set_account_active(
@@ -287,7 +310,7 @@ async def change_own_password(
         await session.commit()
         raise CurrentPasswordRejectedError()
     try:
-        check_new_password(new_password)
+        check_new_password(new_password, username=user.username)
     except AdminInputError as error:
         await session.rollback()
         raise AccountInputError(_input_message(error)) from error
@@ -316,9 +339,13 @@ async def change_own_password(
 
 
 _INPUT_MESSAGES = {
+    # Order matters: the first key found in the message wins
+    # ("same as the username" also contains "username").
+    "most common passwords": "这个密码太常见了（比如 12345678、password），换一个",
+    "same as the username": "密码不能和用户名一样",
     "username": "用户名要 2–40 个字符：第一个是小写字母，后面可以是小写字母、数字、_ . -",
     "display name": "显示名要 1–40 个字",
-    "password must be": "新密码要 10–128 个字符",
+    "password must be": "新密码要 8–128 个字符",
     "spaces": "密码开头和结尾不能是空格",
 }
 

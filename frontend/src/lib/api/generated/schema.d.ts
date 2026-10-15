@@ -2182,6 +2182,12 @@ export interface components {
             /** Display Name */
             display_name: string;
             /**
+             * Password
+             * @description The owner's own choice; omitted means the server generates one.
+             * @default null
+             */
+            password: string | null;
+            /**
              * Role
              * @enum {string}
              */
@@ -2195,6 +2201,15 @@ export interface components {
             count: number;
             /** Items */
             items: components["schemas"]["AdminAccountResponse"][];
+        };
+        /** AdminAccountResetRequest */
+        AdminAccountResetRequest: {
+            /**
+             * Password
+             * @description The owner's own choice; omitted means the server generates one.
+             * @default null
+             */
+            password: string | null;
         };
         /** AdminAccountResponse */
         AdminAccountResponse: {
@@ -2230,12 +2245,16 @@ export interface components {
         };
         /**
          * AdminAccountWithPasswordResponse
-         * @description A created or reset account; `initial_password` is shown once and never again.
+         * @description A created or reset account. `initial_password` is only present when the server generated the
+         *     password (shown once, never again); a password the owner chose is never echoed back.
          */
         AdminAccountWithPasswordResponse: {
             account: components["schemas"]["AdminAccountResponse"];
-            /** Initial Password */
-            initial_password: string;
+            /**
+             * Initial Password
+             * @default null
+             */
+            initial_password: string | null;
         };
         /** AdminAuditEventListResponse */
         AdminAuditEventListResponse: {
@@ -8256,7 +8275,11 @@ export interface operations {
                 edu_admin_session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminAccountResetRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

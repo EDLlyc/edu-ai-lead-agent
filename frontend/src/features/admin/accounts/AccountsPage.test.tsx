@@ -105,7 +105,7 @@ describe("账号管理", () => {
     expect(
       await screen.findByRole("alertdialog", { name: "初始密码" }),
     ).toHaveTextContent("Hn4bZs8YcW3eLm");
-    expect(calls.resetPassword).toHaveBeenCalledWith("wang");
+    expect(calls.resetPassword).toHaveBeenCalledWith("wang", undefined);
 
     const again = (await screen.findAllByRole("row"))[2]!;
     await user.click(within(again).getByRole("button", { name: "停用" }));
@@ -116,6 +116,61 @@ describe("账号管理", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "已停用「王老师」",
     );
+  });
+
+  it("lets the owner choose the password, warns when it is weak and never shows it back", async () => {
+    const user = userEvent.setup();
+    const calls = api({
+      create: vi.fn(() =>
+        Promise.resolve({
+          account: { ...WANG, username: "zhang", display_name: "张老师" },
+          initialPassword: null,
+        }),
+      ),
+    });
+    render(
+      <AccountsPage api={calls} me="liyuchen" onSessionExpired={vi.fn()} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "新建账号" }));
+    const form = screen.getByRole("form", { name: "新建账号" });
+    await user.type(within(form).getByLabelText(/用户名/), "zhang");
+    await user.type(within(form).getByLabelText("显示名"), "张老师");
+    await user.type(within(form).getByLabelText(/^密码/), "19900101");
+    expect(within(form).getByRole("status")).toHaveTextContent("密码强度：弱");
+    expect(within(form).getByRole("status")).toHaveTextContent("仍可以使用");
+    await user.click(within(form).getByRole("button", { name: "新建账号" }));
+
+    expect(calls.create).toHaveBeenCalledWith({
+      username: "zhang",
+      displayName: "张老师",
+      role: "editor",
+      password: "19900101",
+    });
+    const issued = await screen.findByRole("alertdialog", { name: "初始密码" });
+    expect(issued).toHaveTextContent("不会再显示");
+    expect(issued).not.toHaveTextContent("19900101");
+  });
+
+  it("resets a password to one the owner typed", async () => {
+    const user = userEvent.setup();
+    const calls = api({
+      resetPassword: vi.fn(() =>
+        Promise.resolve({ account: WANG, initialPassword: null }),
+      ),
+    });
+    render(
+      <AccountsPage api={calls} me="liyuchen" onSessionExpired={vi.fn()} />,
+    );
+    const wang = (await screen.findAllByRole("row"))[2]!;
+    await user.click(within(wang).getByRole("button", { name: "重设密码" }));
+    const confirm = within(wang).getByRole("group", { name: "确认操作" });
+    await user.type(
+      within(confirm).getByLabelText("新密码（可不填）"),
+      "a8f3k2m9Qz",
+    );
+    await user.click(within(confirm).getByRole("button", { name: "确认" }));
+    await screen.findByRole("alertdialog", { name: "初始密码" });
+    expect(calls.resetPassword).toHaveBeenCalledWith("wang", "a8f3k2m9Qz");
   });
 
   it("edits a display name and role, but not my own role", async () => {

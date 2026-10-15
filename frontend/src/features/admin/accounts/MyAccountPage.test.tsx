@@ -34,11 +34,11 @@ describe("我的账号", () => {
 
     const submit = screen.getByRole("button", { name: "修改密码" });
     await user.type(screen.getByLabelText("当前密码"), "OznhQQvlrLH7ygXt");
-    await user.type(screen.getByLabelText(/新密码（至少 10 位）/), "short");
-    expect(screen.getByText("新密码至少 10 位。")).toBeInTheDocument();
-    await user.clear(screen.getByLabelText(/新密码（至少 10 位）/));
+    await user.type(screen.getByLabelText(/新密码（至少 8 位）/), "short");
+    expect(screen.getByText("新密码至少 8 位。")).toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/新密码（至少 8 位）/));
     await user.type(
-      screen.getByLabelText(/新密码（至少 10 位）/),
+      screen.getByLabelText(/新密码（至少 8 位）/),
       "my-own-pass-2026",
     );
     await user.type(
@@ -73,7 +73,7 @@ describe("我的账号", () => {
     );
     await user.type(screen.getByLabelText("当前密码"), "guess-guess");
     await user.type(
-      screen.getByLabelText(/新密码（至少 10 位）/),
+      screen.getByLabelText(/新密码（至少 8 位）/),
       "my-own-pass-2026",
     );
     await user.type(
@@ -94,7 +94,7 @@ describe("我的账号", () => {
     );
     await user.type(screen.getByLabelText("当前密码"), "guess-guess");
     await user.type(
-      screen.getByLabelText(/新密码（至少 10 位）/),
+      screen.getByLabelText(/新密码（至少 8 位）/),
       "my-own-pass-2026",
     );
     await user.type(
@@ -119,7 +119,7 @@ it("freezes a submitted password snapshot and restores all inputs after a deferr
     </UnsavedChangesProvider>,
   );
   const current = screen.getByLabelText("当前密码");
-  const next = screen.getByLabelText("新密码（至少 10 位）");
+  const next = screen.getByLabelText("新密码（至少 8 位）");
   const again = screen.getByLabelText("再输一次新密码");
   await user.type(current, "original-password");
   await user.type(next, "submitted-password");

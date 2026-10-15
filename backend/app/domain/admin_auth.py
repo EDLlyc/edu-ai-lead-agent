@@ -26,7 +26,7 @@ WRITE_GUARD_HEADER = "X-Admin-Request"
 MAX_FAILED_LOGINS = 5
 LOCKOUT = timedelta(minutes=15)
 
-PASSWORD_MIN_CHARS = 10
+PASSWORD_MIN_CHARS = 8
 PASSWORD_MAX_CHARS = 128
 _USERNAME = re.compile(r"^[a-z][a-z0-9_.-]{1,39}$")
 
@@ -58,13 +58,53 @@ def check_display_name(value: str) -> str:
     return name
 
 
-def check_new_password(password: str) -> None:
+# The passwords every guessing list tries first. They are refused outright; every other password is
+# accepted and the console only shows a strength hint (frontend `passwordStrength`).
+_COMMON_PASSWORDS = frozenset(
+    {
+        "12345678",
+        "123456789",
+        "1234567890",
+        "0123456789",
+        "11111111",
+        "00000000",
+        "88888888",
+        "66666666",
+        "password",
+        "password1",
+        "password123",
+        "qwertyui",
+        "qwerty123",
+        "qwertyuiop",
+        "abc12345",
+        "abcd1234",
+        "admin123",
+        "admin1234",
+        "iloveyou",
+        "1q2w3e4r",
+        "1qaz2wsx",
+        "a1234567",
+        "aa123456",
+        "woaini1314",
+    }
+)
+
+
+def check_new_password(password: str, *, username: str | None = None) -> None:
+    """Hard rules only: length, edge spaces, the most common passwords, a repeated character and
+    the account's own name. Strength beyond that is a hint, not a gate."""
+
     if not PASSWORD_MIN_CHARS <= len(password) <= PASSWORD_MAX_CHARS:
         raise AdminInputError(
             f"password must be {PASSWORD_MIN_CHARS}-{PASSWORD_MAX_CHARS} characters"
         )
     if password.strip() != password:
         raise AdminInputError("password must not start or end with spaces")
+    lowered = password.lower()
+    if lowered in _COMMON_PASSWORDS or len(set(password)) == 1:
+        raise AdminInputError("password is one of the most common passwords; pick another")
+    if username is not None and lowered == username.strip().lower():
+        raise AdminInputError("password must not be the same as the username")
 
 
 def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:

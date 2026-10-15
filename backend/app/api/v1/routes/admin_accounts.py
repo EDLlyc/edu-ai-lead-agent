@@ -22,6 +22,7 @@ from app.application.services.admin_auth import AdminPrincipal
 from app.schemas.admin import (
     AdminAccountCreateRequest,
     AdminAccountListResponse,
+    AdminAccountResetRequest,
     AdminAccountResponse,
     AdminAccountUpdateRequest,
     AdminAccountWithPasswordResponse,
@@ -65,6 +66,7 @@ async def post_admin_account(
         display_name=body.display_name,
         role=body.role,
         now=datetime.now(UTC),
+        password=body.password,
     )
     return AdminAccountWithPasswordResponse(account=_account(view), initial_password=password)
 
@@ -86,10 +88,19 @@ async def patch_admin_account(
 
 @router.post("/{username}/reset-password", response_model=AdminAccountWithPasswordResponse)
 async def post_admin_account_reset(
-    username: str, owner: Owner, session: Session
+    username: str,
+    owner: Owner,
+    session: Session,
+    body: AdminAccountResetRequest | None = None,
 ) -> AdminAccountWithPasswordResponse:
     now = datetime.now(UTC)
-    password = await reset_account_password(session, principal=owner, username=username, now=now)
+    password = await reset_account_password(
+        session,
+        principal=owner,
+        username=username,
+        now=now,
+        password=None if body is None else body.password,
+    )
     view = next(item for item in await list_accounts(session, now=now) if item.username == username)
     return AdminAccountWithPasswordResponse(account=_account(view), initial_password=password)
 

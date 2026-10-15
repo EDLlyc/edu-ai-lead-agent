@@ -283,6 +283,20 @@
             "title": "Display Name",
             "type": "string"
           },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The owner's own choice; omitted means the server generates one.",
+            "title": "Password"
+          },
           "role": {
             "enum": [
               "owner",
@@ -325,6 +339,27 @@
           "count"
         ],
         "title": "AdminAccountListResponse",
+        "type": "object"
+      },
+      "AdminAccountResetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The owner's own choice; omitted means the server generates one.",
+            "title": "Password"
+          }
+        },
+        "title": "AdminAccountResetRequest",
         "type": "object"
       },
       "AdminAccountResponse": {
@@ -424,19 +459,26 @@
         "type": "object"
       },
       "AdminAccountWithPasswordResponse": {
-        "description": "A created or reset account; `initial_password` is shown once and never again.",
+        "description": "A created or reset account. `initial_password` is only present when the server generated the\npassword (shown once, never again); a password the owner chose is never echoed back.",
         "properties": {
           "account": {
             "$ref": "#/components/schemas/AdminAccountResponse"
           },
           "initial_password": {
-            "title": "Initial Password",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Initial Password"
           }
         },
         "required": [
-          "account",
-          "initial_password"
+          "account"
         ],
         "title": "AdminAccountWithPasswordResponse",
         "type": "object"
@@ -16768,6 +16810,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AdminAccountResetRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

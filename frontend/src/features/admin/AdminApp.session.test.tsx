@@ -315,7 +315,7 @@ describe("session continuity on return to admin", () => {
       open(calls);
       await user.type(await screen.findByLabelText("当前密码"), "old-password");
       await user.type(
-        screen.getByLabelText("新密码（至少 10 位）"),
+        screen.getByLabelText("新密码（至少 8 位）"),
         "next-password",
       );
       await user.type(screen.getByLabelText("再输一次新密码"), "next-password");

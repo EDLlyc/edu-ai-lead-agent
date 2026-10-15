@@ -56,11 +56,23 @@ def test_usernames_are_normalised_and_checked() -> None:
             normalize_username(bad)
 
 
-def test_new_passwords_need_ten_characters_without_edge_spaces() -> None:
-    check_new_password("0123456789")
-    for bad in ["short", " 0123456789", "x" * 129]:
+def test_new_passwords_need_eight_characters_without_edge_spaces() -> None:
+    check_new_password("a8f3k2m9")
+    check_new_password("19900101")  # weak but not on the common list: only a hint in the UI
+    for bad in ["short", "seven77", " a8f3k2m9", "x" * 129]:
         with pytest.raises(AdminInputError):
             check_new_password(bad)
+
+
+def test_only_the_most_common_passwords_and_the_username_are_refused() -> None:
+    for common in ["12345678", "Password", "11111111", "zzzzzzzzzz", "QWERTY123"]:
+        with pytest.raises(AdminInputError, match="most common"):
+            check_new_password(common)
+    with pytest.raises(AdminInputError, match="same as the username"):
+        check_new_password("Liyuchen88", username="liyuchen88")
+    # Short or all-digit passwords that are not on the list are allowed.
+    check_new_password("19900101")
+    check_new_password("liyuchen88", username="liyuchen")
 
 
 def test_the_fifth_wrong_password_locks_for_fifteen_minutes() -> None:

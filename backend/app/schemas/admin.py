@@ -58,6 +58,21 @@ class AdminAccountCreateRequest(BaseModel):
     username: str = Field(min_length=1, max_length=80)
     display_name: str = Field(min_length=1, max_length=80)
     role: Literal["owner", "editor"]
+    password: str | None = Field(
+        default=None,
+        max_length=200,
+        description="The owner's own choice; omitted means the server generates one.",
+    )
+
+
+class AdminAccountResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str | None = Field(
+        default=None,
+        max_length=200,
+        description="The owner's own choice; omitted means the server generates one.",
+    )
 
 
 class AdminAccountUpdateRequest(BaseModel):
@@ -68,10 +83,11 @@ class AdminAccountUpdateRequest(BaseModel):
 
 
 class AdminAccountWithPasswordResponse(BaseModel):
-    """A created or reset account; `initial_password` is shown once and never again."""
+    """A created or reset account. `initial_password` is only present when the server generated the
+    password (shown once, never again); a password the owner chose is never echoed back."""
 
     account: AdminAccountResponse
-    initial_password: str
+    initial_password: str | None = None
 
 
 class AdminPasswordChangeRequest(BaseModel):

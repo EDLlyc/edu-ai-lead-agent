@@ -53,6 +53,7 @@ class CommandError(Exception):
 
 def read_password(
     *,
+    username: str | None = None,
     from_stdin: bool,
     stdin: TextIO,
     prompt: Callable[[str], str] = getpass.getpass,
@@ -64,7 +65,7 @@ def read_password(
         if prompt("再输一次: ") != password:
             raise CommandError("两次输入的密码不一样")
     try:
-        check_new_password(password)
+        check_new_password(password, username=username)
     except AdminInputError as error:
         raise CommandError(str(error)) from error
     return password
@@ -103,7 +104,9 @@ async def run_command(
             if await load_user_by_username(session, username) is not None:
                 raise CommandError(f"账号已存在: {username}")
             display_name = check_display_name(args.name)
-            password = read_password(from_stdin=args.password_stdin, stdin=stdin, prompt=prompt)
+            password = read_password(
+                username=username, from_stdin=args.password_stdin, stdin=stdin, prompt=prompt
+            )
             user = await add_user(
                 session,
                 username=username,
@@ -127,7 +130,12 @@ async def run_command(
 
         user = await _require_user(session, args.username)
         if args.command == "set-password":
-            password = read_password(from_stdin=args.password_stdin, stdin=stdin, prompt=prompt)
+            password = read_password(
+                username=user.username,
+                from_stdin=args.password_stdin,
+                stdin=stdin,
+                prompt=prompt,
+            )
             ended = await set_admin_password(
                 session, user=user, password=password, now=now, actor_id=None, actor=CLI_ACTOR
             )

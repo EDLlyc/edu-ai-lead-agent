@@ -4,6 +4,7 @@ import styles from "../Admin.module.css";
 import { useUnsavedChanges } from "../unsaved/context";
 import { AdminSessionExpiredError, type AdminApi, type AdminMe } from "../api";
 import { formatTime } from "../sources/labels";
+import { PasswordHint } from "./PasswordHint";
 
 const ROLE_LABELS = { owner: "管理员", editor: "编辑" } as const;
 
@@ -33,7 +34,7 @@ export function MyAccountPage({
   });
 
   const mismatch = again !== "" && next !== again;
-  const tooShort = next !== "" && next.length < 10;
+  const tooShort = next !== "" && next.length < 8;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -111,13 +112,13 @@ export function MyAccountPage({
             />
           </label>
           <label className={styles.field}>
-            <span>新密码（至少 10 位）</span>
+            <span>新密码（至少 8 位）</span>
             <input
               disabled={busy}
               type="password"
               autoComplete="new-password"
               required
-              minLength={10}
+              minLength={8}
               maxLength={128}
               value={next}
               onChange={(event) => setNext(event.target.value)}
@@ -135,7 +136,8 @@ export function MyAccountPage({
             />
           </label>
         </div>
-        {tooShort ? <p className={styles.hint}>新密码至少 10 位。</p> : null}
+        {tooShort ? <p className={styles.hint}>新密码至少 8 位。</p> : null}
+        <PasswordHint password={next} username={me.username} />
         {mismatch ? (
           <p className={styles.error}>两次输入的新密码不一样。</p>
         ) : null}
