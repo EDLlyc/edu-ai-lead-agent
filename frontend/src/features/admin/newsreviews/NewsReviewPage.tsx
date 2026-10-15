@@ -5,12 +5,16 @@ import { AdminSessionExpiredError } from "../api";
 import {
   newsReviewsApi as defaultApi,
   NewsReviewApiError,
+  type NewsPick,
   type NewsReviewsApi,
 } from "./api";
+import { HeldPickEditor } from "./HeldPickEditor";
 import {
   EXCLUDE_REASONS,
   flattenPool,
   measureAgreement,
+  PICK_STAGE_LABEL,
+  pickInProgress,
   REASON_LABEL,
   reviewCall,
   type ReviewCall,
@@ -30,8 +34,86 @@ function percent(part: number, whole: number): string {
   return whole === 0 ? "–" : `${Math.round((part / whole) * 100)}%`;
 }
 
+const PICK_REFRESH_MS = 20_000;
+
 function score(value: number): string {
   return value.toFixed(2);
+}
+
+function picksOf(items: readonly ReviewItem[]): Map<string, NewsPick> {
+  const found = new Map<string, NewsPick>();
+  for (const item of items) {
+    if (item.pick !== null) found.set(item.key, item.pick);
+  }
+  return found;
+}
+
+/** Everything about one 人工加推: start it, wait for the copy, review it, push it. */
+function PickPanel({
+  entry,
+  pick,
+  busy,
+  api,
+  onStart,
+  onRefresh,
+  onPushed,
+  onSessionExpired,
+}: {
+  readonly entry: ReviewItem;
+  readonly pick: NewsPick | null;
+  readonly busy: boolean;
+  readonly api: NewsReviewsApi;
+  readonly onStart: () => void;
+  readonly onRefresh: () => void;
+  readonly onPushed: (pick: NewsPick) => void;
+  readonly onSessionExpired: (error: unknown) => boolean;
+}) {
+  if (pick === null) {
+    return (
+      <div role="group" aria-label={`人工加推：${entry.title}`}>
+        <p className={styles.hint}>
+          把这条新闻额外推到正式家长群。先生成文案和配图并留住，你确认、必要时改引导语之后才会发出。每天
+          22:30 前可以加推。
+        </p>
+        <span className={styles.rowActions}>
+          <button
+            type="button"
+            className={styles.primary}
+            disabled={busy}
+            onClick={onStart}
+          >
+            生成文案和配图
+          </button>
+        </span>
+      </div>
+    );
+  }
+  if (pick.stage === "awaiting_review") {
+    return (
+      <HeldPickEditor
+        candidateKey={entry.key}
+        api={api}
+        onPushed={onPushed}
+        onSessionExpired={onSessionExpired}
+      />
+    );
+  }
+  return (
+    <div role="group" aria-label={`人工加推：${entry.title}`}>
+      <p className={styles.hint} role="status">
+        {PICK_STAGE_LABEL[pick.stage]}
+        {pickInProgress(pick) ? "，页面会自动刷新进度。" : "。"}
+      </p>
+      {pick.failure_code == null ? null : (
+        <p className={styles.error}>原因代码：{pick.failure_code}</p>
+      )}
+      <span className={styles.rowActions}>
+        <button type="button" onClick={onRefresh}>
+          刷新进度
+        </button>
+      </span>
+    </div>
+  );
 }
 
 export function NewsReviewPage({
@@ -51,6 +133,9 @@ export function NewsReviewPage({
   const [editing, setEditing] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [pickEnabled, setPickEnabled] = useState(false);
+  const [picks, setPicks] = useState<ReadonlyMap<string, NewsPick>>(new Map());
+  const [panel, setPanel] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     readonly kind: "ok" | "error";
     readonly text: string;
@@ -66,6 +151,16 @@ export function NewsReviewPage({
         kind: "error",
         text: error instanceof NewsReviewApiError ? error.message : fallback,
       });
+    },
+    [onSessionExpired],
+  );
+
+  /** For the pick editor: a lapsed session ends the page; anything else it shows itself. */
+  const sessionEnded = useCallback(
+    (error: unknown) => {
+      if (!(error instanceof AdminSessionExpiredError)) return false;
+      onSessionExpired();
+      return true;
     },
     [onSessionExpired],
   );
@@ -87,6 +182,11 @@ export function NewsReviewPage({
         }
         setItems(flat);
         setRecords(existing);
+        setPickEnabled(
+          pool.human_pick_enabled === true &&
+            pool.human_pick_review_enabled === true,
+        );
+        setPicks(picksOf(flat));
       },
       (error: unknown) => {
         if (!cancelled) fail(error, "读取新闻失败");
@@ -96,6 +196,27 @@ export function NewsReviewPage({
       cancelled = true;
     };
   }, [api, fail]);
+
+  const refreshPicks = useCallback(async () => {
+    try {
+      setPicks(picksOf(flattenPool(await api.load())));
+    } catch (error) {
+      fail(error, "刷新加推进度失败");
+    }
+  }, [api, fail]);
+
+  const working = useMemo(
+    () => [...picks.values()].some((entry) => pickInProgress(entry)),
+    [picks],
+  );
+
+  useEffect(() => {
+    if (!working) return undefined;
+    const timer = window.setInterval(() => {
+      void refreshPicks();
+    }, PICK_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [working, refreshPicks]);
 
   const visible = useMemo(() => {
     if (items === null) return [];
@@ -181,6 +302,24 @@ export function NewsReviewPage({
     }
   };
 
+  const startPick = async (entry: ReviewItem) => {
+    if (busyKey !== null) return;
+    setBusyKey(entry.key);
+    setMessage(null);
+    try {
+      const created = await api.createPick(entry.key);
+      setPicks(new Map(picks).set(entry.key, created));
+      setMessage({
+        kind: "ok",
+        text: "已开始生成文案和配图，几分钟后回到这里审核；确认之前不会发到群里。",
+      });
+    } catch (error) {
+      fail(error, "加推失败，请重试");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const openEditor = (entry: ReviewItem) => {
     if (editing === entry.key) {
       setEditing(null);
@@ -203,6 +342,9 @@ export function NewsReviewPage({
         看 AI
         每天挑选和落选的新闻，每条点一下「适合推」或「不适合推」。这里只记录你的意见，用来评估
         AI 选得准不准，不会改变已经选好的内容，也不会发出任何消息。
+        {pickEnabled
+          ? "唯一的例外是「人工加推」：你确认文案后，才会发到正式家长群。"
+          : ""}
       </p>
       {message === null ? null : (
         <p
@@ -385,7 +527,39 @@ export function NewsReviewPage({
                         >
                           备注
                         </button>
+                        {!pickEnabled || entry.selected ? null : (
+                          <button
+                            type="button"
+                            aria-expanded={panel === entry.key}
+                            aria-label={`加推：${entry.title}`}
+                            disabled={busy}
+                            onClick={() =>
+                              setPanel(panel === entry.key ? null : entry.key)
+                            }
+                          >
+                            {picks.has(entry.key) ? "加推进度" : "人工加推"}
+                          </button>
+                        )}
                       </span>
+                      {!picks.has(entry.key) ? null : (
+                        <div className={styles.metadata}>
+                          加推：{PICK_STAGE_LABEL[picks.get(entry.key)!.stage]}
+                        </div>
+                      )}
+                      {panel !== entry.key ? null : (
+                        <PickPanel
+                          entry={entry}
+                          pick={picks.get(entry.key) ?? null}
+                          busy={busy}
+                          api={api}
+                          onStart={() => void startPick(entry)}
+                          onRefresh={() => void refreshPicks()}
+                          onPushed={(pushed) =>
+                            setPicks(new Map(picks).set(entry.key, pushed))
+                          }
+                          onSessionExpired={sessionEnded}
+                        />
+                      )}
                       {record?.note == null ? null : (
                         <div className={styles.metadata}>
                           备注：{record.note}

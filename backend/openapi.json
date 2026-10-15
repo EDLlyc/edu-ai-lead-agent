@@ -293,7 +293,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "description": "The owner's own choice; omitted means the server generates one.",
             "title": "Password"
           },
@@ -354,7 +353,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "description": "The owner's own choice; omitted means the server generates one.",
             "title": "Password"
           }
@@ -473,7 +471,6 @@
                 "type": "null"
               }
             ],
-            "default": null,
             "title": "Initial Password"
           }
         },
@@ -15568,6 +15565,7 @@
               "queued",
               "writing",
               "imaging",
+              "awaiting_review",
               "sending",
               "delivered",
               "partial",
@@ -15584,6 +15582,34 @@
           "picked_at"
         ],
         "title": "VisitorDisplayHumanPick",
+        "type": "object"
+      },
+      "VisitorDisplayHumanPickRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "pattern": "^vn1_[0-9a-f]{24}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "VisitorDisplayHumanPickRequest",
         "type": "object"
       },
       "VisitorDisplayHumanReview": {
@@ -15897,6 +15923,11 @@
             "title": "Human Pick Enabled",
             "type": "boolean"
           },
+          "human_pick_review_enabled": {
+            "default": false,
+            "title": "Human Pick Review Enabled",
+            "type": "boolean"
+          },
           "review_enabled": {
             "default": false,
             "title": "Review Enabled",
@@ -15993,6 +16024,203 @@
           "weight"
         ],
         "title": "VisitorDisplayScoreDimension",
+        "type": "object"
+      },
+      "VisitorHumanPickCopyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "hook": {
+            "maxLength": 500,
+            "title": "Hook",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hook"
+        ],
+        "title": "VisitorHumanPickCopyRequest",
+        "type": "object"
+      },
+      "VisitorHumanPickIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[a-z][a-z0-9_]{0,79}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "VisitorHumanPickIssue",
+        "type": "object"
+      },
+      "VisitorHumanPickReview": {
+        "additionalProperties": false,
+        "description": "A held pick's copy for the operator (PIN-gated): fixed lines and the editable ones.",
+        "properties": {
+          "copywriting": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copywriting"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "headline": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Headline",
+            "type": "array"
+          },
+          "hook": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Hook",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/VisitorHumanPickIssue"
+            },
+            "maxItems": 40,
+            "title": "Issues",
+            "type": "array"
+          },
+          "link_line": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Line"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "push_deadline": {
+            "format": "date-time",
+            "title": "Push Deadline",
+            "type": "string"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved"
+          },
+          "source_line": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Line"
+          },
+          "stage": {
+            "enum": [
+              "queued",
+              "writing",
+              "imaging",
+              "awaiting_review",
+              "sending",
+              "delivered",
+              "partial",
+              "unknown",
+              "failed",
+              "expired"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "editable",
+          "push_deadline"
+        ],
+        "title": "VisitorHumanPickReview",
         "type": "object"
       },
       "VisualAssetKind": {
@@ -17611,6 +17839,256 @@
           }
         },
         "summary": "Post Admin Password",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/human-picks": {
+      "post": {
+        "description": "Queue copy and picture for one candidate; nothing is sent to the group yet.",
+        "operationId": "create_admin_human_pick_api_v1_admin_human_picks_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisitorDisplayHumanPickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorDisplayHumanPick"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Admin Human Pick",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/human-picks/{key}/copy": {
+      "post": {
+        "description": "Check (``dry_run``) or save the hook and hashtags; the copy rules decide what passes.",
+        "operationId": "revise_admin_human_pick_copy_api_v1_admin_human_picks__key__copy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "pattern": "^vn1_[0-9a-f]{24}$",
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisitorHumanPickCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorHumanPickReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Admin Human Pick Copy",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/human-picks/{key}/push": {
+      "post": {
+        "description": "Send the held pick to the formal WeCom group now; a second push is refused.",
+        "operationId": "push_admin_human_pick_api_v1_admin_human_picks__key__push_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "pattern": "^vn1_[0-9a-f]{24}$",
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorDisplayHumanPick"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Push Admin Human Pick",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/human-picks/{key}/review": {
+      "get": {
+        "description": "The held pick's copy as it will be pushed.",
+        "operationId": "read_admin_human_pick_review_api_v1_admin_human_picks__key__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "pattern": "^vn1_[0-9a-f]{24}$",
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorHumanPickReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Admin Human Pick Review",
         "tags": [
           "admin"
         ]

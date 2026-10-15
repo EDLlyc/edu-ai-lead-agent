@@ -8,6 +8,7 @@ import { NewsReviewPage } from "./NewsReviewPage";
 
 const POOL: NewsPool = {
   human_pick_enabled: false,
+  human_pick_review_enabled: false,
   review_enabled: true,
   batches: [
     {
@@ -47,6 +48,10 @@ function api(overrides: Partial<NewsReviewsApi> = {}): NewsReviewsApi {
     review: vi.fn((_key: string, decision: NewsDecision) =>
       Promise.resolve({ decision, reviewed_at: "2026-10-15T05:00:00Z" }),
     ),
+    createPick: vi.fn(() => Promise.reject(new Error("not used"))),
+    loadReview: vi.fn(() => Promise.reject(new Error("not used"))),
+    revise: vi.fn(() => Promise.reject(new Error("not used"))),
+    push: vi.fn(() => Promise.reject(new Error("not used"))),
     ...overrides,
   };
 }

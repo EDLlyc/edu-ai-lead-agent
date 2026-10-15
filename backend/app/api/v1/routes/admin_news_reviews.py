@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.admin_dependencies import admin_guard, require_admin
 from app.application.services.admin_auth import AdminPrincipal
 from app.application.services.visitor_display import VisitorDisplayService
+from app.core.config import Settings
 from app.core.errors import NotFoundError
 from app.infrastructure.db.news_reviews import PostgresNewsReviewStore
 from app.infrastructure.db.visitor_display import PostgresVisitorDisplayRepository
@@ -39,7 +40,15 @@ def _service(request: Request, store: PostgresNewsReviewStore) -> VisitorDisplay
         repository=PostgresVisitorDisplayRepository(session_factory),
         asset_secret=_UNUSED_ASSET_SECRET,
         reviews=store,
+        # Picks are made in this console, so the pool shows their progress and the held copy.
+        human_picks_enabled=_picks_enabled(request),
+        human_pick_review=True,
     )
+
+
+def _picks_enabled(request: Request) -> bool:
+    settings = cast(Settings, request.app.state.settings)
+    return bool(settings.content_enabled and settings.content_slot_mode_enabled)
 
 
 def _store(request: Request) -> PostgresNewsReviewStore:

@@ -211,6 +211,8 @@ VisitorHumanPickStage = Literal[
     "queued",
     "writing",
     "imaging",
+    # Copy and picture are ready; held until the operator pushes (since 2026-10-01).
+    "awaiting_review",
     "sending",
     "delivered",
     "partial",
@@ -225,6 +227,12 @@ VisitorHumanPickRejection = Literal[
     "human_pick_no_lineage",
     "human_pick_too_late",
     "content_slot_disabled",
+    # Review, edit and push of a held pick.
+    "human_pick_not_ready",
+    "human_pick_already_pushed",
+    "human_pick_rejected",
+    "human_pick_expired",
+    "human_pick_copy_invalid",
 ]
 
 
@@ -290,6 +298,8 @@ class VisitorDisplayNewsBatch(_StrictModel):
 class VisitorDisplayNewsPool(_StrictModel):
     review_enabled: bool = False
     human_pick_enabled: bool = False
+    # Production holds picks for review, edit and push (it answers the review routes).
+    human_pick_review_enabled: bool = False
     batches: list[VisitorDisplayNewsBatch] = Field(default_factory=list, max_length=6)
 
 
@@ -461,6 +471,37 @@ class VisitorDisplayNewsReviewRequest(_StrictModel):
 class VisitorDisplayHumanPickRequest(_StrictModel):
     key: str = Field(pattern=NEWS_KEY_PATTERN)
     note: str | None = Field(default=None, min_length=1, max_length=280)
+
+
+class VisitorHumanPickIssue(_StrictModel):
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")
+    severity: Literal["warning", "error"]
+    message: str = Field(min_length=1, max_length=240)
+
+
+class VisitorHumanPickReview(_StrictModel):
+    """A held pick's copy for the operator (PIN-gated): fixed lines and the editable ones."""
+
+    stage: VisitorHumanPickStage
+    editable: bool
+    push_deadline: datetime
+    copywriting: str | None = Field(default=None, max_length=4000)
+    heading: str | None = Field(default=None, max_length=40)
+    headline: list[str] = Field(default_factory=list, max_length=3)
+    hook: str = Field(default="", max_length=500)
+    source_line: str | None = Field(default=None, max_length=500)
+    link_line: str | None = Field(default=None, max_length=1000)
+    hashtags: list[str] = Field(default_factory=list, max_length=6)
+    issues: list[VisitorHumanPickIssue] = Field(default_factory=list, max_length=40)
+    # Set only by a check or save.
+    passed: bool | None = None
+    saved: bool | None = None
+
+
+class VisitorHumanPickCopyRequest(_StrictModel):
+    hook: str = Field(max_length=500)
+    hashtags: list[str] = Field(default_factory=list, max_length=6)
+    dry_run: bool = False
 
 
 class VisitorDisplayOperatorSessionRequest(_StrictModel):

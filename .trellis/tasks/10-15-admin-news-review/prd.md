@@ -44,3 +44,22 @@ own account instead of a local adapter + operator PIN + SSH tunnel.
   running image with the changed files, console swap. Not done yet.
 - Phase 3 (human pick from the console) not started; it sends to the formal WeCom group and needs its own go-ahead.
 - Known unrelated failures on mainline: `test_migrations.py` head assertion (expects 0059), a Chinese-family downgrade guard.
+
+## Progress (2026-10-15 night): phase 3 built, NOT deployed
+- Production already has everything the human pick needs (service, held-pick review, routes, delivery hold); the
+  production files `human_pick_review.py`, `db/human_pick_review.py`, `wecom_delivery.py`, `content_slots.py` are
+  byte-identical to mainline, so the deploy is the API overlay plus the console, with no migration.
+- Admin API (owner + editor, account = reviewer, called in-process, no tunnel and no PIN):
+  `POST /api/v1/admin/human-picks` (make copy and picture, held), `GET .../{key}/review`, `POST .../{key}/copy`
+  (`dry_run` checks, otherwise saves), `POST .../{key}/push` (the only call that reaches the formal group;
+  production refuses a second push). The pool now reports `human_pick_enabled` and `human_pick_review_enabled`
+  when content slot mode is on.
+- Ported from the root tree's uncommitted work (not the whole WIP): the held-pick stage `awaiting_review`, the review
+  loader `load_human_pick_review`, the headline/hook splitter and the new refusal codes.
+- Console: in 新闻审核 each item the AI did not select gets 人工加推: 生成文案和配图, progress (auto refresh every
+  20 s), then an editor for the hook and hashtags (check / save), and a push that needs two confirmations.
+- Tests: integration `test_admin_human_picks.py` (auth, write guard, review, check, save, push, second push refused,
+  reviewer = account, disabled slot mode), frontend `HumanPick.test.tsx`; 239 admin frontend tests pass.
+- Still to do: deploy (API overlay + console swap) after the owner's go-ahead; first real push by the owner.
+- Open: keep or remove the PIN-based exhibit review.
+

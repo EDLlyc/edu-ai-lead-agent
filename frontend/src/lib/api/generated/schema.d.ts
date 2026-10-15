@@ -226,6 +226,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/human-picks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Admin Human Pick
+         * @description Queue copy and picture for one candidate; nothing is sent to the group yet.
+         */
+        post: operations["create_admin_human_pick_api_v1_admin_human_picks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/human-picks/{key}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Admin Human Pick Copy
+         * @description Check (``dry_run``) or save the hook and hashtags; the copy rules decide what passes.
+         */
+        post: operations["revise_admin_human_pick_copy_api_v1_admin_human_picks__key__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/human-picks/{key}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Admin Human Pick
+         * @description Send the held pick to the formal WeCom group now; a second push is refused.
+         */
+        post: operations["push_admin_human_pick_api_v1_admin_human_picks__key__push_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/human-picks/{key}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Admin Human Pick Review
+         * @description The held pick's copy as it will be pushed.
+         */
+        get: operations["read_admin_human_pick_review_api_v1_admin_human_picks__key__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/keywords": {
         parameters: {
             query?: never;
@@ -2202,9 +2282,8 @@ export interface components {
             /**
              * Password
              * @description The owner's own choice; omitted means the server generates one.
-             * @default null
              */
-            password: string | null;
+            password?: string | null;
             /**
              * Role
              * @enum {string}
@@ -2225,9 +2304,8 @@ export interface components {
             /**
              * Password
              * @description The owner's own choice; omitted means the server generates one.
-             * @default null
              */
-            password: string | null;
+            password?: string | null;
         };
         /** AdminAccountResponse */
         AdminAccountResponse: {
@@ -2268,11 +2346,8 @@ export interface components {
          */
         AdminAccountWithPasswordResponse: {
             account: components["schemas"]["AdminAccountResponse"];
-            /**
-             * Initial Password
-             * @default null
-             */
-            initial_password: string | null;
+            /** Initial Password */
+            initial_password?: string | null;
         };
         /** AdminAuditEventListResponse */
         AdminAuditEventListResponse: {
@@ -7776,7 +7851,14 @@ export interface components {
              * Stage
              * @enum {string}
              */
-            stage: "queued" | "writing" | "imaging" | "sending" | "delivered" | "partial" | "unknown" | "failed" | "expired";
+            stage: "queued" | "writing" | "imaging" | "awaiting_review" | "sending" | "delivered" | "partial" | "unknown" | "failed" | "expired";
+        };
+        /** VisitorDisplayHumanPickRequest */
+        VisitorDisplayHumanPickRequest: {
+            /** Key */
+            key: string;
+            /** Note */
+            note?: string | null;
         };
         /** VisitorDisplayHumanReview */
         VisitorDisplayHumanReview: {
@@ -7867,6 +7949,11 @@ export interface components {
              */
             human_pick_enabled: boolean;
             /**
+             * Human Pick Review Enabled
+             * @default false
+             */
+            human_pick_review_enabled: boolean;
+            /**
              * Review Enabled
              * @default false
              */
@@ -7900,6 +7987,71 @@ export interface components {
             value: number;
             /** Weight */
             weight: number;
+        };
+        /** VisitorHumanPickCopyRequest */
+        VisitorHumanPickCopyRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Hashtags */
+            hashtags?: string[];
+            /** Hook */
+            hook: string;
+        };
+        /** VisitorHumanPickIssue */
+        VisitorHumanPickIssue: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
+        /**
+         * VisitorHumanPickReview
+         * @description A held pick's copy for the operator (PIN-gated): fixed lines and the editable ones.
+         */
+        VisitorHumanPickReview: {
+            /** Copywriting */
+            copywriting?: string | null;
+            /** Editable */
+            editable: boolean;
+            /** Hashtags */
+            hashtags?: string[];
+            /** Heading */
+            heading?: string | null;
+            /** Headline */
+            headline?: string[];
+            /**
+             * Hook
+             * @default
+             */
+            hook: string;
+            /** Issues */
+            issues?: components["schemas"]["VisitorHumanPickIssue"][];
+            /** Link Line */
+            link_line?: string | null;
+            /** Passed */
+            passed?: boolean | null;
+            /**
+             * Push Deadline
+             * Format: date-time
+             */
+            push_deadline: string;
+            /** Saved */
+            saved?: boolean | null;
+            /** Source Line */
+            source_line?: string | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "queued" | "writing" | "imaging" | "awaiting_review" | "sending" | "delivered" | "partial" | "unknown" | "failed" | "expired";
         };
         /**
          * VisualAssetKind
@@ -8609,6 +8761,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminPasswordChangedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_admin_human_pick_api_v1_admin_human_picks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisitorDisplayHumanPickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorDisplayHumanPick"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_admin_human_pick_copy_api_v1_admin_human_picks__key__copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisitorHumanPickCopyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorHumanPickReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_admin_human_pick_api_v1_admin_human_picks__key__push_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorDisplayHumanPick"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_admin_human_pick_review_api_v1_admin_human_picks__key__review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorHumanPickReview"];
                 };
             };
             /** @description Validation Error */

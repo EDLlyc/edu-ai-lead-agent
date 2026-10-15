@@ -1,4 +1,4 @@
-import type { NewsCandidate, NewsHumanReview, NewsPool } from "./api";
+import type { NewsCandidate, NewsHumanReview, NewsPick, NewsPool } from "./api";
 
 export const SLOT_LABEL = {
   morning: "早间",
@@ -53,6 +53,8 @@ export interface ReviewItem {
   readonly reasons: readonly Reason[];
   readonly slots: readonly string[];
   readonly existingReview: NewsHumanReview | null;
+  /** Progress of a 人工加推 of this story, if one was made. */
+  readonly pick: NewsPick | null;
 }
 
 export type ReviewCall = "include" | "exclude";
@@ -97,6 +99,7 @@ export function flattenPool(pool: NewsPool): ReviewItem[] {
           reasons: candidate.reasons ?? [],
           slots: [slot],
           existingReview: candidate.human_review ?? null,
+          pick: candidate.human_pick ?? null,
         });
         continue;
       }
@@ -108,6 +111,7 @@ export function flattenPool(pool: NewsPool): ReviewItem[] {
         bestRank: Math.min(seen.bestRank, candidate.rank),
         slots: [...seen.slots, slot],
         existingReview: seen.existingReview ?? candidate.human_review ?? null,
+        pick: seen.pick ?? candidate.human_pick ?? null,
       });
     }
   }
@@ -155,4 +159,27 @@ export function measureAgreement(
     if (!include && item.eligible) result.excludedButEligible += 1;
   }
   return result;
+}
+
+/** What the operator sees for each stage of a 人工加推. */
+export const PICK_STAGE_LABEL: Record<NewsPick["stage"], string> = {
+  queued: "排队中",
+  writing: "正在写文案",
+  imaging: "正在配图",
+  awaiting_review: "等你确认",
+  sending: "正在发送",
+  delivered: "已发到正式群",
+  partial: "部分发送，需要检查",
+  unknown: "发送结果待确认",
+  failed: "加推失败",
+  expired: "已过 22:30，作废",
+};
+
+/** The stages in which production is still working, so the page keeps refreshing them. */
+export function pickInProgress(pick: NewsPick | null | undefined): boolean {
+  return (
+    pick !== null &&
+    pick !== undefined &&
+    ["queued", "writing", "imaging", "sending"].includes(pick.stage)
+  );
 }

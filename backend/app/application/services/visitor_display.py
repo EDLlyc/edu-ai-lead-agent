@@ -140,6 +140,7 @@ class VisitorDisplayService:
         asset_secret: str,
         reviews: NewsReviewStore | None = None,
         human_picks_enabled: bool = False,
+        human_pick_review: bool = False,
     ) -> None:
         if len(asset_secret.strip().encode("utf-8")) < 32:
             raise ValueError("visitor display asset secret is too short")
@@ -147,6 +148,8 @@ class VisitorDisplayService:
         self._asset_secret = asset_secret.strip()
         self._reviews = reviews
         self._human_picks_enabled = human_picks_enabled
+        # Production holds a pick for the operator's review and push (since 2026-10-01).
+        self._human_pick_review = human_picks_enabled and human_pick_review
 
     async def snapshot(self, *, now: datetime | None = None) -> VisitorDisplaySnapshot:
         observed_at = now or datetime.now(UTC)
@@ -175,6 +178,7 @@ class VisitorDisplayService:
         return VisitorDisplayNewsPool(
             review_enabled=self._reviews is not None,
             human_pick_enabled=self._human_picks_enabled,
+            human_pick_review_enabled=self._human_pick_review,
             batches=[
                 batch.model_copy(
                     update={
@@ -216,7 +220,10 @@ class VisitorDisplayService:
             return {}
         picks: dict[str, VisitorDisplayHumanPick] = {}
         for row in rows:  # newest first
-            picks.setdefault(news_key(row.event_id), project_human_pick(row, now=now))
+            picks.setdefault(
+                news_key(row.event_id),
+                project_human_pick(row, now=now, held=self._human_pick_review),
+            )
         return picks
 
     async def find_news_candidate(
@@ -489,11 +496,17 @@ _DELIVERY_STAGES: dict[str, Any] = {
     "delivery_window_expired": "expired",
 }
 _READY_PACKAGE_STATUSES = frozenset({"ready", "awaiting_manual_use", "completed"})
-_IN_PROGRESS_STAGES = frozenset({"queued", "writing", "imaging", "sending"})
+_IN_PROGRESS_STAGES = frozenset({"queued", "writing", "imaging", "awaiting_review", "sending"})
 
 
-def project_human_pick(row: VisitorHumanPickRow, *, now: datetime) -> VisitorDisplayHumanPick:
-    """Collapse the newest row of each production stage into one exhibit stage."""
+def project_human_pick(
+    row: VisitorHumanPickRow, *, now: datetime, held: bool = True
+) -> VisitorDisplayHumanPick:
+    """Collapse the newest row of each production stage into one exhibit stage.
+
+    ``held``: production holds a ready pick until the operator pushes it. An older production
+    sends it on its own, so a ready package there is already "sending".
+    """
     failure: str | None = None
     if row.delivery_status is not None:
         stage = _DELIVERY_STAGES.get(row.delivery_status, "sending")
@@ -501,7 +514,8 @@ def project_human_pick(row: VisitorHumanPickRow, *, now: datetime) -> VisitorDis
     elif row.package_status in {"failed", "rejected"}:
         stage, failure = "failed", f"package_{row.package_status}"
     elif row.package_status in _READY_PACKAGE_STATUSES:
-        stage = "sending"
+        # A pick is held until the operator pushes it, which approves the package.
+        stage = "awaiting_review" if held and row.package_review_status != "approved" else "sending"
     elif row.package_status is not None or row.copy_status == "accepted":
         stage = "imaging"
     elif row.copy_status in {"review_required", "failed", "no_topic"}:
@@ -527,6 +541,42 @@ def project_human_pick(row: VisitorHumanPickRow, *, now: datetime) -> VisitorDis
         failure_code=_safe_code(failure),
         long_image=long_image,
     )
+
+
+_COPY_HEADING = "🔎【小赛洞察】"
+_SOURCE_PREFIX = "新闻来源："  # noqa: RUF001
+_LINK_PREFIX = "原文链接："  # noqa: RUF001
+
+
+def split_headline_hook_copy(text: str) -> dict[str, Any]:
+    """Heading, headline lines, hook, source, link and hashtags of a headline-hook copy.
+
+    Only the hook and the hashtags are editable; the rest is shown as the system wrote it.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    heading = lines[0] if lines and lines[0] == _COPY_HEADING else None
+    body = lines[1:] if heading is not None else lines
+    hashtags: list[str] = []
+    if body and all(token.startswith("#") for token in body[-1].split()):
+        hashtags = body[-1].split()
+        body = body[:-1]
+    link_line = body[-1] if body and body[-1].startswith(_LINK_PREFIX) else None
+    if link_line is not None:
+        body = body[:-1]
+    source_line = body[-1] if body and body[-1].startswith(_SOURCE_PREFIX) else None
+    if source_line is not None:
+        body = body[:-1]
+    # The headline is one line or a main line plus a 「sub line」; the hook is the last line.
+    hook = body[-1] if len(body) >= 2 else ""
+    headline = body[:-1] if hook else body
+    return {
+        "heading": heading,
+        "headline": headline[:3],
+        "hook": hook,
+        "source_line": source_line,
+        "link_line": link_line,
+        "hashtags": hashtags[:6],
+    }
 
 
 def _safe_code(value: str | None) -> str | None:

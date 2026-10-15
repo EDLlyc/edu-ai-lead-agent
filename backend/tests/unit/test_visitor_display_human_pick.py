@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 from __future__ import annotations
 
 import json
@@ -89,7 +90,23 @@ def _row(**changes: object) -> VisitorHumanPickRow:
         ({"copy_status": "accepted"}, "imaging", None, None),
         ({"copy_status": "accepted", "package_status": "queued"}, "imaging", None, None),
         ({"copy_status": "accepted", "package_status": "failed"}, "failed", "package_failed", None),
-        ({"copy_status": "accepted", "package_status": "completed"}, "sending", None, None),
+        # Ready packages are held until the operator pushes (approves) them.
+        (
+            {"copy_status": "accepted", "package_status": "awaiting_manual_use"},
+            "awaiting_review",
+            None,
+            None,
+        ),
+        (
+            {
+                "copy_status": "accepted",
+                "package_status": "completed",
+                "package_review_status": "approved",
+            },
+            "sending",
+            None,
+            None,
+        ),
         (
             {
                 "copy_status": "accepted",
@@ -134,9 +151,17 @@ def test_human_pick_progress_collapses_pipeline_stages(
     )
 
 
+def test_older_production_sends_ready_picks_itself() -> None:
+    ready = _row(copy_status="accepted", package_status="awaiting_manual_use")
+    assert project_human_pick(ready, now=NOW, held=False).stage == "sending"
+    assert project_human_pick(ready, now=NOW, held=True).stage == "awaiting_review"
+
+
 def test_unfinished_human_pick_becomes_expired_after_its_window() -> None:
     row = _row(copy_status="running")
     assert project_human_pick(row, now=row.expires_at).stage == "expired"
+    held = _row(copy_status="accepted", package_status="awaiting_manual_use")
+    assert project_human_pick(held, now=held.expires_at).stage == "expired"
     delivered = _row(delivery_status="delivered")
     assert project_human_pick(delivered, now=delivered.expires_at).stage == "delivered"
 
@@ -273,3 +298,10 @@ def test_adapter_human_pick_needs_pin_and_loopback_production_api(tmp_path: Path
     ):
         with pytest.raises(ValueError):
             load_settings({"VISITOR_DISPLAY_ENABLED": "false", **bad})
+
+
+HELD_COPY = (
+    "🔎【小赛洞察】\n世界技能大赛标准引领职教课堂\n「技能人才培养提质进行时」\n"
+    "当职业教育的标准走进课堂，正好和孩子聊聊学东西到底该追求什么✨\n"
+    "新闻来源：光明网教育\n原文链接：https://edu.gmw.cn/a.htm\n#赛先生科学 #科学思维"
+)

@@ -176,6 +176,8 @@ class VisitorHumanPickRow:
     copy_status: str | None = None
     copy_error: str | None = None
     package_status: str | None = None
+    # "pending" until the operator pushes (approves) a held pick.
+    package_review_status: str | None = None
     delivery_status: str | None = None
     delivery_error: str | None = None
     infographic_status: str | None = None
@@ -439,6 +441,13 @@ class PostgresVisitorDisplayRepository:
         async with self._session_factory() as session:
             return await load_human_picks(session, now=now)
 
+    async def load_human_pick_review(
+        self, *, event_id: UUID, now: datetime
+    ) -> VisitorHumanPickReviewRow | None:
+        # Uncached: the operator edits and pushes against the current copy.
+        async with self._session_factory() as session:
+            return await load_human_pick_review(session, event_id=event_id, now=now)
+
     async def load_moments(self) -> tuple[VisitorMomentRow, ...]:
         # Short cache: the snapshot and each image request resolve against the same posts.
         return await self._cached("moments", _MOMENT_TTL_SECONDS, load_moments)
@@ -661,6 +670,7 @@ async def load_human_picks(
                     MaterialPackageModel.run_id,
                     MaterialPackageModel.id,
                     MaterialPackageModel.status,
+                    MaterialPackageModel.review_status,
                 )
                 .where(MaterialPackageModel.run_id.in_([row[1] for row in copies.values()]))
                 .order_by(MaterialPackageModel.created_at, MaterialPackageModel.id)
@@ -729,6 +739,7 @@ async def load_human_picks(
                 copy_status=copy[2] if copy is not None else None,
                 copy_error=copy[3] if copy is not None else None,
                 package_status=package[2] if package is not None else None,
+                package_review_status=package[3] if package is not None else None,
                 delivery_status=delivery[1] if delivery is not None else None,
                 delivery_error=delivery[2] if delivery is not None else None,
                 infographic_status=infographic[2] if infographic is not None else None,
@@ -736,6 +747,84 @@ async def load_human_picks(
             )
         )
     return tuple(rows)
+
+
+@dataclass(frozen=True, slots=True)
+class VisitorHumanPickReviewRow:
+    """What the operator reviews for one held pick (PIN-gated; never in the snapshot)."""
+
+    run_id: UUID
+    picked_at: datetime
+    expires_at: datetime
+    copywriting: str | None
+    issues: tuple[dict[str, Any], ...]
+    package_review_status: str | None
+    pushed: bool
+
+
+async def load_human_pick_review(
+    session: AsyncSession, *, event_id: UUID, now: datetime
+) -> VisitorHumanPickReviewRow | None:
+    """The newest recent human pick of ``event_id`` with its current copy; read-only."""
+    pick = (
+        await session.execute(
+            select(
+                ContentSlotRunModel.id,
+                ContentSlotRunModel.target_at,
+                ContentSlotRunModel.expires_at,
+                ContentSlotSelectionModel.id,
+            )
+            .join(
+                ContentSlotSelectionModel,
+                ContentSlotSelectionModel.run_id == ContentSlotRunModel.id,
+            )
+            .where(
+                ContentSlotRunModel.trigger == HUMAN_PICK_TRIGGER,
+                ContentSlotRunModel.created_at >= now - HUMAN_PICK_LOOKBACK,
+                ContentSlotSelectionModel.selected_event_id == event_id,
+            )
+            .order_by(ContentSlotRunModel.created_at.desc())
+            .limit(1)
+        )
+    ).first()
+    if pick is None:
+        return None
+    run_id, picked_at, expires_at, selection_id = pick
+    package = await session.scalar(
+        select(MaterialPackageModel)
+        .join(CopyGenerationRunModel, CopyGenerationRunModel.id == MaterialPackageModel.run_id)
+        .where(CopyGenerationRunModel.content_slot_selection_id == selection_id)
+        .order_by(MaterialPackageModel.created_at.desc())
+        .limit(1)
+    )
+    if package is None:
+        return VisitorHumanPickReviewRow(run_id, picked_at, expires_at, None, (), None, False)
+    pushed = (
+        await session.scalar(
+            select(WeComDeliveryJobModel.id)
+            .where(
+                WeComDeliveryJobModel.material_package_id == package.id,
+                WeComDeliveryJobModel.mode == "formal",
+            )
+            .limit(1)
+        )
+    ) is not None
+    copywriting = package.copy_snapshot.get("copywriting")
+    raw_issues = package.validation_snapshot.get("issues")
+    issues = tuple(
+        issue
+        for issue in (raw_issues if isinstance(raw_issues, list) else ())
+        if isinstance(issue, dict)
+    )
+    return VisitorHumanPickReviewRow(
+        run_id=run_id,
+        picked_at=picked_at,
+        expires_at=expires_at,
+        copywriting=copywriting if isinstance(copywriting, str) else None,
+        issues=issues,
+        package_review_status=package.review_status,
+        pushed=pushed,
+    )
 
 
 def _newest_by_owner(rows: Any) -> dict[Any, Any]:

@@ -27,6 +27,7 @@ function candidate(
 
 const pool: NewsPool = {
   human_pick_enabled: false,
+  human_pick_review_enabled: false,
   review_enabled: true,
   batches: [
     {
@@ -81,7 +82,11 @@ describe("flattenPool", () => {
 
   it("treats an empty pool as nothing to review", () => {
     expect(
-      flattenPool({ human_pick_enabled: false, review_enabled: true }),
+      flattenPool({
+        human_pick_enabled: false,
+        human_pick_review_enabled: false,
+        review_enabled: true,
+      }),
     ).toEqual([]);
   });
 
