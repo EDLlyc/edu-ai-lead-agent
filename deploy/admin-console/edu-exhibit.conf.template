@@ -27,7 +27,7 @@ server {
 }
 
 server {
-    listen 443 ssl;
+    listen 443 ssl http2;
     server_name __SHOW_HOST__;
     server_tokens off;
 
@@ -60,7 +60,25 @@ server {
         return 401 '{"error":{"code":"admin_login_required"}}';
     }
 
-    # Pages and hashed build files.
+    # Hashed build files: safe to cache for a year (the page itself stays no-store below).
+    location /assets/ {
+        auth_request /_edu_auth;
+        error_page 401 = @unauthorized;
+        try_files $uri =404;
+        include /etc/nginx/snippets/edu-exhibit-headers.conf;
+        add_header Cache-Control "private, max-age=31536000, immutable" always;
+    }
+
+    # Fixed pictures of the hall page (not hashed): cache a day, per browser only.
+    location ~* \.(jpg|jpeg|png|webp|svg|ico)$ {
+        auth_request /_edu_auth;
+        error_page 401 = @unauthorized;
+        try_files $uri =404;
+        include /etc/nginx/snippets/edu-exhibit-headers.conf;
+        add_header Cache-Control "private, max-age=86400" always;
+    }
+
+    # Pages.
     location / {
         auth_request /_edu_auth;
         error_page 401 = @to_login;
@@ -77,6 +95,8 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
         proxy_read_timeout 30s;
+        gzip on;
+        gzip_types application/json;   # 470 KB -> ~100 KB; only this route, not the admin API
         add_header Cache-Control "no-store" always;
     }
 

@@ -74,3 +74,18 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
   with `VISITOR_DISPLAY_IMAGE` set.
 - Not verified by the agent: access from the public internet (the agent's machine is behind a VPN that
   rewrites DNS to 198.18.x), and a signed-in pgc view (needs an admin password). Cert expires 2027-04-09.
+
+## Follow-up tuning (2026-10-15 ~14:30, owner approved)
+- nginx: HTTP/2 on both sites; `gzip_types` for css/js/svg (http level, `edu-common.conf`) and for JSON on the
+  exhibit snapshot route only (470 KB -> ~100 KB; the admin API is not compressed on purpose, BREACH);
+  exhibit `/assets/` cached 1 y (private, immutable) and fixed pictures 1 d (private); the page stays
+  no-store. Default servers on 80/443 return 444 / reject the TLS handshake for any other hostname or the
+  bare IP (before this the console login answered on any Host). Measured from outside: admin JS 316 KB -> 97 KB,
+  CSS 25 KB -> 5.9 KB, `h2` negotiated, unknown host closed. Not testable without a session: gzip/cache
+  headers on the authenticated exhibit routes (syntax-checked only).
+- First attempt failed `nginx -t` (duplicate `gzip on`, Debian already enables it) and was restored
+  automatically; backup of the previous conf at `backups/nginx-conf-20261015-opt/`.
+- Host: `fail2ban` installed with an sshd jail (5 failures / 10 min -> 1 h ban; journald backend).
+  SSH password login and `PermitRootLogin yes` are still on: switch to key-only only after confirming
+  a working key.
+- Disk is still 89%: Docker has 139 images (14 in use, ~60 old `backend:*` release tags). Nothing deleted.
