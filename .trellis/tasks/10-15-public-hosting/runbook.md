@@ -135,3 +135,5 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
   `www.before`. Rollback = `alembic downgrade 20261010_0061` in the new container (drops the table), restore the three
   files and recreate acquisition-api on `e008f5f8…`, restore `www.before`; `activate.sh` does it on any failure.
 - Phase 3 (人工加推 from the console) is not built. Exhibit article tests are not on mainline (model drift).
+- 18:40 新闻审核 page changed to a table (one row per story, AI verdict beside it, one-click 适合推/不适合推, optional
+  note); console `index-d1fqClPY.js`, front-end only, backup `backups/news-review-list-20261015/www.before`.
