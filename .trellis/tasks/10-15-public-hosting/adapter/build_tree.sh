@@ -18,5 +18,5 @@ rm -rf "$out"; mkdir -p "$out"
 git -C "$repo" archive --format=tar "$release" backend/app | tar -x -C "$out"
 for f in "${overlays[@]}"; do git -C "$repo" show "$commit:backend/$f" > "$out/backend/$f"; done
 find "$out" -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
-(cd "$out/backend" && find app -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1 > ../TREE.sha256)
+(cd "$out/backend" && find app -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1 > ../TREE.sha256)
 echo "tree=$(cat "$out/TREE.sha256") release=${release:0:7} overlays=$commit"

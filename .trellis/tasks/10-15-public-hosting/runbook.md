@@ -1,4 +1,4 @@
-# Public hosting runbook — xiaosaiai.com (prepared 2026-10-15, NOT executed)
+# Public hosting runbook — xiaosaiai.com (EXECUTED 2026-10-15 ~12:10-13:25 CST, see "Execution record")
 
 Hosts (owner confirmation pending for the mapping): `ops.xiaosaiai.com` = 运营后台,
 `pgc.xiaosaiai.com` = 展台. Both A records -> 124.222.207.221 (resolved from public DNS and from the
@@ -43,3 +43,34 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
   compose service on the compose network with `VISITOR_DISPLAY_ENABLED=true` and an asset secret, no
   operator PIN and no production API URL, bound to 127.0.0.1:18089, ideally a read-only DB role.
 - Security group 80/443 and ICP filing status: unconfirmed (a local TCP test is meaningless behind the VPN).
+
+## Execution record (2026-10-15, owner said "现在就部署吧" at 11:57, so the slot-window rule was waived)
+- Exhibit data service: image `offline.local/edu-ai/edu-ai-lead-agent-backend:visitor-display-c195bf1`
+  (id `b47c3539…`, tree sha `b4f55869…` = `f06694a` + `c195bf1` overlay files, 320 files), service
+  `visitor-display` from `adapter/compose.visitor-display.yaml` (`profiles: [exhibit]`, host network,
+  127.0.0.1:18089, read-only fs, no operator PIN). `adapter/activate-exhibit.sh` created a SELECT-only
+  Postgres role `visitor_ro` (read-only default transaction), appended `VISITOR_DISPLAY_ASSET_SECRET`,
+  `VISITOR_DISPLAY_DB_USER`, `VISITOR_DISPLAY_DB_PASSWORD` to `.env` (backup `.env.before-visitor-display-20261015T051514Z`).
+  Snapshot on loopback: HTTP 200, 470 KB, live data; operator/admin routes 404 on that process.
+  Gotcha: the tree hash must use `LC_ALL=C sort` (host locale en_US ordered files differently), and the
+  local tree must not contain `__pycache__`.
+- API: overlay `…:admin-cookie-domain-d1e5b14` (id `e2372099…`) FROM `a3a3e7f7…`; ONLY `acquisition-api`
+  was recreated (it is the only service serving `/api/v1/admin`); `content-scheduler`/`content-worker`
+  keep `a3a3e7f7…` and were not restarted. `compose.yaml` gained
+  `ADMIN_SESSION_COOKIE_DOMAIN: ${ADMIN_SESSION_COOKIE_DOMAIN:-}` under acquisition-api; `.env` has
+  `ADMIN_SESSION_COOKIE_DOMAIN=xiaosaiai.com`; `.release.env` `APP_IMAGE` now points to the overlay so a
+  later recreate cannot revert it. Effective-env diff: exactly one added name. Backup dir
+  `backups/admin-cookie-domain-20261015.u0MocK` (rollback = restore its three `*.before` files and
+  recreate acquisition-api).
+- nginx 1.24 installed (apt), cert/key in `/etc/nginx/ssl/` (key 600 root), configs in
+  `/etc/nginx/conf.d/edu-{admin,exhibit}.conf`, static roots `/var/www/edu-ai-{admin,exhibit}`.
+  Loopback checks with real TLS: http->https 301; `/admin/` 200; `/api/v1/admin/auth/me` 401 signed
+  out; other API paths 404; pgc signed-out page 302 to ops login, snapshot 401; operator routes 404.
+- Host firewall: `ufw` was active (default deny) with only 22 open, so 80/tcp and 443/tcp were
+  added (v4+v6). The Tencent security group must also allow them.
+- Compose now warns about the orphan container `visitor-display` when run without the override file;
+  never pass `--remove-orphans`. To recreate it use
+  `docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env -f compose.yaml -f compose.visitor-display.yaml --profile exhibit`
+  with `VISITOR_DISPLAY_IMAGE` set.
+- Not verified by the agent: access from the public internet (the agent's machine is behind a VPN that
+  rewrites DNS to 198.18.x), and a signed-in pgc view (needs an admin password). Cert expires 2027-04-09.

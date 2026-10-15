@@ -7,7 +7,7 @@ commit="${FIX_COMMIT:?}"; tree="$(cat "$src/TREE.sha256")"
 tag="offline.local/edu-ai/edu-ai-lead-agent-backend:visitor-display-$commit"
 stage="$(mktemp -d /opt/edu-ai-lead-agent/backups/visitor-display-20261015.XXXXXX)"; chmod 700 "$stage"
 cp -a "$src/." "$stage/"; chown -R 0:0 "$stage"; rm -rf "$src"
-(cd "$stage/backend" && test "$(find app -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" = "$tree")
+(cd "$stage/backend" && test "$(find app -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" = "$tree")
 find "$stage/backend" -type d -exec chmod 755 {} +; find "$stage/backend" -type f -exec chmod 644 {} +
 docker build --network none --pull=false --build-arg "FIX_COMMIT=$commit" --build-arg "TREE_SHA256=$tree" -t "$tag" -f "$stage/Dockerfile" "$stage" >/dev/null
 image_id="$(docker image inspect "$tag" --format '{{.Id}}')"

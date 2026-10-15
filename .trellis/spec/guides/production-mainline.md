@@ -407,3 +407,10 @@ instead of merging the branches:
   `0045_manual_review_observability` and `0046_brand_table_normalization`. They were never applied to
   production and reuse revision numbers of mainline's chain; re-create them on top of mainline's head
   when ported. That branch's `0047_wecom_news_infographics` is superseded by mainline's 0049/0050.
+
+## Public hosting (2026-10-15)
+`ops.xiaosaiai.com` (运营后台) and `pgc.xiaosaiai.com` (展台, login-gated by the same admin session) are
+served by host nginx with a wildcard certificate. `acquisition-api` runs overlay `e2372099…`
+(`ADMIN_SESSION_COOKIE_DOMAIN=xiaosaiai.com`); the read-only exhibit adapter runs as compose service
+`visitor-display` (override file, host network, 127.0.0.1:18089, SELECT-only role `visitor_ro`).
+Host firewall allows 22/80/443. Details and rollback: `.trellis/tasks/10-15-public-hosting/runbook.md`.
