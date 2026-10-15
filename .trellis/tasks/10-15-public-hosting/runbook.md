@@ -89,3 +89,13 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
   SSH password login and `PermitRootLogin yes` are still on: switch to key-only only after confirming
   a working key.
 - Disk is still 89%: Docker has 139 images (14 in use, ~60 old `backend:*` release tags). Nothing deleted.
+
+## Docker image cleanup (2026-10-15 ~14:50, owner asked "没用的镜像删除")
+- Removed 286 unused tags of `offline.local/edu-ai/edu-ai-lead-agent-backend`, `edu-ai-backend:*` and the
+  2-month-old compose-built `edu-ai-lead-agent-*:latest`. Kept: every image any container uses (running or
+  stopped), the images named in `.release.env` and the 4 newest `.release.env.before-*`, and anything created
+  in the last 7 days. Result: disk 89% -> 81% (8.4 G -> 15 G free); Docker images 139 -> 30; all 17 containers up,
+  API healthy, public site 200.
+- Rollback note: releases older than 7 days (except the ones listed in recent `.release.env.before-*`) can no
+  longer be recreated from a local tag; the offline overlay builds are reproducible from the task folders.
+- Still large: `/var/log/journal` 1.4 G (could be capped with `SystemMaxUse=300M`), Docker volumes 8.4 G (data).
