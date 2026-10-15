@@ -99,3 +99,18 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
 - Rollback note: releases older than 7 days (except the ones listed in recent `.release.env.before-*`) can no
   longer be recreated from a local tag; the offline overlay builds are reproducible from the task folders.
 - Still large: `/var/log/journal` 1.4 G (could be capped with `SystemMaxUse=300M`), Docker volumes 8.4 G (data).
+
+## Site polish (2026-10-15 ~16:00, owner approved items 1-3)
+- Login page: removed the "返回展厅" link (the exhibit requires this same login, so it looped) and reworded the
+  hint to "请联系管理员开通账号。" (`AdminLoginPage.tsx`, test updated). Console rebuilt (`index-DNXin1rR.js`,
+  identical to the build) and swapped in `/var/www/edu-ai-admin`; backup `backups/site-polish-20261015/`.
+- nginx (both sites): `robots.txt` Disallow all, `X-Robots-Tag: noindex, nofollow` (header snippets), SVG favicon
+  injected with `sub_filter` (no frontend rebuild needed for the exhibit), `/favicon.ico` -> 204, Chinese 404
+  page for unmatched routes. Static files live in `/var/www/edu-ai-static/` (`nginx/static/`).
+- Liveness check: `monitor/healthcheck.sh` + systemd timer `edu-ai-healthcheck.timer` (every 5 min). Checks the
+  console and exhibit entry through nginx/TLS, the API (401 on `/auth/me`), the exhibit adapter (200), the 16
+  production containers (list in the script, override with `EXPECTED_CONTAINERS`), disk < 92 %, certificate > 14
+  days, nginx. Alerts only on change (+ every 6 h while failing) to the journal
+  (`journalctl -t edu-ai-healthcheck`) and, once `ALERT_WEBHOOK_URL` is set in `/etc/edu-ai-healthcheck.env`, to a
+  WeCom bot. Use an ops-only group, not the formal news group. It runs on the host, so it cannot see a security
+  group or network outage (use an external uptime probe for that). A simulated failure raised and cleared an alert.

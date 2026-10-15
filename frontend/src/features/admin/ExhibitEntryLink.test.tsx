@@ -41,17 +41,17 @@ describe("return to the public exhibit", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows the same credential-free entry on login and the signed-in shell", async () => {
+  it("hides the entry on login (the exhibit needs this login, so it would loop) and shows it in the signed-in shell", async () => {
     vi.stubEnv("VITE_EXHIBIT_ENTRY_URL", URL);
     window.history.replaceState(null, "", "/admin/account");
     const calls = api(null);
     const user = userEvent.setup();
     render(<AdminApp api={calls} />);
     await screen.findByRole("heading", { name: "登录" });
-    expect(screen.getByRole("link", { name: "返回展厅" })).toHaveAttribute(
-      "href",
-      URL,
-    );
+    expect(
+      screen.queryByRole("link", { name: "返回展厅" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("请联系管理员开通账号。")).toBeInTheDocument();
     await user.type(screen.getByLabelText("用户名"), "operator");
     await user.type(screen.getByLabelText("密码"), "test-only-password");
     await user.click(screen.getByRole("button", { name: "登录" }));

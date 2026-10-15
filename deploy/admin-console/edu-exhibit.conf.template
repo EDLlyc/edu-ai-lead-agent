@@ -39,6 +39,26 @@ server {
     root /var/www/edu-ai-exhibit;
     include /etc/nginx/snippets/edu-exhibit-headers.conf;
 
+    # Not a page: keep crawlers away and stop /favicon.ico 404 noise in the logs.
+    location = /robots.txt {
+        default_type text/plain;
+        return 200 "User-agent: *\nDisallow: /\n";
+    }
+    location = /favicon.ico {
+        access_log off;
+        return 204;
+    }
+    location = /favicon.svg {
+        root /var/www/edu-ai-static;
+        access_log off;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+    error_page 404 /_edu_404.html;
+    location = /_edu_404.html {
+        internal;
+        root /var/www/edu-ai-static;
+    }
+
     # Session check. The browser's Cookie header is forwarded to the API unchanged.
     location = /_edu_auth {
         internal;
@@ -83,6 +103,8 @@ server {
         auth_request /_edu_auth;
         error_page 401 = @to_login;
         try_files $uri $uri/ /index.html;
+        sub_filter '</head>' '<link rel="icon" type="image/svg+xml" href="/favicon.svg"></head>';
+        sub_filter_once on;
         include /etc/nginx/snippets/edu-exhibit-headers.conf;
         add_header Cache-Control "no-store" always;
     }

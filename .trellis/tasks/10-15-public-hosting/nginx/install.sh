@@ -39,6 +39,8 @@ chown -R root:root /var/www/edu-ai-admin /var/www/edu-ai-exhibit
 find /var/www/edu-ai-admin /var/www/edu-ai-exhibit -type d -exec chmod 755 {} +
 find /var/www/edu-ai-admin /var/www/edu-ai-exhibit -type f -exec chmod 644 {} +
 
+install -d -m 755 /var/www/edu-ai-static
+install -m 644 "$s"/static/* /var/www/edu-ai-static/ 2>/dev/null || true
 nginx -t
 systemctl enable --now nginx
 sleep 1

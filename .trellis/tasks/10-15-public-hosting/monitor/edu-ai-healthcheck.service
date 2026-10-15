@@ -1,0 +1,8 @@
+[Unit]
+Description=Edu AI public site and production liveness check
+After=docker.service nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/edu-ai-healthcheck.sh
+Nice=10

@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 
-import { ExhibitEntryLink } from "./ExhibitEntryLink";
 import styles from "./Admin.module.css";
 
 export function AdminLoginPage({
@@ -85,8 +84,7 @@ export function AdminLoginPage({
         <button className={styles.primary} type="submit" disabled={busy}>
           {busy ? "正在登录…" : "登录"}
         </button>
-        <p className={styles.hint}>账号由管理员在服务器上开通。</p>
-        <ExhibitEntryLink />
+        <p className={styles.hint}>请联系管理员开通账号。</p>
       </form>
     </section>
   );
