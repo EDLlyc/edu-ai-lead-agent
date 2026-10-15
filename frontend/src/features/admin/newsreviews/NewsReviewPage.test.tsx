@@ -95,6 +95,29 @@ describe("新闻审核", () => {
     expect(screen.getByLabelText("与 AI 的一致率")).toHaveTextContent("100%");
   });
 
+  it("searches title, source and notes across the current filter", async () => {
+    const user = userEvent.setup();
+    render(<NewsReviewPage api={api()} onSessionExpired={vi.fn()} />);
+    await screen.findByText("教育部部署人工智能通识教育");
+    const box = screen.getByRole("searchbox", { name: "搜索新闻" });
+
+    await user.type(box, "嘉年华");
+    expect(screen.getByRole("status", { name: "" })).toHaveTextContent(
+      "找到 1 条",
+    );
+    expect(screen.getByText("某地举办科技嘉年华")).toBeVisible();
+    expect(screen.queryByText("教育部部署人工智能通识教育")).toBeNull();
+
+    await user.clear(box);
+    await user.type(box, "教育部 人工智能");
+    expect(screen.getByText("教育部部署人工智能通识教育")).toBeVisible();
+    expect(screen.queryByText("某地举办科技嘉年华")).toBeNull();
+
+    await user.clear(box);
+    await user.type(box, "不存在的词");
+    expect(screen.getByText(/没有找到符合的新闻/)).toBeVisible();
+  });
+
   it("hides the AI verdict in blind mode until the item is reviewed", async () => {
     const user = userEvent.setup();
     render(<NewsReviewPage api={api()} onSessionExpired={vi.fn()} />);

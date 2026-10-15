@@ -46,6 +46,7 @@ export function NewsReviewPage({
     new Map(),
   );
   const [filter, setFilter] = useState<Filter>("todo");
+  const [query, setQuery] = useState("");
   const [blind, setBlind] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -98,18 +99,30 @@ export function NewsReviewPage({
 
   const visible = useMemo(() => {
     if (items === null) return [];
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return items.filter((item) => {
       const record = records.get(item.key);
-      if (filter === "todo") return record === undefined;
-      if (filter === "disagree") {
-        return (
-          record !== undefined &&
-          (record.decision === "include") !== item.eligible
-        );
+      if (filter === "todo" && record !== undefined) return false;
+      if (
+        filter === "disagree" &&
+        (record === undefined ||
+          (record.decision === "include") === item.eligible)
+      ) {
+        return false;
       }
-      return true;
+      if (terms.length === 0) return true;
+      const haystack = [
+        item.title,
+        item.sourceName,
+        item.tierLabel,
+        item.snippet,
+        record?.note,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return terms.every((term) => haystack.includes(term));
     });
-  }, [items, records, filter]);
+  }, [items, records, filter, query]);
 
   if (items === null) {
     return (
@@ -221,6 +234,24 @@ export function NewsReviewPage({
           盲审（先不看 AI 的判断）
         </button>
       </div>
+      <div className={styles.field}>
+        <label htmlFor="news-review-search">搜索新闻</label>
+        <input
+          id="news-review-search"
+          type="search"
+          value={query}
+          placeholder="标题、来源、摘要或备注里的字，多个词用空格隔开"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setEditing(null);
+          }}
+        />
+        {query.trim() === "" ? null : (
+          <span className={styles.hint} role="status">
+            找到 {visible.length} 条
+          </span>
+        )}
+      </div>
       {agreement.labelled === 0 ? null : (
         <p className={styles.hint} aria-label="与 AI 的一致率">
           你的意见和 AI 过线与否一致：
@@ -234,7 +265,9 @@ export function NewsReviewPage({
       )}
       {visible.length === 0 ? (
         <p className={styles.hint} role="status">
-          这个筛选下没有新闻了。
+          {query.trim() === ""
+            ? "这个筛选下没有新闻了。"
+            : "没有找到符合的新闻，可以换个词，或者切到「全部」再搜。"}
         </p>
       ) : (
         <div
