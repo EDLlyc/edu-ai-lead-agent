@@ -514,6 +514,15 @@ class Settings(BaseSettings):
     def parse_fixed_visual_embedding_dimensions(cls, value: object) -> object:
         return 2048 if value == "2048" else value
 
+    @field_validator("admin_session_cookie_domain", mode="before")
+    @classmethod
+    def _blank_cookie_domain_is_unset(cls, value: object) -> object:
+        # Compose passes an empty string for an unset `${VAR:-}`; treat it as "not configured".
+        if isinstance(value, str):
+            stripped = value.strip().lower()
+            return stripped or None
+        return value
+
     @field_validator("app_browser_origins")
     @classmethod
     def validate_app_browser_origins(cls, value: str) -> str:
