@@ -1,0 +1,26 @@
+# Exhibit data service (read-only projection). Used with:
+#   docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env \
+#     -f compose.yaml -f compose.visitor-display.yaml --profile exhibit up -d --no-deps visitor-display
+# Host network is required: the adapter only accepts a loopback database and object store, and
+# Postgres/MinIO are published on the host's 127.0.0.1. It listens on 127.0.0.1:18089 only.
+# No operator PIN, review store or production API URL are set, so operator routes do not exist.
+services:
+  visitor-display:
+    profiles: ["exhibit"]
+    image: ${VISITOR_DISPLAY_IMAGE:?set VISITOR_DISPLAY_IMAGE}
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    command: ["python", "-m", "uvicorn", "app.visitor_display_main:create_app", "--factory", "--host", "127.0.0.1", "--port", "18089", "--no-access-log", "--log-level", "warning"]
+    environment:
+      VISITOR_DISPLAY_ENABLED: "true"
+      VISITOR_DISPLAY_ASSET_SECRET: ${VISITOR_DISPLAY_ASSET_SECRET:?set VISITOR_DISPLAY_ASSET_SECRET}
+      DATABASE_URL: postgresql+asyncpg://${VISITOR_DISPLAY_DB_USER:-${POSTGRES_USER:-edu_ai}}:${VISITOR_DISPLAY_DB_PASSWORD:-${POSTGRES_PASSWORD}}@127.0.0.1:5432/${POSTGRES_DB:-edu_ai}
+      MINIO_ENDPOINT: http://127.0.0.1:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-edu-ai-materials}
+      MINIO_SECURE: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
