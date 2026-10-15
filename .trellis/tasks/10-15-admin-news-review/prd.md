@@ -34,3 +34,13 @@ own account instead of a local adapter + operator PIN + SSH tunnel.
 - Which candidate pool does the admin page read: reuse `VisitorDisplayService` news pool (needs the
   exhibit's read-only projection inside the admin API) or a smaller query? Default: reuse.
 - Keep the PIN-based exhibit review for local use, or remove it once the admin page works?
+
+## Progress (2026-10-15 evening)
+- Done, committed on mainline, NOT deployed: step 1 (visitor-display backend on mainline; exhibit article tests left out because
+  mainline lacks `OfficialAccountArticleVersionModel.revision_no`), phase 2 (table `news_reviews` + migration
+  `20261015_0062`, `PostgresNewsReviewStore`, `/api/v1/admin/news-reviews` GET/POST for owner+editor with the account as
+  reviewer, admin page 新闻审核, tests, OpenAPI + types).
+- Deploy needs: backup, run migration 0062 on production (check the production alembic head first), API overlay on the
+  running image with the changed files, console swap. Not done yet.
+- Phase 3 (human pick from the console) not started; it sends to the formal WeCom group and needs its own go-ahead.
+- Known unrelated failures on mainline: `test_migrations.py` head assertion (expects 0059), a Chinese-family downgrade guard.

@@ -380,6 +380,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/news-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin News Reviews */
+        get: operations["get_admin_news_reviews_api_v1_admin_news_reviews_get"];
+        put?: never;
+        /** Post Admin News Review */
+        post: operations["post_admin_news_review_api_v1_admin_news_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sources": {
         parameters: {
             query?: never;
@@ -7743,6 +7761,146 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** VisitorDisplayHumanPick */
+        VisitorDisplayHumanPick: {
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Long Image */
+            long_image?: ("making" | "sent" | "failed") | null;
+            /**
+             * Picked At
+             * Format: date-time
+             */
+            picked_at: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "queued" | "writing" | "imaging" | "sending" | "delivered" | "partial" | "unknown" | "failed" | "expired";
+        };
+        /** VisitorDisplayHumanReview */
+        VisitorDisplayHumanReview: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "agree" | "include" | "exclude";
+            /** Note */
+            note?: string | null;
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+        };
+        /** VisitorDisplayNewsBatch */
+        VisitorDisplayNewsBatch: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Candidates */
+            candidates?: components["schemas"]["VisitorDisplayNewsCandidate"][];
+            /** Eligible Count */
+            eligible_count: number;
+            /** Selected Count */
+            selected_count: number;
+            /**
+             * Slot
+             * @enum {string}
+             */
+            slot: "morning" | "noon" | "evening";
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** Total Count */
+            total_count: number;
+            /** Unfilled Reasons */
+            unfilled_reasons?: ("no_candidates" | "all_vetoed" | "below_threshold" | "same_day_already_selected" | "insufficient_eligible_candidates")[];
+        };
+        /** VisitorDisplayNewsCandidate */
+        VisitorDisplayNewsCandidate: {
+            /** Dimensions */
+            dimensions?: components["schemas"]["VisitorDisplayScoreDimension"][];
+            human_pick?: components["schemas"]["VisitorDisplayHumanPick"] | null;
+            human_review?: components["schemas"]["VisitorDisplayHumanReview"] | null;
+            /** Key */
+            key: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Rank */
+            rank: number;
+            /** Reasons */
+            reasons?: ("unresolved_governance" | "ineligible_evidence" | "tier_c_only" | "unverified" | "unsuitable_negative_incident" | "privacy_legal_safety_uncertain" | "prohibited_marketing_risk" | "repeated_within_window" | "stale_event" | "outside_science_ai_education_scope" | "other_rule" | "below_threshold" | "same_day_already_selected" | "not_eligible" | "ranked_out")[];
+            /** Score */
+            score: number;
+            /** Selected Ordinal */
+            selected_ordinal?: number | null;
+            /** Snippet */
+            snippet?: string | null;
+            /** Source Name */
+            source_name?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Threshold */
+            threshold: number;
+            /** Tier Label */
+            tier_label?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "selected" | "rejected";
+        };
+        /** VisitorDisplayNewsPool */
+        VisitorDisplayNewsPool: {
+            /** Batches */
+            batches?: components["schemas"]["VisitorDisplayNewsBatch"][];
+            /**
+             * Human Pick Enabled
+             * @default false
+             */
+            human_pick_enabled: boolean;
+            /**
+             * Review Enabled
+             * @default false
+             */
+            review_enabled: boolean;
+        };
+        /** VisitorDisplayNewsReviewRequest */
+        VisitorDisplayNewsReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "agree" | "include" | "exclude";
+            /** Key */
+            key: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** VisitorDisplayScoreDimension */
+        VisitorDisplayScoreDimension: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "source_trust" | "source_diversity" | "freshness" | "communication_potential" | "ai_relevance" | "parent_relevance" | "science_education_relevance" | "product_matrix_fit" | "editorial_priority" | "theme_repetition" | "controversy_risk" | "marketing_risk";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "positive" | "penalty";
+            /** Value */
+            value: number;
+            /** Weight */
+            weight: number;
+        };
         /**
          * VisualAssetKind
          * @description The single intended use of one private catalog asset.
@@ -8793,6 +8951,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminModelProvider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_news_reviews_api_v1_admin_news_reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorDisplayNewsPool"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_news_review_api_v1_admin_news_reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisitorDisplayNewsReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorDisplayHumanReview"];
                 };
             };
             /** @description Validation Error */

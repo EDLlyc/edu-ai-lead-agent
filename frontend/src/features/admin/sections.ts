@@ -3,6 +3,7 @@ import type { AdminRole } from "./api";
 export type AdminSectionKey =
   | "sources"
   | "keywords"
+  | "news-review"
   | "wechat-publish"
   | "wechat-stats"
   | "wechat-accounts"
@@ -38,6 +39,13 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
   {
     key: "keywords",
     title: "关键词",
+    group: "内容来源",
+    role: "editor",
+    plan: null,
+  },
+  {
+    key: "news-review",
+    title: "新闻审核",
     group: "内容来源",
     role: "editor",
     plan: null,

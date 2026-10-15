@@ -40,7 +40,7 @@ from app.infrastructure.db.visitor_display import (
 )
 from app.infrastructure.db.visitor_improvement import improvement_window
 from app.infrastructure.db.visitor_report import REPORT_TIMEZONE
-from app.infrastructure.visitor_review_store import StoredNewsReview, VisitorReviewStore
+from app.infrastructure.visitor_review_store import NewsReviewStore, StoredNewsReview
 from app.schemas.visitor_display import (
     VisitorDisplayArticle,
     VisitorDisplayEvidence,
@@ -138,7 +138,7 @@ class VisitorDisplayService:
         *,
         repository: PostgresVisitorDisplayRepository,
         asset_secret: str,
-        reviews: VisitorReviewStore | None = None,
+        reviews: NewsReviewStore | None = None,
         human_picks_enabled: bool = False,
     ) -> None:
         if len(asset_secret.strip().encode("utf-8")) < 32:

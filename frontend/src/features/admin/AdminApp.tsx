@@ -11,6 +11,11 @@ import {
 } from "./accounts/api";
 import { AuditLogPage } from "./AuditLogPage";
 import { KeywordsPage } from "./keywords/KeywordsPage";
+import {
+  newsReviewsApi as defaultNewsReviewsApi,
+  type NewsReviewsApi,
+} from "./newsreviews/api";
+import { NewsReviewPage } from "./newsreviews/NewsReviewPage";
 import { LayoutTemplatesPage } from "./layout/LayoutTemplatesPage";
 import { ModelsPage } from "./models/ModelsPage";
 import { modelsApi as defaultModelsApi, type ModelsApi } from "./models/api";
@@ -46,6 +51,7 @@ type AdminAppProps = {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
   readonly keywordsApi?: KeywordsApi;
+  readonly newsReviewsApi?: NewsReviewsApi;
   readonly accountsApi?: AccountsApi;
   readonly wechatApi?: WeChatApi;
   readonly layoutApi?: LayoutApi;
@@ -74,6 +80,7 @@ function AdminSession({
   api = adminApi,
   sourcesApi = defaultSourcesApi,
   keywordsApi = defaultKeywordsApi,
+  newsReviewsApi = defaultNewsReviewsApi,
   accountsApi = defaultAccountsApi,
   wechatApi = defaultWeChatApi,
   layoutApi = defaultLayoutApi,
@@ -185,6 +192,8 @@ function AdminSession({
           <SourcesPage api={sourcesApi} onSessionExpired={expire} />
         ) : current.key === "keywords" ? (
           <KeywordsPage api={keywordsApi} onSessionExpired={expire} />
+        ) : current.key === "news-review" ? (
+          <NewsReviewPage api={newsReviewsApi} onSessionExpired={expire} />
         ) : current.key === "accounts" ? (
           <AccountsPage
             api={accountsApi}

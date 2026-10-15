@@ -139,6 +139,7 @@ describe("运营后台", () => {
     expect(links).toEqual([
       "新闻源",
       "关键词",
+      "新闻审核",
       "发布",
       "数据",
       "排版模板",
@@ -160,7 +161,7 @@ describe("运营后台", () => {
     render(<AdminApp api={calls} sourcesApi={NO_SOURCES} />);
 
     const menu = await screen.findByRole("navigation", { name: "后台菜单" });
-    expect(within(menu).getAllByRole("link")).toHaveLength(11);
+    expect(within(menu).getAllByRole("link")).toHaveLength(12);
     await user.click(within(menu).getByRole("link", { name: /海报风格/ }));
     expect(window.location.pathname).toBe("/admin/poster-styles");
     expect(screen.getByText(/先出样图/)).toBeInTheDocument();
@@ -221,7 +222,7 @@ describe("admin sections", () => {
     expect(sectionFromPath("/admin/keywords/")).toBe("keywords");
     expect(sectionFromPath("/admin")).toBeNull();
     expect(sectionFromPath("/admin/unknown")).toBeNull();
-    expect(visibleSections("owner")).toHaveLength(11);
+    expect(visibleSections("owner")).toHaveLength(12);
     expect(
       visibleSections("editor").map((section) => section.key),
     ).not.toContain("audit");

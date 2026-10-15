@@ -7287,3 +7287,40 @@ class WeChatAccountDailyStatsModel(Base):
     __table_args__ = (
         UniqueConstraint("account_id", "ref_date", name="uq_wechat_account_daily_stats_day"),
     )
+
+
+class NewsReviewModel(Base):
+    """One human opinion on an AI news pick or rejection. Append-only; the newest row per
+    ``news_key`` is the current call. It is an opinion for evaluation: it never changes a run,
+    a score or a delivery."""
+
+    __tablename__ = "news_reviews"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    news_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    decision: Mapped[str] = mapped_column(String(10), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    reviewer: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ai_verdict: Mapped[str] = mapped_column(String(10), nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    slot: Mapped[str] = mapped_column(String(10), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    snippet: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    tier_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    ai_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_news_reviews_key", "news_key", "id"),
+        Index("ix_news_reviews_reviewed_at", "reviewed_at"),
+        CheckConstraint(
+            "decision IN ('agree', 'include', 'exclude')", name="ck_news_reviews_decision"
+        ),
+        CheckConstraint("ai_verdict IN ('selected', 'rejected')", name="ck_news_reviews_verdict"),
+        CheckConstraint("jsonb_typeof(ai_reasons) = 'array'", name="ck_news_reviews_reasons"),
+    )

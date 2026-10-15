@@ -15527,6 +15527,474 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VisitorDisplayHumanPick": {
+        "additionalProperties": false,
+        "properties": {
+          "failure_code": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9_]{1,80}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "long_image": {
+            "anyOf": [
+              {
+                "enum": [
+                  "making",
+                  "sent",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Image"
+          },
+          "picked_at": {
+            "format": "date-time",
+            "title": "Picked At",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "queued",
+              "writing",
+              "imaging",
+              "sending",
+              "delivered",
+              "partial",
+              "unknown",
+              "failed",
+              "expired"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "picked_at"
+        ],
+        "title": "VisitorDisplayHumanPick",
+        "type": "object"
+      },
+      "VisitorDisplayHumanReview": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "agree",
+              "include",
+              "exclude"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reviewed_at": {
+            "format": "date-time",
+            "title": "Reviewed At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "reviewed_at"
+        ],
+        "title": "VisitorDisplayHumanReview",
+        "type": "object"
+      },
+      "VisitorDisplayNewsBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/VisitorDisplayNewsCandidate"
+            },
+            "maxItems": 48,
+            "title": "Candidates",
+            "type": "array"
+          },
+          "eligible_count": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "selected_count": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "slot": {
+            "enum": [
+              "morning",
+              "noon",
+              "evening"
+            ],
+            "title": "Slot",
+            "type": "string"
+          },
+          "target_at": {
+            "format": "date-time",
+            "title": "Target At",
+            "type": "string"
+          },
+          "total_count": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "unfilled_reasons": {
+            "items": {
+              "enum": [
+                "no_candidates",
+                "all_vetoed",
+                "below_threshold",
+                "same_day_already_selected",
+                "insufficient_eligible_candidates"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Unfilled Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "business_date",
+          "slot",
+          "target_at",
+          "total_count",
+          "eligible_count",
+          "selected_count"
+        ],
+        "title": "VisitorDisplayNewsBatch",
+        "type": "object"
+      },
+      "VisitorDisplayNewsCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/VisitorDisplayScoreDimension"
+            },
+            "maxItems": 16,
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "human_pick": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisitorDisplayHumanPick"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "human_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisitorDisplayHumanReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key": {
+            "pattern": "^vn1_[0-9a-f]{24}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "rank": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "unresolved_governance",
+                "ineligible_evidence",
+                "tier_c_only",
+                "unverified",
+                "unsuitable_negative_incident",
+                "privacy_legal_safety_uncertain",
+                "prohibited_marketing_risk",
+                "repeated_within_window",
+                "stale_event",
+                "outside_science_ai_education_scope",
+                "other_rule",
+                "below_threshold",
+                "same_day_already_selected",
+                "not_eligible",
+                "ranked_out"
+              ],
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Reasons",
+            "type": "array"
+          },
+          "score": {
+            "maximum": 10.0,
+            "minimum": -10.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "selected_ordinal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Ordinal"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "threshold": {
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "tier_label": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Label"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "selected",
+              "rejected"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "verdict",
+          "rank",
+          "score",
+          "threshold"
+        ],
+        "title": "VisitorDisplayNewsCandidate",
+        "type": "object"
+      },
+      "VisitorDisplayNewsPool": {
+        "additionalProperties": false,
+        "properties": {
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/VisitorDisplayNewsBatch"
+            },
+            "maxItems": 6,
+            "title": "Batches",
+            "type": "array"
+          },
+          "human_pick_enabled": {
+            "default": false,
+            "title": "Human Pick Enabled",
+            "type": "boolean"
+          },
+          "review_enabled": {
+            "default": false,
+            "title": "Review Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "VisitorDisplayNewsPool",
+        "type": "object"
+      },
+      "VisitorDisplayNewsReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "agree",
+              "include",
+              "exclude"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "key": {
+            "pattern": "^vn1_[0-9a-f]{24}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "key",
+          "decision"
+        ],
+        "title": "VisitorDisplayNewsReviewRequest",
+        "type": "object"
+      },
+      "VisitorDisplayScoreDimension": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "source_trust",
+              "source_diversity",
+              "freshness",
+              "communication_potential",
+              "ai_relevance",
+              "parent_relevance",
+              "science_education_relevance",
+              "product_matrix_fit",
+              "editorial_priority",
+              "theme_repetition",
+              "controversy_risk",
+              "marketing_risk"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "positive",
+              "penalty"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "number"
+          },
+          "weight": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "value",
+          "weight"
+        ],
+        "title": "VisitorDisplayScoreDimension",
+        "type": "object"
+      },
       "VisualAssetKind": {
         "description": "The single intended use of one private catalog asset.",
         "enum": [
@@ -17735,6 +18203,112 @@
           }
         },
         "summary": "Post Model Key Use Env",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/news-reviews": {
+      "get": {
+        "operationId": "get_admin_news_reviews_api_v1_admin_news_reviews_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorDisplayNewsPool"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin News Reviews",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_news_review_api_v1_admin_news_reviews_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisitorDisplayNewsReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitorDisplayHumanReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Admin News Review",
         "tags": [
           "admin"
         ]

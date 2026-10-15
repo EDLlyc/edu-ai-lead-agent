@@ -22,6 +22,7 @@ from app.api.v1.routes import (
     admin_accounts,
     admin_keywords,
     admin_models,
+    admin_news_reviews,
     admin_sources,
     admin_wechat,
     brand_knowledge,
@@ -284,6 +285,7 @@ app.include_router(admin_sources.router, prefix="/api/v1")
 app.include_router(admin_keywords.router, prefix="/api/v1")
 app.include_router(admin_wechat.router, prefix="/api/v1")
 app.include_router(admin_models.router, prefix="/api/v1")
+app.include_router(admin_news_reviews.router, prefix="/api/v1")
 
 
 @app.middleware("http")

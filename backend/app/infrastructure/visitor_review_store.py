@@ -14,6 +14,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 _SCHEMA = """
@@ -71,6 +72,31 @@ class NewsReviewSubject:
     ai_reasons: tuple[str, ...] = ()
 
 
+class NewsReviewStore(Protocol):
+    """What the exhibit service needs from a review store (local SQLite or the Postgres table)."""
+
+    async def latest(self, keys: Iterable[str]) -> dict[str, StoredNewsReview]: ...
+
+    async def record(
+        self,
+        *,
+        key: str,
+        decision: str,
+        note: str | None,
+        subject: NewsReviewSubject,
+        now: datetime | None = None,
+        reviewer: str | None = None,
+    ) -> StoredNewsReview: ...
+
+    async def daily_counts(
+        self, days: tuple[date, ...], *, timezone: str
+    ) -> dict[date, tuple[int, int]]: ...
+
+    async def daily_decisions(
+        self, days: tuple[date, ...], *, timezone: str
+    ) -> dict[date, dict[str, int]]: ...
+
+
 class VisitorReviewStore:
     """Append-only history; the newest row per key is the current human decision."""
 
@@ -101,6 +127,7 @@ class VisitorReviewStore:
         note: str | None,
         subject: NewsReviewSubject,
         now: datetime | None = None,
+        reviewer: str | None = None,  # the local file has one operator and keeps no name
     ) -> StoredNewsReview:
         reviewed_at = (now or datetime.now(UTC)).astimezone(UTC)
         await asyncio.to_thread(self._insert, key, decision, note, subject, reviewed_at)
@@ -228,4 +255,4 @@ class VisitorReviewStore:
             )
 
 
-__all__ = ["NewsReviewSubject", "StoredNewsReview", "VisitorReviewStore"]
+__all__ = ["NewsReviewStore", "NewsReviewSubject", "StoredNewsReview", "VisitorReviewStore"]

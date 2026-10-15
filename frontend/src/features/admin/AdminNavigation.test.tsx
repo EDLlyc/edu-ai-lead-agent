@@ -51,7 +51,7 @@ describe("responsive admin navigation", () => {
     await user.keyboard("{Enter}");
     const menu = screen.getByRole("navigation", { name: "后台菜单" });
     expect(menu).toHaveAttribute("id", toggle.getAttribute("aria-controls"));
-    expect(within(menu).getAllByRole("link")).toHaveLength(11);
+    expect(within(menu).getAllByRole("link")).toHaveLength(12);
     expect(
       within(menu).getByRole("link", { name: "模型配置" }),
     ).toHaveAttribute("aria-current", "page");
@@ -109,7 +109,7 @@ describe("responsive admin navigation", () => {
       />,
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link")).toHaveLength(7);
+    expect(screen.getAllByRole("link")).toHaveLength(8);
     expect(
       screen.queryByRole("link", { name: "模型配置" }),
     ).not.toBeInTheDocument();
@@ -125,7 +125,7 @@ describe("responsive admin navigation", () => {
     expect(current).toHaveFocus();
     resize(true);
     await user.click(toggle);
-    expect(screen.getAllByRole("link")).toHaveLength(7);
+    expect(screen.getAllByRole("link")).toHaveLength(8);
     await user.click(screen.getByRole("link", { name: "新闻源" }));
     expect(toggle).toHaveFocus();
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
