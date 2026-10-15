@@ -46,10 +46,10 @@ export function NewsReviewPage({
     new Map(),
   );
   const [filter, setFilter] = useState<Filter>("todo");
-  const [blind, setBlind] = useState(true);
-  const [cursor, setCursor] = useState(0);
+  const [blind, setBlind] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     readonly kind: "ok" | "error";
     readonly text: string;
@@ -131,33 +131,51 @@ export function NewsReviewPage({
   }
 
   const agreement = measureAgreement(items, records);
-  const index = Math.min(cursor, Math.max(visible.length - 1, 0));
-  const item = visible[index];
-  const record = item === undefined ? undefined : records.get(item.key);
-  const showAi = !blind || record !== undefined;
+  const counts: Record<Filter, number> = {
+    todo: items.filter((entry) => !records.has(entry.key)).length,
+    disagree: items.filter((entry) => {
+      const record = records.get(entry.key);
+      return (
+        record !== undefined &&
+        (record.decision === "include") !== entry.eligible
+      );
+    }).length,
+    all: items.length,
+  };
 
-  const submit = async (decision: ReviewCall) => {
-    if (item === undefined || busy) return;
-    setBusy(true);
+  const save = async (
+    entry: ReviewItem,
+    decision: ReviewCall,
+    text: string,
+  ) => {
+    if (busyKey !== null) return;
+    setBusyKey(entry.key);
     setMessage(null);
     try {
-      await api.review(item.key, decision, note);
+      await api.review(entry.key, decision, text);
       setRecords(
-        new Map(records).set(item.key, {
+        new Map(records).set(entry.key, {
           decision,
-          note: note.trim() === "" ? null : note.trim(),
+          note: text.trim() === "" ? null : text.trim(),
         }),
       );
+      setEditing(null);
       setNote("");
-      setMessage({
-        kind: "ok",
-        text: decision === "include" ? "已记下：适合推" : "已记下：不适合推",
-      });
     } catch (error) {
       fail(error, "保存审核失败");
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
+  };
+
+  const openEditor = (entry: ReviewItem) => {
+    if (editing === entry.key) {
+      setEditing(null);
+      setNote("");
+      return;
+    }
+    setEditing(entry.key);
+    setNote(records.get(entry.key)?.note ?? "");
   };
 
   return (
@@ -170,7 +188,7 @@ export function NewsReviewPage({
       </header>
       <p className={styles.lede}>
         看 AI
-        每天挑选和落选的新闻，说说你觉得适不适合推给家长。这里只记录你的意见，用来评估
+        每天挑选和落选的新闻，每条点一下「适合推」或「不适合推」。这里只记录你的意见，用来评估
         AI 选得准不准，不会改变已经选好的内容，也不会发出任何消息。
       </p>
       {message === null ? null : (
@@ -189,11 +207,10 @@ export function NewsReviewPage({
             aria-pressed={filter === entry.key}
             onClick={() => {
               setFilter(entry.key);
-              setCursor(0);
-              setNote("");
+              setEditing(null);
             }}
           >
-            {entry.title}
+            {entry.title}（{counts[entry.key]}）
           </button>
         ))}
         <button
@@ -215,122 +232,185 @@ export function NewsReviewPage({
           条，你认为不该推但 AI 过线 {agreement.excludedButEligible} 条。
         </p>
       )}
-      {item === undefined ? (
+      {visible.length === 0 ? (
         <p className={styles.hint} role="status">
           这个筛选下没有新闻了。
         </p>
       ) : (
-        <ul className={styles.cards} aria-label="待审新闻">
-          <li>
-            <div>
-              <h3>{item.title}</h3>
-              <small>
-                {[item.sourceName, item.tierLabel, item.slots.join("、")]
-                  .filter(
-                    (part): part is string => part !== null && part !== "",
-                  )
-                  .join(" · ")}
-              </small>
-              {item.snippet === null ? null : <p>{item.snippet}</p>}
-              {item.sourceUrl === null ? null : (
-                <a href={item.sourceUrl} target="_blank" rel="noreferrer">
-                  打开原文
-                </a>
-              )}
-            </div>
-            {showAi ? (
-              <p className={styles.hint}>
-                AI 判断：
-                {item.selected
-                  ? "入选"
-                  : item.eligible
-                    ? "过线但没入选"
-                    : "没过线"}
-                {" · "}分数 {score(item.bestScore)}（过线{" "}
-                {score(item.threshold)}） · 排名第 {item.bestRank}
-                {item.reasons.length === 0
-                  ? ""
-                  : ` · ${item.reasons.map((reason) => REASON_LABEL[reason]).join("、")}`}
-              </p>
-            ) : (
-              <p className={styles.hint}>
-                盲审中：审完这条才会看到 AI 的判断。
-              </p>
-            )}
-            {record === undefined ? null : (
-              <p className={styles.success}>
-                你已审：{record.decision === "include" ? "适合推" : "不适合推"}
-                {record.note === null ? "" : `（${record.note}）`}。可以再改。
-              </p>
-            )}
-            <label className={styles.field}>
-              <span>备注（可不填）</span>
-              <input
-                value={note}
-                maxLength={280}
-                disabled={busy}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </label>
-            <div
-              className={styles.filters}
-              role="group"
-              aria-label="不适合的原因"
-            >
-              {EXCLUDE_REASONS.map((reason) => (
-                <button
-                  key={reason}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setNote(reason)}
-                >
-                  {reason}
-                </button>
-              ))}
-            </div>
-            <div className={styles.filters}>
-              <button
-                type="button"
-                className={styles.primary}
-                disabled={busy}
-                onClick={() => void submit("include")}
-              >
-                适合推
-              </button>
-              <button
-                type="button"
-                className={styles.danger}
-                disabled={busy}
-                onClick={() => void submit("exclude")}
-              >
-                不适合推
-              </button>
-              <button
-                type="button"
-                disabled={busy || index === 0}
-                onClick={() => {
-                  setCursor(index - 1);
-                  setNote("");
-                }}
-              >
-                上一条
-              </button>
-              <button
-                type="button"
-                disabled={busy || index >= visible.length - 1}
-                onClick={() => {
-                  setCursor(index + 1);
-                  setNote("");
-                }}
-              >
-                下一条
-              </button>
-              <span className={styles.hint}>
-                {index + 1} / {visible.length}
-              </span>
-            </div>
-          </li>
-        </ul>
+        <div
+          className={styles.tableScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="新闻列表，可横向滚动"
+        >
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th scope="col">新闻</th>
+                <th scope="col">AI 判断</th>
+                <th scope="col">你的意见</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((entry) => {
+                const record = records.get(entry.key);
+                const busy = busyKey === entry.key;
+                const hidden = blind && record === undefined;
+                return (
+                  <tr key={entry.key}>
+                    <th scope="row">
+                      {entry.sourceUrl === null ? (
+                        <span className={styles.cellTitle}>{entry.title}</span>
+                      ) : (
+                        <a
+                          className={styles.cellTitle}
+                          href={entry.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {entry.title}
+                        </a>
+                      )}
+                      <div className={styles.metadata}>
+                        {[
+                          entry.sourceName,
+                          entry.tierLabel,
+                          entry.slots.join("、"),
+                        ]
+                          .filter(
+                            (part): part is string =>
+                              part !== null && part !== "",
+                          )
+                          .join(" · ")}
+                      </div>
+                      {entry.snippet === null ? null : (
+                        <div className={styles.metadata}>{entry.snippet}</div>
+                      )}
+                    </th>
+                    <td>
+                      {hidden ? (
+                        <span className={styles.hint}>盲审中</span>
+                      ) : (
+                        <>
+                          <strong>
+                            {entry.selected
+                              ? "入选"
+                              : entry.eligible
+                                ? "过线没入选"
+                                : "没过线"}
+                          </strong>
+                          <div className={styles.metadata}>
+                            分数 {score(entry.bestScore)}（线{" "}
+                            {score(entry.threshold)}）· 第 {entry.bestRank} 名
+                            {entry.reasons.length === 0
+                              ? ""
+                              : ` · ${entry.reasons.map((reason) => REASON_LABEL[reason]).join("、")}`}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                    <td>
+                      <span className={styles.rowActions}>
+                        <button
+                          type="button"
+                          className={
+                            record?.decision === "include"
+                              ? styles.primary
+                              : undefined
+                          }
+                          aria-pressed={record?.decision === "include"}
+                          aria-label={`适合推：${entry.title}`}
+                          disabled={busy}
+                          onClick={() =>
+                            void save(entry, "include", record?.note ?? "")
+                          }
+                        >
+                          适合推
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            record?.decision === "exclude"
+                              ? styles.danger
+                              : undefined
+                          }
+                          aria-pressed={record?.decision === "exclude"}
+                          aria-label={`不适合推：${entry.title}`}
+                          disabled={busy}
+                          onClick={() =>
+                            void save(entry, "exclude", record?.note ?? "")
+                          }
+                        >
+                          不适合推
+                        </button>
+                        <button
+                          type="button"
+                          aria-expanded={editing === entry.key}
+                          aria-label={`备注：${entry.title}`}
+                          disabled={busy}
+                          onClick={() => openEditor(entry)}
+                        >
+                          备注
+                        </button>
+                      </span>
+                      {record?.note == null ? null : (
+                        <div className={styles.metadata}>
+                          备注：{record.note}
+                        </div>
+                      )}
+                      {editing !== entry.key ? null : (
+                        <div role="group" aria-label={`备注：${entry.title}`}>
+                          <label className={styles.field}>
+                            <span>备注（可不填）</span>
+                            <input
+                              value={note}
+                              maxLength={280}
+                              disabled={busy}
+                              onChange={(event) => setNote(event.target.value)}
+                            />
+                          </label>
+                          <span className={styles.rowActions}>
+                            {EXCLUDE_REASONS.map((reason) => (
+                              <button
+                                key={reason}
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void save(entry, "exclude", reason)
+                                }
+                              >
+                                {reason}
+                              </button>
+                            ))}
+                          </span>
+                          <span className={styles.rowActions}>
+                            <button
+                              type="button"
+                              className={styles.primary}
+                              disabled={busy || record === undefined}
+                              onClick={() =>
+                                record === undefined
+                                  ? undefined
+                                  : void save(entry, record.decision, note)
+                              }
+                            >
+                              保存备注
+                            </button>
+                            {record === undefined ? (
+                              <span className={styles.hint}>
+                                先点「适合推」或「不适合推」
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

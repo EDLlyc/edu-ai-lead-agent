@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -52,42 +52,84 @@ function api(overrides: Partial<NewsReviewsApi> = {}): NewsReviewsApi {
 }
 
 describe("新闻审核", () => {
-  it("hides the AI verdict until the item is reviewed, then records the call", async () => {
+  it("lists every news item in one table with the AI verdict beside it", async () => {
+    render(<NewsReviewPage api={api()} onSessionExpired={vi.fn()} />);
+    const rows = await screen.findAllByRole("row");
+    // header + the two items
+    expect(rows).toHaveLength(3);
+    expect(
+      within(rows[1]!).getByText("教育部部署人工智能通识教育"),
+    ).toBeVisible();
+    expect(within(rows[1]!).getByText("入选")).toBeVisible();
+    expect(within(rows[2]!).getByText("没过线")).toBeVisible();
+    expect(within(rows[2]!).getByText(/分数没过线/)).toBeVisible();
+  });
+
+  it("records a call with one click and moves the item out of 还没审", async () => {
     const user = userEvent.setup();
     const calls = api();
     render(<NewsReviewPage api={calls} onSessionExpired={vi.fn()} />);
+    await screen.findByText("教育部部署人工智能通识教育");
 
-    expect(await screen.findByText("教育部部署人工智能通识教育")).toBeVisible();
-    expect(screen.getByText(/盲审中/)).toBeVisible();
-    expect(screen.queryByText(/AI 判断/)).toBeNull();
-
-    await user.type(screen.getByLabelText("备注（可不填）"), "家长关心");
-    await user.click(screen.getByRole("button", { name: "适合推" }));
-
+    await user.click(
+      screen.getByRole("button", {
+        name: "适合推：教育部部署人工智能通识教育",
+      }),
+    );
     expect(calls.review).toHaveBeenCalledWith(
       "vn1_" + "a".repeat(24),
       "include",
-      "家长关心",
+      "",
     );
-    expect(await screen.findByText("已记下：适合推")).toBeVisible();
-    // Reviewed: the item leaves 还没审, so the next one is shown.
-    expect(await screen.findByText("某地举办科技嘉年华")).toBeVisible();
+    await waitFor(() =>
+      expect(screen.queryByText("教育部部署人工智能通识教育")).toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: "还没审（1）" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "全部（2）" }));
+    expect(
+      screen.getByRole("button", {
+        name: "适合推：教育部部署人工智能通识教育",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("与 AI 的一致率")).toHaveTextContent("100%");
   });
 
-  it("shows the AI view when blind mode is off and can fill a reason as the note", async () => {
+  it("hides the AI verdict in blind mode until the item is reviewed", async () => {
     const user = userEvent.setup();
     render(<NewsReviewPage api={api()} onSessionExpired={vi.fn()} />);
     await screen.findByText("教育部部署人工智能通识教育");
     await user.click(
       screen.getByRole("button", { name: "盲审（先不看 AI 的判断）" }),
     );
-    expect(screen.getByText(/AI 判断：入选/)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "像营销软文" }));
-    expect(screen.getByLabelText("备注（可不填）")).toHaveValue("像营销软文");
+    expect(screen.getAllByText("盲审中")).toHaveLength(2);
+    expect(screen.queryByText("入选")).toBeNull();
   });
 
-  it("shows a refusal from the API and keeps the item open", async () => {
+  it("saves a note, and a reason chip records 不适合推 with that reason", async () => {
+    const user = userEvent.setup();
+    const calls = api();
+    render(<NewsReviewPage api={calls} onSessionExpired={vi.fn()} />);
+    await screen.findByText("某地举办科技嘉年华");
+
+    await user.click(
+      screen.getByRole("button", { name: "备注：某地举办科技嘉年华" }),
+    );
+    const group = screen.getByRole("group", {
+      name: "备注：某地举办科技嘉年华",
+    });
+    expect(
+      within(group).getByRole("button", { name: "保存备注" }),
+    ).toBeDisabled();
+    await user.click(within(group).getByRole("button", { name: "像营销软文" }));
+    expect(calls.review).toHaveBeenCalledWith(
+      "vn1_" + "b".repeat(24),
+      "exclude",
+      "像营销软文",
+    );
+  });
+
+  it("shows a refusal from the API and keeps the item in the list", async () => {
     const user = userEvent.setup();
     const { NewsReviewApiError } = await import("./api");
     const calls = api({
@@ -99,7 +141,11 @@ describe("新闻审核", () => {
     });
     render(<NewsReviewPage api={calls} onSessionExpired={vi.fn()} />);
     await screen.findByText("教育部部署人工智能通识教育");
-    await user.click(screen.getByRole("button", { name: "不适合推" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "不适合推：教育部部署人工智能通识教育",
+      }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "已经不在最近的新闻里了",
     );
