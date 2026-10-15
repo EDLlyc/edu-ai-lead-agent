@@ -114,3 +114,14 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
   (`journalctl -t edu-ai-healthcheck`) and, once `ALERT_WEBHOOK_URL` is set in `/etc/edu-ai-healthcheck.env`, to a
   WeCom bot. Use an ops-only group, not the formal news group. It runs on the host, so it cannot see a security
   group or network outage (use an external uptime probe for that). A simulated failure raised and cleared an alert.
+
+## Owner-chosen account passwords (2026-10-15 17:41, commit 6204b86)
+- Policy (owner decision "block_common"): new passwords are 8-128 chars; the server refuses only the most common
+  passwords (`12345678`, `password`, ...), one repeated character and a password equal to the username. Everything else
+  is allowed; the console only shows a strength hint (弱/中/强) and never blocks. Owners can type the password when
+  creating an account or resetting one (blank = generated, shown once); a chosen password is never echoed back.
+- API overlay `…:account-password-6204b86` (id `e008f5f8…`) FROM `e2372099…` with 5 backend files; only
+  `acquisition-api` recreated, effective env unchanged, `.release.env` `APP_IMAGE` moved to it. Console build
+  `index-D0SiKVTa.js`. `overlay-password/activate.sh` waits out the content slot windows instead of refusing.
+  Backup `backups/account-password-20261015.a3e54G` (compose/.env/.release.env `*.before`, `www.before`).
+- Only owners can create accounts or reset others' passwords; editors can only change their own.
