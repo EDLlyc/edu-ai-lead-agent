@@ -152,3 +152,31 @@ Maintainer guide (what the feature does, which files to change, what sends a mes
 - Nothing is sent by creating or editing a pick; only `POST /api/v1/admin/human-picks/{key}/push` reaches the formal group.
 - Rollback: restore `.release.env` `APP_IMAGE` to `…@sha256:0ab05e2e9afd3afb55ee299ea2641d3374614aa35e1d845da3884c29e3bf0e6c`,
   recreate `acquisition-api` (`--no-deps --force-recreate`), and copy `www.before` back to `/var/www/edu-ai-admin`.
+
+## 系统内置词 in the console (2026-10-16, commit d3902f14)
+
+Maintainer guide: `docs/operations/admin-builtin-phrases.md`. Files under `overlay-builtin-phrases/`.
+- API overlay `sha256:5d021b23cfce6becd32984af64c7478db48b18cd3af6b873fcc1c4c624f353d8` FROM `98b9d189…` for
+  `acquisition-api`; `.release.env` `APP_IMAGE` now points at it. Worker overlay `sha256:9ccecd8a9c3eb07e75968f2c713746b2e5afc504770bf7fd77b6efc6f7bd7145`
+  FROM `a3a3e7f7…` for `content-worker` and `content-scheduler` only (per-command `APP_IMAGE`, not `.release.env`).
+- `alembic upgrade` 20261015_0062 -> 20261016_0063 adds table `builtin_phrase_versions` and the nullable column
+  `content_slot_runs.builtin_phrase_version_id`. Rollback = `alembic downgrade 20261015_0062` in the new API container.
+- Backup/stage dir `backups/builtin-phrases-20261016.05AJLQ` and `backups/builtin-phrases-activate.05AJLQ`
+  (`db-before.dump`, compose/.env/.release.env `*.before`, `www.before`, per-service `env-*.txt`). `activate.sh` waits out the
+  content slot windows and rolls back on any failure.
+- Never plain `compose up` content-worker or content-scheduler: they would jump to the API image digest.
+
+## Acquisition: skip an unreadable page (2026-10-16 13:33, commit dd301d92)
+
+Maintainer note: `docs/operations/acquisition-unreadable-pages.md`. Files under `overlay-acquisition-skip/`.
+- Overlay `sha256:5861c0587217c6c0787b7b94145f9dfd4805be7f786d02bbdcfecc524eec6f58` FROM `da052082…` with one file
+  (`execute_acquisition.py`, base hash `f59859a8`). Only `acquisition-worker` recreated (per-command `APP_IMAGE`). Console
+  build `index-AdbYLP1T.js`. No schema change (alembic head stays `20261016_0063`).
+- Three activation attempts. 1: env-hash diff, `CONTENT_SCORING_VERSION` preview.15 -> .17 because a recreate re-reads
+  `.env`; rolled back, but the rollback recreate drifted the worker's env to .17. 2: the script's
+  `grep -c` inside `$(...)` fired the inherited `ERR` trap, which recreated the old image while the script went on and
+  swapped the console. 3: clean. Fixes in `activate.sh`: `export CONTENT_SCORING_VERSION=scoring-v1-preview.15-gov-yaowen-topic-gate`
+  (the value this worker was created with; it does not read it) and `|| true` on the `grep -c`.
+- Backups: `backups/acq-skip-activate.IBjCQK` (holds the original console as `www.before`; do not reuse it) and
+  `backups/acq-skip-activate2`. Rollback = recreate `acquisition-worker` with `APP_IMAGE=…@sha256:da052082…` and the same
+  `CONTENT_SCORING_VERSION` export, then copy the original `www.before` back to `/var/www/edu-ai-admin`.

@@ -327,6 +327,12 @@ make doctor
 make check
 ```
 
+## 生产与交接
+
+生产线是分支 `mainline`（Codeup `origin`），工作区 `.trellis/worktrees/mainline`；运营后台在
+`https://ops.xiaosaiai.com/admin/`。部署方式、环境变量漂移的坑、回滚和待办都在
+[运维与交接入口](./docs/operations/README.md)。改后台或采集之前先读那一页。
+
 ## 个人简历
 
 [下载公开版 PDF](./docs/portfolio/resume/resume-public.pdf) ·
@@ -341,6 +347,10 @@ make check
 | Agent / LLM 应用开发实习简历         | [个人简历](./docs/portfolio/resume/README.md)                                  |
 | Agent 确定性评测                     | [Eval README](./backend/evals/agent_workbench/README.md)                       |
 | 图片质量六维离线评测                 | [Image-quality Eval README](./backend/evals/image_quality/README.md)           |
+| **接手生产系统先读这个**             | [运维与交接入口](./docs/operations/README.md)                                  |
+| 运营后台：新闻审核与人工加推         | [后台操作与代码位置](./docs/operations/admin-news-review-and-human-pick.md)    |
+| 运营后台：系统内置词                 | [内置词维护](./docs/operations/admin-builtin-phrases.md)                       |
+| 采集失败（parse_failure）排查        | [读不出的页面](./docs/operations/acquisition-unreadable-pages.md)              |
 | 生产发布、回退与 Digest 契约         | [固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)        |
 | 服务器迁移与视觉能力启用             | [生产服务器迁移手册](./docs/operations/production-server-migration-runbook.md) |
 | 后端工程规范                         | [Backend specs](./.trellis/spec/backend/index.md)                              |

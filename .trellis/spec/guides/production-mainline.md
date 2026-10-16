@@ -11,7 +11,8 @@
   0050 infographic_advisory → 0051 human_pick_lanes → 0052 admin_console → 0053 operator_sources →
   0054 operator_keywords → 0055 wechat_accounts_publish → 0056 wechat_stats →
   0057 wechat_layout_template → 0058 model_api_keys → 0059 model_key_consumers →
-  0060 wechat_publish_occupancy → 0061 model_key_load_errors).
+  0060 wechat_publish_occupancy → 0061 model_key_load_errors → 0062 news_reviews →
+  0063 builtin_phrases).
   New migrations go on top of it.
 
 ## Deploying
@@ -42,6 +43,29 @@
   `CONTENT_SLOT_RANKING_VERSION` drift: unchanged September 28 schedulers provided reference values,
   and substituting only those two proved the original full runtime hashes for all four targets.
   Preserve these overrides until a separately reviewed upgrade changes their contracts.
+
+## Live since 2026-10-16 (内置词 + 人工加推 + acquisition skip)
+
+Production is a mix of overlay images, each built `FROM` the one before. Check the running digests with
+`docker inspect` before building anything; never assume the table below is current.
+
+| Service | Image (short) | Last change |
+|---|---|---|
+| `acquisition-api` (`.release.env` `APP_IMAGE`) | `5d021b23` | 内置词 API (d3902f14) |
+| `content-worker`, `content-scheduler` | `9ccecd8a` | 内置词 read at draft time |
+| `acquisition-worker`, `wecom-dispatcher` | `da052082` (`acquisition-worker` is now `5861c058`) | skip unreadable page (dd301d92) |
+| `acquisition-scheduler`, governance/weekly schedulers | `83a41e41` | untouched |
+| governance-worker, official-account workers | `6226855a` | untouched |
+| `wecom-infographic-producer` | `e0513020` | untouched |
+
+- Alembic head `20261016_0063`.
+- **Env drift is real.** Services were created at different times, so `CONTENT_SCORING_VERSION` differs per service
+  (acquisition-api and content-*: `.17`; wecom-dispatcher: `.15`; acquisition-scheduler: `.11`; acquisition-worker: `.15`).
+  A compose recreate re-reads the current `.env`, and a shell variable beats `--env-file`. Before recreating any
+  service, record its env hash, export the value it was created with, recreate with `--no-deps`, and diff the hash.
+- Overlay scripts run with `set -E`: a failing command inside `$(...)` fires the `ERR` trap in the subshell. The rollback
+  then runs while the script carries on. Put `|| true` on every `grep -c` in a substitution.
+- Deploy records: `.trellis/tasks/10-15-public-hosting/runbook.md` (sections 系统内置词 and Acquisition skip).
 
 ## Live since 2026-10-13 (national tech policy `.17` + long-image failure logging)
 
