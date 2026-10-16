@@ -1,0 +1,1 @@
+f59859a8 app/application/services/execute_acquisition.py

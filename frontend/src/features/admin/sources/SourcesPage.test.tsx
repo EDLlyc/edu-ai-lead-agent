@@ -11,6 +11,7 @@ import type {
   SourcePreview,
   SourcesApi,
 } from "./api";
+import { latestJobLabel } from "./labels";
 import { SourcesPage } from "./SourcesPage";
 
 const SEED: AdminSource = {
@@ -332,4 +333,23 @@ it("freezes the previewed source snapshot while saving", async () => {
     for (const input of within(form).getAllByRole(role))
       expect(input).toBeDisabled();
   }
+});
+
+describe("latest job label", () => {
+  it("states a failed fetch in words and keeps unknown codes as they are", () => {
+    const failed = (error_code: string): AdminSource => ({
+      ...SEED,
+      latest_job: {
+        ...SEED.latest_job!,
+        status: "failed",
+        error_code,
+        completed_at: null,
+      },
+    });
+    expect(latestJobLabel(failed("parse_failure"))).toBe(
+      "失败（没有一页能读出正文）",
+    );
+    expect(latestJobLabel(failed("http_503"))).toBe("失败（网站返回 503）");
+    expect(latestJobLabel(failed("odd_code"))).toBe("失败（odd_code）");
+  });
 });

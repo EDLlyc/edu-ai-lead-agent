@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -733,3 +734,86 @@ async def test_zero_match_uses_bounded_neutral_probe_and_advances_raw_cursor(
     assert no_match.observation_metadata["relevance_rule_version"] == (
         SCIENCE_TECH_EDITORIAL_RULE_VERSION
     )
+
+
+class _BrokenPagesFetcher(RelevanceFixtureFetcher):
+    """Serves a one-line notice, not an article, for every URL that contains ``broken``."""
+
+    async def fetch(
+        self,
+        url: str,
+        profile: SourceProfile,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+    ) -> FetchedResponse:
+        response = await super().fetch(url, profile, etag=etag, last_modified=last_modified)
+        if url == profile.entry_url or "broken" not in url:
+            return response
+        body = (
+            "<!doctype html><html><head><title>移动版</title></head>"
+            "<body><main>您访问的链接即将离开本网站, 是否继续?</main></body></html>"
+        ).encode()
+        return replace(response, body=body, sha256=sha256_bytes(body))
+
+
+def _three_ai_education_records(*, broken: tuple[bool, bool, bool]) -> list[dict[str, str]]:
+    names = ("a", "b", "c")
+    return [
+        {
+            "TITLE": f"学校人工智能教育课程建设{name}",
+            "URL": (
+                "https://www.gov.cn/zhengce/content/202607/"
+                f"content_skip_{'broken' if flag else 'ok'}_{name}.htm"
+            ),
+            "DOCRELPUBTIME": "2026-07-29",
+        }
+        for name, flag in zip(names, broken, strict=True)
+    ]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_unreadable_page_is_skipped_and_the_rest_of_the_source_is_kept(
+    integration_context: IntegrationContext,
+) -> None:
+    records = _three_ai_education_records(broken=(True, True, False))
+    settings = integration_context.settings.model_copy(
+        update={"acquisition_first_run_item_limit": 3, "acquisition_daily_item_limit": 3}
+    )
+    run, job = await _execute_government_run(
+        integration_context, _BrokenPagesFetcher(records), settings=settings
+    )
+
+    assert job.status == JobStatus.SUCCEEDED.value
+    assert job.error_code is None
+    assert run.new_count == 1
+    async with integration_context.session_factory() as session:
+        skipped = (
+            await session.scalars(
+                select(SourceObservationModel).where(
+                    SourceObservationModel.job_id == job.id,
+                    SourceObservationModel.outcome == ObservationOutcome.PARSE_FAILURE.value,
+                )
+            )
+        ).all()
+    assert len(skipped) == 2
+    assert {row.error_code for row in skipped} == {"parse_failure"}
+    assert all("broken" in row.observation_metadata["url"] for row in skipped)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_source_whose_every_page_is_unreadable_still_fails(
+    integration_context: IntegrationContext,
+) -> None:
+    records = _three_ai_education_records(broken=(True, True, True))
+    settings = integration_context.settings.model_copy(
+        update={"acquisition_first_run_item_limit": 3, "acquisition_daily_item_limit": 3}
+    )
+    _run, job = await _execute_government_run(
+        integration_context, _BrokenPagesFetcher(records), settings=settings
+    )
+
+    assert job.status == JobStatus.FAILED.value
+    assert job.error_code == "parse_failure"

@@ -132,6 +132,8 @@ class AcquisitionExecutor:
         education_title_count = 0
         frontier_title_count = 0
         neutral_probe_count = 0
+        detail_attempt_count = 0
+        parse_skipped_count = 0
         job_outcome = "succeeded"
         heartbeat_stop = asyncio.Event()
         lease_lost = asyncio.Event()
@@ -464,7 +466,31 @@ class AcquisitionExecutor:
                         response=detail_response,
                         stored=stored_detail,
                     )
-                    document = connector.extract(detail_response, item, claimed.profile)
+                    detail_attempt_count += 1
+                    try:
+                        document = connector.extract(detail_response, item, claimed.profile)
+                    except ParseError as error:
+                        # One page that is not an article (a leave-site notice, an old
+                        # profile page, a one-line brief) must not discard the rest of the list.
+                        # The source fails below only when none of its pages could be read.
+                        parse_skipped_count += 1
+                        await self._repository.observe(
+                            claimed=claimed,
+                            source_item_id=item.source_item_id,
+                            outcome=ObservationOutcome.PARSE_FAILURE,
+                            snapshot_id=snapshot_id,
+                            http_status=detail_response.status_code,
+                            error_code=error.code,
+                            metadata={"reason": error.message, "url": item.url[:500]},
+                        )
+                        logger.warning(
+                            "acquisition_item_parse_skipped",
+                            acquisition_run_id=str(claimed.run_id),
+                            job_id=str(claimed.job_id),
+                            source_id=str(claimed.profile.source_id),
+                            error_code=error.code,
+                        )
+                        continue
                     freshness = evaluate_publication_freshness(
                         document.published_at,
                         evaluated_at=freshness_evaluated_at,
@@ -614,6 +640,8 @@ class AcquisitionExecutor:
                         duplicate_count += 1
                     else:
                         unchanged_count += 1
+                if detail_attempt_count > 0 and parse_skipped_count == detail_attempt_count:
+                    raise ParseError("no article page of this source could be read")
                 if claimed.profile.relevance_rule_version is not None:
                     filter_metadata = {
                         "scanned_count": scanned_count,

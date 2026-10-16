@@ -39,6 +39,20 @@ export function kindLabel(source: AdminSource): string {
   return "内置";
 }
 
+const FAILURE_LABELS: Readonly<Record<string, string>> = {
+  parse_failure: "没有一页能读出正文",
+  network_failure: "连不上网站",
+  total_timeout: "网站响应太慢",
+  response_too_large: "页面太大",
+  unsupported_content: "不是网页或 RSS",
+  dns_resolution_failed: "域名解析不到",
+};
+
+function failureText(code: string): string {
+  if (code.startsWith("http_")) return `网站返回 ${code.slice(5)}`;
+  return FAILURE_LABELS[code] ?? code;
+}
+
 /** One line for the 最近一次抓取 column. */
 export function latestJobLabel(source: AdminSource): string {
   const job = source.latest_job;
@@ -46,7 +60,7 @@ export function latestJobLabel(source: AdminSource): string {
   const when =
     job.completed_at === null ? "" : `${formatTime(job.completed_at)} · `;
   if (job.status === "failed") {
-    return `${when}失败${job.error_code === null ? "" : `（${job.error_code}）`}`;
+    return `${when}失败${job.error_code === null ? "" : `（${failureText(job.error_code)}）`}`;
   }
   return `${when}新增 ${job.new_count} · 过滤 ${job.filtered_count}`;
 }
