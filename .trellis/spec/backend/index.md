@@ -26,7 +26,7 @@ tests.
 |---|---|
 | [Directory Structure](./directory-structure.md) | Backend package ownership and deployable entry points |
 | [Database Guidelines](./database-guidelines.md) | PostgreSQL, pgvector, SQLAlchemy 2 async, and Alembic |
-| [运营后台 Admin Console](./admin-console.md) | Operator login, roles, sessions, write guard, same-origin access and the audit log under `/api/v1/admin`; rules for settings that replace code constants |
+| [运营后台 Admin Console](./admin-console.md) | Operator login, roles, sessions, write guard, same-origin access and the audit log under `/api/v1/admin`; 新闻审核 opinions and 人工加推 (held copy, push is the only formal send) |
 | [Local Agent Workbench](./agent-workbench.md) | One typed read-only registry for bounded Agent, MCP stdio, deterministic eval, and a loopback-only API |
 | [Execution Governance](./execution-governance.md) | Shared run identity, atomic budgets, default-deny capabilities, safe causal trace, and artifact lineage for Agents and deterministic DAG nodes |
 | [Agent Pipeline](./agent-pipeline.md) | End-to-end stage boundaries, implemented scoring handoff, and future generation semantics |

@@ -228,3 +228,20 @@ production proxy. Clearly separate fixture sign-in evidence from anonymous real-
 Wrong: `logout().catch(() => undefined).then(showLoggedOut)`.
 Correct: validate the logout response, show success only on confirmation and expose a retryable
 error otherwise; invalidate older session checks before changing authentication state.
+
+## 新闻审核 and 人工加推
+
+The wire contract is [backend admin console](../backend/admin-console.md). The page is
+`frontend/src/features/admin/newsreviews/`, section key `news-review` (group 内容来源, role
+`editor`). Inject `NewsReviewsApi`; tests must not call the network.
+
+- A review click records an opinion. It must not start a pick or a send.
+- 人工加推 is shown only when `human_pick_enabled` and `human_pick_review_enabled` are both true,
+  and only on items the AI did not select.
+- The push button stays disabled while the hook or tags differ from the saved copy, while a rule
+  error is saved, or while a request is in flight. Sending requires two confirmations: the exact
+  copy, then an explicit “cannot be recalled” step. Cancel at either step calls nothing.
+- While a pick is `queued`, `writing`, `imaging` or `sending`, refresh that progress about every
+  20 seconds. Stop the timer when nothing is in progress and on unmount.
+- Map refusal codes to the Chinese sentences in `newsreviews/api.ts`. Show the sentence; do not
+  show a raw code as the only message.

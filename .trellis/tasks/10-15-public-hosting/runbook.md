@@ -140,6 +140,9 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
 - 18:50 新闻审核 gained a search box (title/source/summary/note, several words = all must match); console `index-B2H9f3QS.js`, front-end only, backup `backups/news-review-search-20261015/www.before`.
 
 ## 人工加推 in the console (2026-10-16)
+
+Maintainer guide (what the feature does, which files to change, what sends a message):
+`docs/operations/admin-news-review-and-human-pick.md`.
 - Deployed: API overlay `…backend:human-pick-48b754a` (`sha256:98b9d189dd623b0ff7a8818c481b30e044a911402508c48b43f7c10a1359acfe`) on top of
   `0ab05e2e…` for `acquisition-api` only, and console build `index-Bv_d0aQo.js`. No schema change (alembic head stays
   `20261015_0062`); `content-scheduler` and `content-worker` unchanged. Files under `overlay-human-pick/`.

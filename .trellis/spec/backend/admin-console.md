@@ -7,8 +7,8 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 ## Contract
 
 - **Accounts**: `admin_users` (role `owner` | `editor`, scrypt hash `scrypt$n$r$p$salt$key`).
-  - Created only with `python -m app.admin_users_main`. A password comes from a hidden prompt or
-    one stdin line, never from argv or env.
+  - An owner creates accounts in the console. The CLI `python -m app.admin_users_main` remains for
+    the server: a password comes from a hidden prompt or `--password-stdin`, never from argv or env.
   - `conda run` does not forward stdin; use the env's python or the container.
   - Setting a password or disabling an account revokes that user's sessions.
 - **Sessions**: `admin_sessions` stores only `sha256(token)`; the session lasts 12 h.
@@ -56,8 +56,13 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 
 - **Accounts page** (owner): `/api/v1/admin/accounts` for list, create, PATCH (display name and
   role), `reset-password`, `disable` and `enable`.
-  - Create and reset return a generated `initial_password` once (14 characters, no look-alike
-    characters). Only the hash is stored.
+  - Create and reset take an optional `password`. When it is omitted the server generates one
+    (14 characters, no look-alike characters) and returns it once in `initial_password`. A chosen
+    password is stored only as a hash and the response field is null.
+  - `check_new_password` refuses fewer than 8 or more than 128 characters, the short common-password
+    list, a single repeated character, and a password equal to the username. The console strength
+    hint (弱/中/强) never blocks a save.
+  - CLI: `python -m app.admin_users_main set-password USERNAME --password-stdin`.
   - Guards: an owner cannot disable or demote themselves; the last active owner cannot go.
     Usernames are never reused, because disabled accounts keep theirs.
 - **My password** (`POST /admin/auth/password`, any role):
@@ -339,3 +344,92 @@ Regenerate backend OpenAPI and frontend types with worktree `PYTHONPATH=backend`
 
 Wrong: `created_at <= datetime.combine(date_to, midnight)` excludes most of the final day.
 Correct: `created_at < local_midnight(date_to + one_calendar_day).astimezone(UTC)` includes it.
+
+## 新闻审核 and 人工加推
+
+Operator-facing description, file map, deploy and rollback:
+[`docs/operations/admin-news-review-and-human-pick.md`](../../../docs/operations/admin-news-review-and-human-pick.md).
+
+### 1. Scope / Trigger
+
+Two console actions on the recent news pool, both for `owner` and `editor`, both recording the
+signed-in username as reviewer.
+
+- **新闻审核** records an opinion (`agree` / `include` / `exclude`, optional note). It never
+  changes a run, a score or a delivery.
+- **人工加推** produces one extra item the AI did not select, holds the copy and picture, and sends
+  it to the formal WeCom group only when the operator pushes. Creating, reading and editing send
+  nothing.
+
+The pool, the held-copy split and the refusal codes are shared with the exhibit adapter. The
+console calls the production services in-process. It does not use the operator PIN or the SSH
+tunnel. The unauthenticated `/api/v1/content-slot-human-picks` routes stay loopback-only.
+
+### 2. Signatures
+
+- `GET /api/v1/admin/news-reviews` → `VisitorDisplayNewsPool`.
+- `POST /api/v1/admin/news-reviews` body `VisitorDisplayNewsReviewRequest` → `VisitorDisplayHumanReview`.
+- `POST /api/v1/admin/human-picks` body `{key, note?}` → `VisitorDisplayHumanPick` stage `queued`.
+- `GET /api/v1/admin/human-picks/{key}/review` → `VisitorHumanPickReview`.
+- `POST /api/v1/admin/human-picks/{key}/copy` body `{hook, hashtags, dry_run}` → the same review,
+  with `passed` and `saved`.
+- `POST /api/v1/admin/human-picks/{key}/push` → stage `sending`. This is the only call that enqueues
+  a formal delivery.
+- Storage: table `news_reviews`, migration `20261015_0062`. A human pick reuses the existing
+  content-slot, copy, package and delivery tables. There is no new table for it.
+- `key` is the server-derived `news_key`, never a client-supplied run or event id. Resolve it with
+  `VisitorDisplayService.find_news_source` / `find_news_candidate`.
+
+### 3. Contracts
+
+Reviews append a row. The latest row per `news_key` wins (`DISTINCT ON`). The reviewer column is
+`principal.username`.
+
+`human_pick_enabled` and `human_pick_review_enabled` are true on the admin pool only when
+`content_enabled` and `content_slot_mode_enabled` are both on. The console hides 人工加推 unless
+both flags are true, and hides it on items whose verdict is `selected`.
+
+A pick closes at 22:30 Asia/Shanghai on its business day. Copy and picture are produced by the
+content worker and held (`review_status=pending`, no automatic formal send). The operator may
+replace the hook and the hashtags. `dry_run` checks and does not save. A save runs only when the
+copy rules pass. The push records `operator_push.reviewer`, approves the package and enqueues one
+formal WeCom job. A second push is `human_pick_already_pushed`.
+
+Every non-GET still needs `X-Admin-Request: 1`. Responses stay `Cache-Control: no-store`.
+
+Changing how copy is written or how WeCom sends means deploying `content-worker` as well as
+`acquisition-api`. The 2026-10-16 release replaced only `acquisition-api` and the static console,
+because the worker already contained the held-pick pipeline.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+|---|---|
+| Signed out | 401 |
+| Write without `X-Admin-Request: 1` | 403 `admin_write_guard_missing` |
+| Unknown `key`, or no held pick for review/copy/push | 404 |
+| Bad decision or body | 422 |
+| Content slot mode off | 422 `content_slot_disabled` |
+| Already selected today / already delivered / slot busy / no morning lineage / after 22:30 | 409 with that `human_pick_*` code |
+| Copy or picture not ready, pick rejected, expired, or copy has a rule error | 409 `human_pick_not_ready`, `human_pick_rejected`, `human_pick_expired`, `human_pick_copy_invalid` |
+| Second push | 409 `human_pick_already_pushed` |
+
+The console maps these codes to the Chinese sentences in `frontend/src/features/admin/newsreviews/api.ts`. Add a sentence there when adding a code.
+
+### 5. Good / Base / Bad Cases
+
+- Good: an editor labels a rejected item, then creates a pick, checks a hook edit, saves it, and pushes once. One formal job exists and its reviewer is that username.
+- Base: a second create of the same item the same day returns the existing held pick and sends nothing new.
+- Bad: treating a review label as a send, pushing while the saved copy has an error, or trusting a run id from the browser.
+
+### 6. Tests Required
+
+- `backend/tests/integration/test_admin_news_reviews.py`: auth, write guard, latest-decision-wins, unknown key.
+- `backend/tests/integration/test_admin_human_picks.py`: review, check, save, one push, second push refused, reviewer is the account, slot mode off.
+- `frontend/src/features/admin/newsreviews/HumanPick.test.tsx`: the button is absent for AI-selected items and when review is disabled; two confirmations before `push`; cancel sends nothing.
+- Regenerate `backend/openapi.json` by merging new paths and `$ref` schemas, then `npm run generate:api` and `generate:api:check`.
+
+### 7. Wrong vs Correct
+
+Wrong: the console posts to `/api/v1/content-slot-human-picks` with a reviewer string from the page.
+Correct: the console posts to `/api/v1/admin/human-picks/{key}/…` and the route sets `reviewer=principal.username`.

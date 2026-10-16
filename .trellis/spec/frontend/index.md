@@ -43,7 +43,7 @@ React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types
 | [Local Agent Workbench UI](./agent-workbench.md) | Development-only generated-contract trace UI, safe citations, accessibility, and production tree-shaking |
 | [Official-Account Editor Handoff](./official-account-editor-handoff.md) | Development-only approved-run gates, Xiaosai preview, rich clipboard, local downloads, and permanent no-publish truth |
 | [Quality Guidelines](./quality-guidelines.md) | Tests, accessibility, generated-contract drift, and review gates |
-| [Operations Console UI](./admin-console.md) | Authenticated admin editing/history guards, pagination, responsive tables, and explicit environment labels |
+| [Operations Console UI](./admin-console.md) | Authenticated admin editing/history guards, pagination, responsive tables, explicit environment labels, and the 新闻审核 / 人工加推 page |
 | [Brand Knowledge Workspace](./brand-knowledge-workspace.md) | Implemented upload, status, activation, generation-context diagnostics, generated types, accessibility, and manual-only boundary |
 | [IP Digital Asset Hub UI](./ip-asset-hub.md) | No-auth intranet gallery, upload, multimodal search, download, generation, accessibility, and safe resource URL contracts |
 
