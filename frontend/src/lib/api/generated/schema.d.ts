@@ -226,6 +226,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/builtin-phrases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Builtin Phrases */
+        get: operations["get_admin_builtin_phrases_api_v1_admin_builtin_phrases_get"];
+        put?: never;
+        /** Post Admin Builtin Phrases */
+        post: operations["post_admin_builtin_phrases_api_v1_admin_builtin_phrases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/human-picks": {
         parameters: {
             query?: never;
@@ -3934,6 +3952,46 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "semantic_unavailable";
+        };
+        /** BuiltinPhraseLockedList */
+        BuiltinPhraseLockedList: {
+            /** Name */
+            name: string;
+            /** Terms */
+            terms: string[];
+        };
+        /**
+         * BuiltinPhrasesResponse
+         * @description The lists in force. ``version`` is null until someone saves a change.
+         */
+        BuiltinPhrasesResponse: {
+            /** Anxiety */
+            anxiety: string[];
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /** Defaults Anxiety */
+            defaults_anxiety: string[];
+            /** Defaults Marketing */
+            defaults_marketing: string[];
+            /** Locked */
+            locked: components["schemas"]["BuiltinPhraseLockedList"][];
+            /** Marketing */
+            marketing: string[];
+            /** Note */
+            note?: string | null;
+            /** Version */
+            version: number | null;
+        };
+        /** BuiltinPhrasesSaveRequest */
+        BuiltinPhrasesSaveRequest: {
+            /** Anxiety */
+            anxiety?: string[];
+            /** Marketing */
+            marketing?: string[];
+            /** Note */
+            note?: string | null;
         };
         /** CandidateAnalysisDetailResponse */
         CandidateAnalysisDetailResponse: {
@@ -8761,6 +8819,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminPasswordChangedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_builtin_phrases_api_v1_admin_builtin_phrases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltinPhrasesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_admin_builtin_phrases_api_v1_admin_builtin_phrases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                edu_admin_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuiltinPhrasesSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltinPhrasesResponse"];
                 };
             };
             /** @description Validation Error */

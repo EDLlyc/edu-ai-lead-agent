@@ -12,7 +12,22 @@ import {
   type KeywordsApi,
   type KeywordsOverview,
 } from "./api";
+import type { BuiltinPhrasesApi } from "./builtinApi";
 import { KeywordsPage } from "./KeywordsPage";
+
+const builtinApi: BuiltinPhrasesApi = {
+  load: vi.fn(() =>
+    Promise.resolve({
+      version: null,
+      marketing: ["保证提分"],
+      anxiety: ["输在起跑线"],
+      defaults_marketing: ["保证提分"],
+      defaults_anxiety: ["输在起跑线"],
+      locked: [{ name: "提示词注入", terms: ["忽略之前的指令"] }],
+    }),
+  ),
+  save: vi.fn(() => Promise.reject(new Error("not used"))),
+};
 
 const V2: KeywordsOverview = {
   current: {
@@ -100,7 +115,11 @@ describe("关键词", () => {
     const user = userEvent.setup();
     const save = vi.fn((lists: KeywordLists) => Promise.resolve(saved(lists)));
     const view = render(
-      <KeywordsPage api={api({ save })} onSessionExpired={vi.fn()} />,
+      <KeywordsPage
+        api={api({ save })}
+        builtinApi={builtinApi}
+        onSessionExpired={vi.fn()}
+      />,
     );
 
     const focus = await screen.findByRole("list", { name: "关注词" });
@@ -151,7 +170,13 @@ describe("关键词", () => {
       .mockImplementationOnce((lists: KeywordLists) =>
         Promise.resolve(saved(lists)),
       );
-    render(<KeywordsPage api={api({ save })} onSessionExpired={vi.fn()} />);
+    render(
+      <KeywordsPage
+        api={api({ save })}
+        builtinApi={builtinApi}
+        onSessionExpired={vi.fn()}
+      />,
+    );
 
     await user.type(await screen.findByLabelText("添加屏蔽词"), "教育{Enter}");
     await user.click(screen.getByRole("button", { name: "保存为新版本" }));
@@ -172,7 +197,13 @@ describe("关键词", () => {
   it("checks the impact on recent candidates", async () => {
     const user = userEvent.setup();
     const calls = api();
-    render(<KeywordsPage api={calls} onSessionExpired={vi.fn()} />);
+    render(
+      <KeywordsPage
+        api={calls}
+        builtinApi={builtinApi}
+        onSessionExpired={vi.fn()}
+      />,
+    );
     await user.click(await screen.findByRole("button", { name: /检查影响/ }));
     const report = await screen.findByRole("region", { name: "影响检查" });
     expect(report).toHaveTextContent(
@@ -186,7 +217,13 @@ describe("关键词", () => {
 
   it("tries a title against the lists without saving", async () => {
     const user = userEvent.setup();
-    render(<KeywordsPage api={api()} onSessionExpired={vi.fn()} />);
+    render(
+      <KeywordsPage
+        api={api()}
+        builtinApi={builtinApi}
+        onSessionExpired={vi.fn()}
+      />,
+    );
     await user.type(
       await screen.findByRole("textbox", { name: /粘贴一条新闻标题/ }),
       "机器人彩票，保证提分",
@@ -202,7 +239,13 @@ describe("关键词", () => {
   it("loads an old version into the editor without saving it", async () => {
     const user = userEvent.setup();
     const calls = api();
-    render(<KeywordsPage api={calls} onSessionExpired={vi.fn()} />);
+    render(
+      <KeywordsPage
+        api={calls}
+        builtinApi={builtinApi}
+        onSessionExpired={vi.fn()}
+      />,
+    );
     await user.click(await screen.findByRole("button", { name: "载入这一版" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "已载入第 1 版",
@@ -218,13 +261,63 @@ describe("关键词", () => {
 
   it("rejects a term that is too long before sending anything", async () => {
     const user = userEvent.setup();
-    render(<KeywordsPage api={api()} onSessionExpired={vi.fn()} />);
+    render(
+      <KeywordsPage
+        api={api()}
+        builtinApi={builtinApi}
+        onSessionExpired={vi.fn()}
+      />,
+    );
     await user.type(
       await screen.findByLabelText("添加文案禁用词"),
       `${"长".repeat(21)}{Enter}`,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("每个词最多 20 个字");
   });
+});
+
+it("saves a changed built-in phrase list without touching the extra keyword lists", async () => {
+  const user = userEvent.setup();
+  const phrases = {
+    version: 1,
+    marketing: ["包过"],
+    anxiety: ["输在起跑线"],
+    defaults_marketing: ["保证提分"],
+    defaults_anxiety: ["输在起跑线"],
+    locked: [{ name: "提示词注入", terms: ["忽略之前的指令"] }],
+  };
+  const save = vi.fn(() => Promise.resolve(phrases));
+  render(
+    <KeywordsPage
+      api={api()}
+      builtinApi={{
+        load: vi.fn(() =>
+          Promise.resolve({
+            ...phrases,
+            version: null,
+            marketing: ["保证提分"],
+          }),
+        ),
+        save,
+      }}
+      onSessionExpired={vi.fn()}
+    />,
+  );
+  const section = await screen.findByRole("region", { name: "系统内置词" });
+  await user.click(
+    within(section).getByRole("button", { name: "删除营销承诺「保证提分」" }),
+  );
+  await user.type(
+    within(section).getByLabelText("添加营销承诺"),
+    "包过{Enter}",
+  );
+  await user.click(within(section).getByRole("button", { name: "保存内置词" }));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(["包过"], ["输在起跑线"]),
+  );
+  expect(
+    within(section).getByText("已保存。从下一场选题开始，文案按这份词检查。"),
+  ).toBeInTheDocument();
 });
 
 describe("keyword helpers", () => {
@@ -246,7 +339,13 @@ it("freezes notes together with keyword lists while saving", async () => {
   const calls = api({
     save: vi.fn(() => new Promise<KeywordsOverview>(() => undefined)),
   });
-  render(<KeywordsPage api={calls} onSessionExpired={vi.fn()} />);
+  render(
+    <KeywordsPage
+      api={calls}
+      builtinApi={builtinApi}
+      onSessionExpired={vi.fn()}
+    />,
+  );
   await user.type(await screen.findByLabelText("添加关注词"), "新增词{Enter}");
   await user.type(screen.getByLabelText(/备注（可选/), "这次提交说明");
   await user.click(screen.getByRole("button", { name: "保存为新版本" }));

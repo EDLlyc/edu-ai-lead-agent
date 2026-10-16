@@ -24,6 +24,10 @@ import {
   keywordsApi as defaultKeywordsApi,
   type KeywordsApi,
 } from "./keywords/api";
+import {
+  builtinPhrasesApi as defaultBuiltinPhrasesApi,
+  type BuiltinPhrasesApi,
+} from "./keywords/builtinApi";
 import { SourcesPage } from "./sources/SourcesPage";
 import { WeChatAccountsPage } from "./wechat/WeChatAccountsPage";
 import { WeChatPublishPage } from "./wechat/WeChatPublishPage";
@@ -51,6 +55,7 @@ type AdminAppProps = {
   readonly api?: AdminApi;
   readonly sourcesApi?: SourcesApi;
   readonly keywordsApi?: KeywordsApi;
+  readonly builtinPhrasesApi?: BuiltinPhrasesApi;
   readonly newsReviewsApi?: NewsReviewsApi;
   readonly accountsApi?: AccountsApi;
   readonly wechatApi?: WeChatApi;
@@ -80,6 +85,7 @@ function AdminSession({
   api = adminApi,
   sourcesApi = defaultSourcesApi,
   keywordsApi = defaultKeywordsApi,
+  builtinPhrasesApi = defaultBuiltinPhrasesApi,
   newsReviewsApi = defaultNewsReviewsApi,
   accountsApi = defaultAccountsApi,
   wechatApi = defaultWeChatApi,
@@ -191,7 +197,11 @@ function AdminSession({
         ) : current.key === "sources" ? (
           <SourcesPage api={sourcesApi} onSessionExpired={expire} />
         ) : current.key === "keywords" ? (
-          <KeywordsPage api={keywordsApi} onSessionExpired={expire} />
+          <KeywordsPage
+            api={keywordsApi}
+            builtinApi={builtinPhrasesApi}
+            onSessionExpired={expire}
+          />
         ) : current.key === "news-review" ? (
           <NewsReviewPage api={newsReviewsApi} onSessionExpired={expire} />
         ) : current.key === "accounts" ? (

@@ -126,6 +126,27 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
   - Blocking more than 30 % needs `confirm_wide_block` (422 `keyword_block_too_wide`).
 - **Exhibit**: maps the new veto code to `other_rule`.
 
+## 系统内置词
+
+营销承诺 and 焦虑话术 start as the tuples in `domain/builtin_phrases.py`. An owner or editor
+can replace them from the 关键词 page (`GET`/`POST /api/v1/admin/builtin-phrases`).
+
+- Each save is a new row in `builtin_phrase_versions`. An identical list is 409. An empty list is
+  allowed and means that editorial check is off. `version` is null until the first save; copy
+  validation then keeps using the code defaults.
+- `enqueue_content_slot_run` writes `content_slot_runs.builtin_phrase_version_id`. Human picks
+  copy it from the base run. A run with null stays on the code defaults, including runs that
+  started before a later save.
+- `phrases_for_copy_run` returns those lists only when the slot run recorded a version.
+  `validate_material_draft` uses `LockedTopicContext.marketing_terms` / `anxiety_terms` when they
+  are set, and the code defaults when they are null. An empty tuple does not fall back.
+- Prompt-injection phrases, unsafe-image phrases, WeChat-automation phrases, and the phone / ID /
+  email checks stay in code. The page shows them read-only. A save cannot change them.
+- Scheduled copy reads the snapshot in the content worker, and the scheduler writes it. Shipping
+  the admin route alone does not change a slot that those two processes enqueue and generate.
+  Those two services stay on their own image. A plain `compose up` that resolves `APP_IMAGE` for
+  them would replace that image with the API overlay.
+
 ## 排版模板 (item 6)
 
 - Templates are colour maps over the V2 renderer (`official_account_layout_templates.py`). The
@@ -186,7 +207,9 @@ shell; items 1–8 add sections (`.trellis/tasks/10-08-admin-console/prd.md`).
 - `AdminApp` checks `me`, then shows the login page or the shell.
 - `sections.ts` holds the menu, roles and planned items.
 - `keywords/` is the 关键词 page: chips per list, 试一下 (client-side, same matching rule), the
-  impact check, the wide-block confirmation, and history with 载入这一版.
+  impact check, the wide-block confirmation, and history with 载入这一版. The same page edits
+  营销承诺 / 焦虑话术 through an injected `BuiltinPhrasesApi`. 载入系统原版 fills the draft and
+  does not save until 保存内置词. Locked safety lists are read-only.
 - `sources/` is the 新闻源 page: the list, on/off with confirmation, and the editor. Saving needs a
   successful preview of the same fetch settings.
 - `api.ts` is the same-origin client with the guard header.

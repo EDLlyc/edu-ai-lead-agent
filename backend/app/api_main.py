@@ -20,6 +20,7 @@ from app.api.v1.routes import (
     acquisition_runs,
     admin,
     admin_accounts,
+    admin_builtin_phrases,
     admin_human_picks,
     admin_keywords,
     admin_models,
@@ -287,6 +288,7 @@ app.include_router(admin_keywords.router, prefix="/api/v1")
 app.include_router(admin_wechat.router, prefix="/api/v1")
 app.include_router(admin_models.router, prefix="/api/v1")
 app.include_router(admin_news_reviews.router, prefix="/api/v1")
+app.include_router(admin_builtin_phrases.router, prefix="/api/v1")
 app.include_router(admin_human_picks.router, prefix="/api/v1")
 
 

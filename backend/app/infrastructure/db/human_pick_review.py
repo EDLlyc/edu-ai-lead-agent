@@ -31,6 +31,7 @@ from app.domain.copy_generation import (
 )
 from app.domain.human_pick_review import CopyRevision
 from app.domain.value_objects import stable_key
+from app.infrastructure.db.builtin_phrases import phrases_for_copy_run
 from app.infrastructure.db.content_slot_human_picks import HumanPickRejectedError
 from app.infrastructure.db.copy_generation import (
     _add_issues,
@@ -173,6 +174,11 @@ async def load_review_context(
         summary=raw_summary if isinstance(raw_summary, str) else None,
         evidence=evidence,
         operator_banned_terms=await copy_banned_terms_for_copy_run(session, copy_run),
+        **(
+            {}
+            if (phrases := await phrases_for_copy_run(session, copy_run)) is None
+            else {"marketing_terms": phrases.marketing, "anxiety_terms": phrases.anxiety}
+        ),
     )
     attempt = await session.scalar(
         select(CopyGenerationAttemptModel).where(

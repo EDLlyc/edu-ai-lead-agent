@@ -11,6 +11,7 @@ from typing import Literal, cast
 from uuid import UUID
 
 from app.domain.brand_knowledge import BrandClaimScope, BrandContentType, BrandSectionKind
+from app.domain.builtin_phrases import DEFAULT_ANXIETY, DEFAULT_MARKETING
 from app.domain.content_slots import ContentSlot
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
@@ -176,6 +177,9 @@ class LockedTopicContext:
     evidence: tuple[EligibleEvidence, ...]
     # 文案禁用词 from the 运营后台, recorded by the slot run this copy came from.
     operator_banned_terms: tuple[str, ...] = ()
+    # Maintained 营销承诺 / 焦虑话术. None means this run predates a save: use the code defaults.
+    marketing_terms: tuple[str, ...] | None = None
+    anxiety_terms: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.decision_kind == "selected":
@@ -288,27 +292,9 @@ class CopyVersionBundle:
         )
 
 
-_BANNED_MARKETING = (
-    "保证提分",
-    "确保提分",
-    "绝对领先",
-    "行业第一",
-    "第一品牌",
-    "领导品牌",
-    "百分之百",
-    "100%",
-    "保送资格",
-    "必然成功",
-    "最权威",
-)
-_ANXIETY = (
-    "再不学就晚了",
-    "输在起跑线",
-    "注定落后",
-    "被时代淘汰",
-    "落后别人家孩子",
-    "错过就来不及",
-)
+# Kept as the code defaults. A slot run that recorded a console save uses that save instead.
+_BANNED_MARKETING = DEFAULT_MARKETING
+_ANXIETY = DEFAULT_ANXIETY
 _PROMPT_INJECTION = (
     "忽略之前的指令",
     "忽略系统提示",
@@ -834,7 +820,9 @@ def validate_material_draft(
             draft.image_prompt,
         )
     )
-    _append_phrase_issues(issues, all_output, _BANNED_MARKETING, "prohibited_marketing")
+    marketing = _BANNED_MARKETING if topic.marketing_terms is None else topic.marketing_terms
+    anxiety = _ANXIETY if topic.anxiety_terms is None else topic.anxiety_terms
+    _append_phrase_issues(issues, all_output, marketing, "prohibited_marketing")
     operator_hits = [
         term for term in topic.operator_banned_terms if term.casefold() in all_output.casefold()
     ]
@@ -845,7 +833,7 @@ def validate_material_draft(
                 f"文案包含后台设置的禁用词：{'、'.join(operator_hits)}",
             )
         )
-    _append_phrase_issues(issues, all_output, _ANXIETY, "education_anxiety")
+    _append_phrase_issues(issues, all_output, anxiety, "education_anxiety")
     _append_phrase_issues(issues, all_output, _PROMPT_INJECTION, "prompt_injection_echo")
     _append_phrase_issues(issues, draft.image_prompt, _UNSAFE_IMAGE, "unsafe_image_prompt")
     _append_phrase_issues(issues, all_output, _PUBLISHING, "automatic_publishing")

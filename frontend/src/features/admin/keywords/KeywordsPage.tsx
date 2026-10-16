@@ -14,6 +14,11 @@ import {
   type KeywordsApi,
   type KeywordsOverview,
 } from "./api";
+import {
+  builtinPhrasesApi as defaultBuiltinApi,
+  type BuiltinPhrases,
+  type BuiltinPhrasesApi,
+} from "./builtinApi";
 
 type ListName = keyof KeywordLists;
 
@@ -62,9 +67,11 @@ function listsOf(overview: KeywordsOverview): KeywordLists {
 /** 运营后台 · 关键词: the operator's 关注词 / 屏蔽词 / 文案禁用词. */
 export function KeywordsPage({
   api = defaultApi,
+  builtinApi = defaultBuiltinApi,
   onSessionExpired,
 }: {
   readonly api?: KeywordsApi;
+  readonly builtinApi?: BuiltinPhrasesApi;
   readonly onSessionExpired: () => void;
 }) {
   const [overview, setOverview] = useState<KeywordsOverview | null>(null);
@@ -215,8 +222,12 @@ export function KeywordsPage({
         </span>
       </header>
       <p className={styles.lede}>
-        在系统内置规则之外再加的词。按包含匹配，不分大小写；每次保存是一个新版本，已经开始的选题不受影响。
+        在下面「系统内置词」之外再加的词。按包含匹配，不分大小写；每次保存是一个新版本，已经开始的选题不受影响。
       </p>
+      <BuiltinPhrasesSection
+        api={builtinApi}
+        onSessionExpired={onSessionExpired}
+      />
       {message === null ? null : (
         <p
           className={message.kind === "error" ? styles.error : styles.success}
@@ -551,6 +562,161 @@ function ImpactReport({ impact }: { readonly impact: KeywordImpact }) {
           )}
         </>
       )}
+    </section>
+  );
+}
+
+function sameList(left: readonly string[], right: readonly string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((term, index) => term === right[index])
+  );
+}
+
+/** The editorial built-in phrase lists. Safety checks stay locked. */
+function BuiltinPhrasesSection({
+  api,
+  onSessionExpired,
+}: {
+  readonly api: BuiltinPhrasesApi;
+  readonly onSessionExpired: () => void;
+}) {
+  const [current, setCurrent] = useState<BuiltinPhrases | null>(null);
+  const [marketing, setMarketing] = useState<readonly string[]>([]);
+  const [anxiety, setAnxiety] = useState<readonly string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fail = useCallback(
+    (caught: unknown, fallback: string) => {
+      if (caught instanceof AdminSessionExpiredError) {
+        onSessionExpired();
+        return;
+      }
+      setError(caught instanceof Error ? caught.message : fallback);
+    },
+    [onSessionExpired],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    api.load().then(
+      (loaded) => {
+        if (cancelled) return;
+        setCurrent(loaded);
+        setMarketing(loaded.marketing);
+        setAnxiety(loaded.anxiety);
+      },
+      (caught: unknown) => {
+        if (!cancelled) fail(caught, "读取系统内置词失败");
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api, fail]);
+
+  const dirty =
+    current !== null &&
+    (!sameList(marketing, current.marketing) ||
+      !sameList(anxiety, current.anxiety));
+  useUnsavedChanges(dirty, () => {
+    if (current === null) return;
+    setMarketing(current.marketing);
+    setAnxiety(current.anxiety);
+  });
+
+  if (current === null) {
+    return error === null ? null : (
+      <p className={styles.error} role="alert">
+        {error}
+      </p>
+    );
+  }
+
+  const save = async () => {
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const saved = await api.save(marketing, anxiety);
+      setCurrent(saved);
+      setMarketing(saved.marketing);
+      setAnxiety(saved.anxiety);
+      setMessage("已保存。从下一场选题开始，文案按这份词检查。");
+    } catch (caught) {
+      fail(caught, "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className={styles.preview} aria-label="系统内置词">
+      <h3>系统内置词</h3>
+      <p className={styles.hint}>
+        文案里出现这些词就判定不通过。可以增删，保存后从下一场选题开始生效；已经开始的选题仍用保存前的词。
+        {current.version === null
+          ? "现在用的是系统原来的词。"
+          : `当前第 ${current.version} 版。`}
+      </p>
+      {message === null ? null : (
+        <p className={styles.success} role="status">
+          {message}
+        </p>
+      )}
+      {error === null ? null : (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
+      <TermList
+        title="营销承诺"
+        help="例如「保证提分」「最权威」。删掉之后，文案里出现这个词不再因此被拦住。"
+        terms={marketing}
+        saved={current.marketing}
+        disabled={busy}
+        onChange={setMarketing}
+      />
+      <TermList
+        title="焦虑话术"
+        help="例如「输在起跑线」。删掉之后，文案里出现这个词不再因此被拦住。"
+        terms={anxiety}
+        saved={current.anxiety}
+        disabled={busy}
+        onChange={setAnxiety}
+      />
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={!dirty || busy}
+          onClick={() => void save()}
+        >
+          保存内置词
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setMarketing(current.defaults_marketing);
+            setAnxiety(current.defaults_anxiety);
+          }}
+        >
+          载入系统原版
+        </button>
+      </div>
+      <details>
+        <summary>这些检查不能在这里改</summary>
+        <ul>
+          {current.locked.map((list) => (
+            <li key={list.name}>
+              {list.name}：{list.terms.join("、")}
+            </li>
+          ))}
+          <li>手机号、身份证号、邮箱仍由系统识别，不能改成词表。</li>
+        </ul>
+      </details>
     </section>
   );
 }

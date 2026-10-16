@@ -72,7 +72,23 @@ function open(
 ) {
   window.history.replaceState(null, "", path);
   return render(
-    <AdminApp api={api} keywordsApi={keywordApi} sourcesApi={SOURCES} />,
+    <AdminApp
+      api={api}
+      keywordsApi={keywordApi}
+      builtinPhrasesApi={{
+        load: () =>
+          Promise.resolve({
+            version: null,
+            marketing: [],
+            anxiety: [],
+            defaults_marketing: [],
+            defaults_anxiety: [],
+            locked: [],
+          }),
+        save: () => Promise.reject(new Error("not used")),
+      }}
+      sourcesApi={SOURCES}
+    />,
   );
 }
 async function traverse(delta: number) {

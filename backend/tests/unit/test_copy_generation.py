@@ -3503,3 +3503,44 @@ def test_a_repeated_recent_brand_sentence_is_an_error_first_and_a_warning_on_rep
     ]
     assert [i.severity for i in repair] == ["warning"]
     assert fresh == ()  # a different sentence, and an opinion with the same words, pass
+
+
+def _marketing_draft(fact: str, extra: str) -> MaterialDraft:
+    return MaterialDraft(
+        copywriting=(
+            f"今天和家长分享一条科技教育动态：{fact}{extra}"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
+        ),
+        parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
+        interaction="你会和孩子讨论这个话题吗？",
+        source_note="信息来源：科技日报。",
+        image_prompt="蓝色科技教育插画，家长和孩子共同观察机器人，不出现真人正脸。",
+        claims=(
+            DraftClaim(
+                id="fact-1",
+                text=fact,
+                kind="external_fact",
+                evidence_ids=(EVIDENCE_ID,),
+            ),
+        ),
+    )
+
+
+def _has_marketing(draft: MaterialDraft, topic: LockedTopicContext) -> bool:
+    return any(
+        issue.code == "prohibited_marketing"
+        for issue in validate_material_draft(draft, topic=topic, brand_context=_brand())
+    )
+
+
+def test_a_saved_builtin_phrase_list_replaces_the_code_default() -> None:
+    topic = _topic()
+    fact = topic.evidence[0].exact_quote
+    promised = _marketing_draft(fact, "保证提分。")
+    custom = _marketing_draft(fact, "包过。")
+
+    assert _has_marketing(promised, topic)
+    assert not _has_marketing(custom, topic)
+    assert _has_marketing(custom, replace(topic, marketing_terms=("包过",)))
+    assert not _has_marketing(promised, replace(topic, marketing_terms=("包过",)))
+    assert not _has_marketing(promised, replace(topic, marketing_terms=()))

@@ -32,6 +32,7 @@ from app.domain.topic_rerank import (
     skipped_topic_rerank_outcome,
 )
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
+from app.infrastructure.db.builtin_phrases import load_active_builtin_phrase_row
 from app.infrastructure.db.models import (
     AcquisitionRunModel,
     ArticleEmbeddingModel,
@@ -193,6 +194,7 @@ async def enqueue_content_slot_run(
     run_id = uuid4()
     # The keyword lists in force now stay with this run; later edits never change its decision.
     keyword_row = await load_active_keyword_row(session)
+    phrase_row = await load_active_builtin_phrase_row(session)
     run = ContentSlotRunModel(
         id=run_id,
         trigger=trigger,
@@ -218,6 +220,7 @@ async def enqueue_content_slot_run(
         status="queued",
         unfilled_count=schedule.max_items,
         operator_keyword_version_id=None if keyword_row is None else keyword_row.id,
+        builtin_phrase_version_id=None if phrase_row is None else phrase_row.id,
     )
     session.add(run)
     # These tables intentionally have no ORM relationship; persist the parent

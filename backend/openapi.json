@@ -4946,6 +4946,159 @@
         "title": "BrandVisualSearchResponse",
         "type": "object"
       },
+      "BuiltinPhraseLockedList": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "terms"
+        ],
+        "title": "BuiltinPhraseLockedList",
+        "type": "object"
+      },
+      "BuiltinPhrasesResponse": {
+        "additionalProperties": false,
+        "description": "The lists in force. ``version`` is null until someone saves a change.",
+        "properties": {
+          "anxiety": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Anxiety",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "defaults_anxiety": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Defaults Anxiety",
+            "type": "array"
+          },
+          "defaults_marketing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Defaults Marketing",
+            "type": "array"
+          },
+          "locked": {
+            "items": {
+              "$ref": "#/components/schemas/BuiltinPhraseLockedList"
+            },
+            "title": "Locked",
+            "type": "array"
+          },
+          "marketing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Marketing",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "version",
+          "marketing",
+          "anxiety",
+          "defaults_marketing",
+          "defaults_anxiety",
+          "locked"
+        ],
+        "title": "BuiltinPhrasesResponse",
+        "type": "object"
+      },
+      "BuiltinPhrasesSaveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "anxiety": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Anxiety",
+            "type": "array"
+          },
+          "marketing": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Marketing",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "BuiltinPhrasesSaveRequest",
+        "type": "object"
+      },
       "CandidateAnalysisDetailResponse": {
         "properties": {
           "active_event_id": {
@@ -17839,6 +17992,112 @@
           }
         },
         "summary": "Post Admin Password",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/builtin-phrases": {
+      "get": {
+        "operationId": "get_admin_builtin_phrases_api_v1_admin_builtin_phrases_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltinPhrasesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin Builtin Phrases",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_builtin_phrases_api_v1_admin_builtin_phrases_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "edu_admin_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edu Admin Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuiltinPhrasesSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltinPhrasesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Admin Builtin Phrases",
         "tags": [
           "admin"
         ]

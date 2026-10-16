@@ -1944,6 +1944,17 @@ class ContentSlotRunModel(Base):
         ),
         nullable=True,
     )
+    # Maintained 营销承诺 / 焦虑话术 in force when the run was created (null: code defaults).
+    builtin_phrase_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "builtin_phrase_versions.id",
+            name="fk_content_slot_runs_builtin_phrase_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        default=None,
+    )
     preparation_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     target_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -7077,6 +7088,34 @@ class OperatorKeywordVersionModel(Base):
             "jsonb_array_length(focus_terms) <= 200 AND jsonb_array_length(block_terms) <= 200 "
             "AND jsonb_array_length(copy_banned_terms) <= 200",
             name="ck_operator_keyword_versions_sizes",
+        ),
+    )
+
+
+class BuiltinPhraseVersionModel(Base):
+    """One immutable save of the maintainable phrase lists; the highest version is in force."""
+
+    __tablename__ = "builtin_phrase_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    marketing_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    anxiety_terms: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_builtin_phrase_versions_version"),
+        CheckConstraint("version > 0", name="ck_builtin_phrase_versions_version"),
+        CheckConstraint(
+            "jsonb_typeof(marketing_terms) = 'array' AND jsonb_typeof(anxiety_terms) = 'array'",
+            name="ck_builtin_phrase_versions_arrays",
+        ),
+        CheckConstraint(
+            "jsonb_array_length(marketing_terms) <= 200 "
+            "AND jsonb_array_length(anxiety_terms) <= 200",
+            name="ck_builtin_phrase_versions_sizes",
         ),
     )
 

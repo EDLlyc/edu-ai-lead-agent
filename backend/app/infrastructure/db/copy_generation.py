@@ -44,6 +44,7 @@ from app.domain.copy_generation import (
     LockedTopicContext,
 )
 from app.domain.value_objects import stable_key
+from app.infrastructure.db.builtin_phrases import phrases_for_copy_run
 from app.infrastructure.db.models import (
     AnalysisFactModel,
     ArticleOccurrenceModel,
@@ -295,6 +296,12 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             if run is None:
                 raise NotFoundError("copy generation run")
             origin = await load_locked_topic_origin(session, run)
+            phrases = await phrases_for_copy_run(session, run)
+            phrase_fields = (
+                {}
+                if phrases is None
+                else {"marketing_terms": phrases.marketing, "anxiety_terms": phrases.anxiety}
+            )
             if run.decision_kind == "no_topic":
                 return LockedTopicContext(
                     origin=origin,
@@ -308,6 +315,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                     title=None,
                     summary=None,
                     evidence=(),
+                    **phrase_fields,
                 )
             if run.selected_event_version_id is None or run.selected_event_id is None:
                 raise RuntimeError("selected copy run is missing its locked event/version")
@@ -336,6 +344,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                 summary=raw_summary if isinstance(raw_summary, str) else None,
                 evidence=evidence,
                 operator_banned_terms=await copy_banned_terms_for_copy_run(session, run),
+                **phrase_fields,
             )
 
     async def load_drafts(self, claimed: ClaimedCopyGenerationJob) -> tuple[StoredDraft, ...]:
