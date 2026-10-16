@@ -25,17 +25,18 @@
 
 ## 按主题看
 
-| 主题               | 文档                                                                                               |
-| ------------------ | -------------------------------------------------------------------------------------------------- |
-| 交接               | [handover.md](./handover.md)                                                                       |
-| 新闻审核、人工加推 | [admin-news-review-and-human-pick.md](./admin-news-review-and-human-pick.md)                       |
-| 系统内置词         | [admin-builtin-phrases.md](./admin-builtin-phrases.md)                                             |
-| 采集：单页读不出   | [acquisition-unreadable-pages.md](./acquisition-unreadable-pages.md)                               |
-| 固定摘要发布       | [digest-release-runbook.md](./digest-release-runbook.md)                                           |
-| 上线检查清单       | [production-environment-checklist.md](./production-environment-checklist.md)                       |
-| 迁服务器           | [production-server-migration-runbook.md](./production-server-migration-runbook.md)                 |
-| 本机只读查询       | [scripts/ops/README.md](../../scripts/ops/README.md)                                               |
-| 后端 / 前端规范    | [backend](../../.trellis/spec/backend/index.md)、[frontend](../../.trellis/spec/frontend/index.md) |
+| 主题                 | 文档                                                                                               |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
+| 发版、本地运行、账号 | [交接资料](../handover/README.md)                                                                  |
+| 交接                 | [handover.md](./handover.md)                                                                       |
+| 新闻审核、人工加推   | [admin-news-review-and-human-pick.md](./admin-news-review-and-human-pick.md)                       |
+| 系统内置词           | [admin-builtin-phrases.md](./admin-builtin-phrases.md)                                             |
+| 采集：单页读不出     | [acquisition-unreadable-pages.md](./acquisition-unreadable-pages.md)                               |
+| 固定摘要发布         | [digest-release-runbook.md](./digest-release-runbook.md)                                           |
+| 上线检查清单         | [production-environment-checklist.md](./production-environment-checklist.md)                       |
+| 迁服务器             | [production-server-migration-runbook.md](./production-server-migration-runbook.md)                 |
+| 本机只读查询         | [scripts/ops/README.md](../../scripts/ops/README.md)                                               |
+| 后端 / 前端规范      | [backend](../../.trellis/spec/backend/index.md)、[frontend](../../.trellis/spec/frontend/index.md) |
 
 ## 还没做
 
