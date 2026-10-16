@@ -138,3 +138,14 @@ installed (apt candidate 1.24.0); nothing on 80/443; disk 89% used (8.4G free); 
 - 18:40 新闻审核 page changed to a table (one row per story, AI verdict beside it, one-click 适合推/不适合推, optional
   note); console `index-d1fqClPY.js`, front-end only, backup `backups/news-review-list-20261015/www.before`.
 - 18:50 新闻审核 gained a search box (title/source/summary/note, several words = all must match); console `index-B2H9f3QS.js`, front-end only, backup `backups/news-review-search-20261015/www.before`.
+
+## 人工加推 in the console (2026-10-16)
+- Deployed: API overlay `…backend:human-pick-48b754a` (`sha256:98b9d189dd623b0ff7a8818c481b30e044a911402508c48b43f7c10a1359acfe`) on top of
+  `0ab05e2e…` for `acquisition-api` only, and console build `index-Bv_d0aQo.js`. No schema change (alembic head stays
+  `20261015_0062`); `content-scheduler` and `content-worker` unchanged. Files under `overlay-human-pick/`.
+- Backup/stage dir on the host: `/opt/edu-ai-lead-agent/backups/human-pick-20261016.rDXRYN` (compose/env `*.before`, `www.before`).
+- Checks after activation: 17 containers up, no tracebacks, `/admin/` 200 with the new JS, the four
+  `/api/v1/admin/human-picks…` routes answer 401 when signed out.
+- Nothing is sent by creating or editing a pick; only `POST /api/v1/admin/human-picks/{key}/push` reaches the formal group.
+- Rollback: restore `.release.env` `APP_IMAGE` to `…@sha256:0ab05e2e9afd3afb55ee299ea2641d3374614aa35e1d845da3884c29e3bf0e6c`,
+  recreate `acquisition-api` (`--no-deps --force-recreate`), and copy `www.before` back to `/var/www/edu-ai-admin`.

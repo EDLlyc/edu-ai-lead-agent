@@ -1,0 +1,802 @@
+[
+ {
+  "item_id": "p-19823564",
+  "left": "一周科技盘点丨刷新纪录、填补空白！中国科技创新捷报频传",
+  "right": "一周科技盘点丨全球首艘、世界最长、首飞成功……上周，我国多领域硬核成果密集涌现",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.12
+ },
+ {
+  "item_id": "p-7788377a",
+  "left": "新型抗血栓肽研究取得进展",
+  "right": "mRNA递送方向研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.263
+ },
+ {
+  "item_id": "p-12e5562d",
+  "left": "北师大召开2026年秋季学期就业工作推进会",
+  "right": "2026年“百万英才兴海南·四城同办”校招系列活动启动",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.103
+ },
+ {
+  "item_id": "p-add7fd96",
+  "left": "mRNA递送方向研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-c22a5e2d",
+  "left": "总编辑圈点 | 63℃仍能分裂繁殖，火变形虫改写真核生物耐热上限",
+  "right": "总编辑圈点丨基因开关让3D打印骨组织自主长出新血管 为治疗创伤或感染导致的骨缺损带来希望",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.062
+ },
+ {
+  "item_id": "p-8e3aec7a",
+  "left": "国际爱护动物基金会一行访问北京师范大学",
+  "right": "泰国教育部民校教育委员会一行访问北京师范大学",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.357
+ },
+ {
+  "item_id": "p-846b43c5",
+  "left": "推动上海合作组织发展的中国行动成果清单",
+  "right": "习近平出席上海合作组织成员国元首理事会第二十六次会议并发表重要讲话",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.111
+ },
+ {
+  "item_id": "p-1748e198",
+  "left": "携手同心 不断推进中埃命运共同体建设——埃及各界人士高度评价习近平主席国事访问",
+  "right": "展现历史担当 汇聚和平发展力量——写在习近平主席出席2026年上海合作组织峰会并对吉尔吉斯斯坦、埃及进行国事访问之际",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.1
+ },
+ {
+  "item_id": "p-e76a8876",
+  "left": "丁薛祥出席2026年全球服务贸易峰会并会见与会外国政要",
+  "right": "数学AI首次与高中生同台竞技 2026年中国东南地区数学交流活动在榕闭幕",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.073
+ },
+ {
+  "item_id": "p-d07aa876",
+  "left": "海洋光学卫星定标研究取得进展",
+  "right": "mRNA递送方向研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-058ad0b6",
+  "left": "【教育部简报】北京师范大学推进高水平师范院校建设 助力基础教育高质量发展",
+  "right": "北京师范大学召开树立和践行正确政绩观学习教育总结会",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.125
+ },
+ {
+  "item_id": "p-22cb47d0",
+  "left": "海洋光学卫星定标研究取得进展",
+  "right": "低计数PET成像研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-03c40624",
+  "left": "大面积铜锌锡硫硒薄膜光伏组件研究获进展",
+  "right": "二维层状晶体塑性调控研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.143
+ },
+ {
+  "item_id": "p-6f82a3f6",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "低计数PET成像研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-8db7219b",
+  "left": "怀进鹏向中国—吉尔吉斯斯坦卓越工程师学院揭牌仪式发表视频致辞",
+  "right": "习近平同吉尔吉斯斯坦总统扎帕罗夫会谈",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.125
+ },
+ {
+  "item_id": "p-e06080c1",
+  "left": "用技能为青春加冕——第48届世界技能大赛中国代表团创历史最好成绩",
+  "right": "在世界技能大会体验外骨骼机器人",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.105
+ },
+ {
+  "item_id": "p-3c0cafc5",
+  "left": "推动金砖合作实现大发展、展现大作为——写在习近平主席出席金砖国家领导人第十八次会晤之际",
+  "right": "金砖国家领导人第十八次会晤新德里宣言（摘要）",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.273
+ },
+ {
+  "item_id": "p-538c956e",
+  "left": "偏振视觉研究取得进展",
+  "right": "C-H金属化及不对称偶联反应研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.227
+ },
+ {
+  "item_id": "p-5eadde75",
+  "left": "从2026年服贸会看全球服务“上新”",
+  "right": "北师大召开2026年秋季学期就业工作推进会",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.129
+ },
+ {
+  "item_id": "p-e753e6e7",
+  "left": "三峡枢纽2026年通过量已达1亿吨",
+  "right": "从2026年服贸会看全球服务“上新”",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.148
+ },
+ {
+  "item_id": "p-aa9fd4b4",
+  "left": "高有序度金属间化合物纳米晶普适性合成与长寿命燃料电池研究获进展",
+  "right": "大语言模型强化学习与推理可靠性研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.089
+ },
+ {
+  "item_id": "p-4da25f31",
+  "left": "习近平出席美国总统特朗普在白宫举行的欢迎仪式",
+  "right": "习近平出席金砖国家领导人第十八次会晤第一阶段会议并发表重要讲话",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.085
+ },
+ {
+  "item_id": "p-e5385283",
+  "left": "三峡枢纽2026年通过量已达1亿吨",
+  "right": "2026年上半年数字产业收入超20万亿元",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.133
+ },
+ {
+  "item_id": "p-92acac93",
+  "left": "二维层状晶体塑性调控研究获进展",
+  "right": "黄河口波浪破碎与地貌动力响应研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.143
+ },
+ {
+  "item_id": "p-61e4465c",
+  "left": "凝心聚力培根铸魂 奋力书写育人新篇——习近平总书记的节日祝贺和诚挚问候激励广大教师和教育工作者敬业奉献",
+  "right": "《求是》杂志发表习近平总书记重要文章《在加强基础研究座谈会上的讲话》",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.07
+ },
+ {
+  "item_id": "p-2632af2d",
+  "left": "《求是》杂志发表习近平总书记重要文章《在加强基础研究座谈会上的讲话》",
+  "right": "教育部党组召开会议 学习贯彻习近平总书记重要指示精神 总结树立和践行正确政绩观学习教育",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.117
+ },
+ {
+  "item_id": "p-1aab05ec",
+  "left": "“扎实推进先进制造业高质量发展”——习近平总书记引领我国加快向制造强国迈进",
+  "right": "教育部党组召开会议 学习贯彻习近平总书记重要指示精神 总结树立和践行正确政绩观学习教育",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.078
+ },
+ {
+  "item_id": "p-bde3c612",
+  "left": "AI系统可在野外自动开展猴类认知研究",
+  "right": "AI系统可让3D打印实现同步质检",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.143
+ },
+ {
+  "item_id": "p-68c803dd",
+  "left": "电催化二氧化碳还原研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-c6c11b16",
+  "left": "2026浦江创新论坛将于9月11日至14日举办",
+  "right": "2026年服贸会将于9月9日至13日在北京举办",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.257
+ },
+ {
+  "item_id": "p-6be84245",
+  "left": "2026年上半年数字产业收入超20万亿元",
+  "right": "2026年中国科研类航空航天模型普及大赛（七台河站）开幕",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.103
+ },
+ {
+  "item_id": "p-2320cf51",
+  "left": "长六丙“一箭七星”发射成功",
+  "right": "长征二号丁“一箭四星”发射成功",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.294
+ },
+ {
+  "item_id": "p-e42e91f8",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.278
+ },
+ {
+  "item_id": "p-59a704e5",
+  "left": "小行星撞击成坑及溅射粉尘扩散过程研究获进展",
+  "right": "高效一价离子分离研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.143
+ },
+ {
+  "item_id": "p-b8d81022",
+  "left": "北师大召开2026年秋季学期学生工作会议",
+  "right": "2026年上半年数字产业收入超20万亿元",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.121
+ },
+ {
+  "item_id": "p-1d34b65e",
+  "left": "低成本高铁层状氧化物钠离子电池正极材料研究获进展",
+  "right": "高有序度金属间化合物纳米晶普适性合成与长寿命燃料电池研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.104
+ },
+ {
+  "item_id": "p-e716c88e",
+  "left": "北京师范大学北京校区开展2026级新生集中入学教育",
+  "right": "【教育部简报】北京师范大学推进高水平师范院校建设 助力基础教育高质量发展",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.128
+ },
+ {
+  "item_id": "p-f07b5058",
+  "left": "推动金砖国家合作增效 赋能全球南方共同发展——国际社会高度评价习近平主席南亚之行",
+  "right": "应时代之变 行天下大道——习近平主席引领推动构建更加公正合理的全球治理体系",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.095
+ },
+ {
+  "item_id": "p-41dbf844",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "电催化二氧化碳还原研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-cbfaacf9",
+  "left": "偏振视觉研究取得进展",
+  "right": "肝纤维化力学调控机制研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.263
+ },
+ {
+  "item_id": "p-e87dd595",
+  "left": "携手推进平等有序的世界多极化——习近平主席中亚中东之行推动全球治理倡议走深走实",
+  "right": "“愿做跨越太平洋的友谊使者”——习近平主席复信为中美友好合作汇聚青春力量",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.063
+ },
+ {
+  "item_id": "p-a015e517",
+  "left": "【“十五五”开好局起好步】我国加快建立现代化粮食流通体系",
+  "right": "【\"十五五\"开好局起好步】锚定蓝图 加快建设教育强国",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.303
+ },
+ {
+  "item_id": "p-edac86a2",
+  "left": "肝纤维化力学调控机制研究取得进展",
+  "right": "大气活性氯来源研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.227
+ },
+ {
+  "item_id": "p-8a4129ea",
+  "left": "一周科技盘点丨火箭陆地回收、机器人百米突破……上周，我国海陆空多领域实现硬核突破",
+  "right": "工程师解密人形机器人百米跑，为啥最后都要“撞墙”",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.08
+ },
+ {
+  "item_id": "p-9001151b",
+  "left": "海洋光学卫星定标研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-6e5a9359",
+  "left": "展现历史担当 汇聚和平发展力量——写在习近平主席出席2026年上海合作组织峰会并对吉尔吉斯斯坦、埃及进行国事访问之际",
+  "right": "推动构建更加公正合理的全球治理体系——习近平主席引领推动全球治理倡议走深走实",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.05
+ },
+ {
+  "item_id": "p-f83313e3",
+  "left": "痛别！刘宝珺院士逝世",
+  "right": "王永炎院士逝世",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.273
+ },
+ {
+  "item_id": "p-93db3ade",
+  "left": "京师问道 智汇中非——北京师范大学举办非洲“教育现代化战略治理能力提升高级研修项目”",
+  "right": "第十四届全国大学生化学实验竞赛总决赛在北京师范大学举办",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.132
+ },
+ {
+  "item_id": "p-69ae139e",
+  "left": "总编辑圈点丨基因开关让3D打印骨组织自主长出新血管 为治疗创伤或感染导致的骨缺损带来希望",
+  "right": "总编辑圈点丨AI智能体八十八小时解出千禧年难题之一，引起“抢发”数学家成果争议",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.069
+ },
+ {
+  "item_id": "p-4d14d7bb",
+  "left": "“愿做跨越太平洋的友谊使者”——习近平主席复信为中美友好合作汇聚青春力量",
+  "right": "习近平主席推动金砖合作金句",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.132
+ },
+ {
+  "item_id": "p-a9df66c4",
+  "left": "低计数PET成像研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.263
+ },
+ {
+  "item_id": "p-8438bfd0",
+  "left": "肝纤维化力学调控机制研究取得进展",
+  "right": "细胞聚集体浸润机制研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.318
+ },
+ {
+  "item_id": "p-8e9f252e",
+  "left": "第三届北京师范大学“中小学生英语演讲风采展示”终评活动在云南昆明举办",
+  "right": "北京师范大学在北京市大中小幼教师讲述育人故事活动中再创佳绩",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.137
+ },
+ {
+  "item_id": "p-b9d18f0b",
+  "left": "程建平：弘扬教育家精神 推动基础教育高质量发展",
+  "right": "促进民营经济高质量发展丨把秸秆变成缓冲棉，性能媲美塑料泡沫——中科绿碳用绿色材料助力“减碳降塑”",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.07
+ },
+ {
+  "item_id": "p-f059f4a1",
+  "left": "肝纤维化力学调控机制研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-31a88cab",
+  "left": "“拆解”具身智能机器人 读懂未来产业“新赛道”",
+  "right": "全球首台！搭载全国产化电子架构的具身智能机器人亮相",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.176
+ },
+ {
+  "item_id": "p-826b9aa2",
+  "left": "2026年服贸会将于9月9日至13日在北京举办",
+  "right": "2026年“百万英才兴海南·四城同办”校招系列活动启动",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.098
+ },
+ {
+  "item_id": "p-efc25875",
+  "left": "科学家发现3亿多年前昆虫曾“水陆两栖”",
+  "right": "科学家发现“金属关节”的普遍疲劳特征",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.148
+ },
+ {
+  "item_id": "p-99ce37ae",
+  "left": "低成本高铁层状氧化物钠离子电池正极材料研究获进展",
+  "right": "海洋真菌来源活性次级代谢产物研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.108
+ },
+ {
+  "item_id": "p-4153d36f",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "mRNA递送方向研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-30af52b6",
+  "left": "痛别！苏万华院士逝世",
+  "right": "痛别！刘宝珺院士逝世",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.333
+ },
+ {
+  "item_id": "p-6d7bf2f6",
+  "left": "国家教育行政学院举行2026年秋季开学典礼",
+  "right": "中共中央宣传部等印发《关于组织开展2026年“全民国防教育月”活动的通知》",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.106
+ },
+ {
+  "item_id": "p-83ec86a7",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "细胞聚集体浸润机制研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-93ccad0e",
+  "left": "教育部调度部署2026年秋季开学工作",
+  "right": "数学AI首次与高中生同台竞技 2026年中国东南地区数学交流活动在榕闭幕",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.087
+ },
+ {
+  "item_id": "p-546ad9b2",
+  "left": "李强出席2026年世界技能大会开幕式并致辞",
+  "right": "2026年亚太经济合作组织教育网络会议举办",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.111
+ },
+ {
+  "item_id": "p-e4792834",
+  "left": "李强出席2026年世界技能大会开幕式并致辞",
+  "right": "2026年上半年数字产业收入超20万亿元",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.118
+ },
+ {
+  "item_id": "p-7369c5fb",
+  "left": "二维层状晶体塑性调控研究获进展",
+  "right": "REBCO高温超导厚膜研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.16
+ },
+ {
+  "item_id": "p-e0e811f3",
+  "left": "新型抗血栓肽研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.278
+ },
+ {
+  "item_id": "p-732ad122",
+  "left": "细胞聚集体浸润机制研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-61963a22",
+  "left": "科研后备军的一场“精神入伍式”——记2026年“把青春华章写在祖国大地上”大思政课",
+  "right": "2026年APEC工商领导人峰会将于11月17日至18日在深圳举办",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.065
+ },
+ {
+  "item_id": "p-cf28178a",
+  "left": "北京师范大学组织开展网络安全主题宣传活动",
+  "right": "泰国教育部民校教育委员会一行访问北京师范大学",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.147
+ },
+ {
+  "item_id": "p-2afc2079",
+  "left": "mRNA递送方向研究取得进展",
+  "right": "DNA损伤修复调控放疗敏感性研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.231
+ },
+ {
+  "item_id": "p-39f3b2ea",
+  "left": "推进世界多极化 改革完善全球治理——习近平主席重要讲话引领上合组织贡献更大力量",
+  "right": "推动金砖国家合作增效 赋能全球南方共同发展——国际社会高度评价习近平主席南亚之行",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.076
+ },
+ {
+  "item_id": "p-d7a90573",
+  "left": "携手推进平等有序的世界多极化——习近平主席中亚中东之行推动全球治理倡议走深走实",
+  "right": "共享机遇 共谋发展——习近平主席引领推动全球发展倡议在上合组织国家落地生根造福地区各国人民",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.118
+ },
+ {
+  "item_id": "p-32cae9fd",
+  "left": "REBCO高温超导厚膜研究获进展",
+  "right": "海洋真菌来源活性次级代谢产物研究获进展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.138
+ },
+ {
+  "item_id": "p-dafd7937",
+  "left": "王永炎院士逝世",
+  "right": "痛别！管华诗院士逝世",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.273
+ },
+ {
+  "item_id": "p-46dd68a7",
+  "left": "北师大举办2026年新教师入职集中培训",
+  "right": "2026年“百万英才兴海南·四城同办”校招系列活动启动",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.108
+ },
+ {
+  "item_id": "p-14ba8470",
+  "left": "展现历史担当 汇聚和平发展力量——写在习近平主席出席2026年上海合作组织峰会并对吉尔吉斯斯坦、埃及进行国事访问之际",
+  "right": "丁薛祥出席2026年全球服务贸易峰会并会见与会外国政要",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.113
+ },
+ {
+  "item_id": "p-8289db41",
+  "left": "丁薛祥出席2026年全球服务贸易峰会并会见与会外国政要",
+  "right": "李强出席2026年世界技能大会开幕式并致辞",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.15
+ },
+ {
+  "item_id": "p-b39a369d",
+  "left": "细胞聚集体浸润机制研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-52a44fea",
+  "left": "长效神经融合脑机界面研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-abcb91ce",
+  "left": "“兴边育才·数智赋能”边境县教育高质量发展研讨会举办——北京师范大学“强师工程·C100教育强区赋能计划”正式启动",
+  "right": "北京师范大学—内蒙古巴彦淖尔市“三名工程”“青年领航”培养项目启动",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.106
+ },
+ {
+  "item_id": "p-35a01b94",
+  "left": "北京师范大学北京校区开展2026级新生集中入学教育",
+  "right": "京师问道 智汇中非——北京师范大学举办非洲“教育现代化战略治理能力提升高级研修项目”",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.115
+ },
+ {
+  "item_id": "p-e7ea7f2d",
+  "left": "肝纤维化力学调控机制研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.227
+ },
+ {
+  "item_id": "p-d41fbfbe",
+  "left": "海洋光学卫星定标研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.263
+ },
+ {
+  "item_id": "p-b93a642c",
+  "left": "低计数PET成像研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-4755ae06",
+  "left": "2026年服贸会将于9月9日至13日在北京举办",
+  "right": "数学AI首次与高中生同台竞技 2026年中国东南地区数学交流活动在榕闭幕",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.078
+ },
+ {
+  "item_id": "p-fa400bec",
+  "left": "微米级蒙烯铜粉制备研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-5b9dd585",
+  "left": "人工智能进课堂，如何学得更好？",
+  "right": "人工智能时代，我们如何学习？",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.278
+ },
+ {
+  "item_id": "p-d107180f",
+  "left": "习近平主席指引“大金砖”筑牢务实合作根基",
+  "right": "为构建中吉命运共同体注入新动力——吉尔吉斯斯坦各界期待习近平主席对吉进行国事访问",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.08
+ },
+ {
+  "item_id": "p-5ab62ef3",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "海洋光学卫星定标研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-aaac1a8c",
+  "left": "痛别！刘宝珺院士逝世",
+  "right": "痛别！管华诗院士逝世",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.333
+ },
+ {
+  "item_id": "p-dabc38d3",
+  "left": "微米级蒙烯铜粉制备研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-6e9dda99",
+  "left": "总编辑圈点丨“先导组装”可精准实现长DNA片段的缝合，并一次修复多个突变",
+  "right": "总编辑圈点 | 63℃仍能分裂繁殖，火变形虫改写真核生物耐热上限",
+  "rule_v2": true,
+  "rule_v3": false,
+  "title_jaccard": 0.074
+ },
+ {
+  "item_id": "p-ba795d1e",
+  "left": "“拆解”具身智能机器人 读懂未来产业“新赛道”",
+  "right": "解锁多样具身智能机器人",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.286
+ },
+ {
+  "item_id": "p-4a286e97",
+  "left": "“水陆空”并进持续开展西藏吉隆泥石流抢险搜救工作",
+  "right": "西藏吉隆泥石流灾害抢险救援紧张有序开展",
+  "rule_v2": true,
+  "rule_v3": true,
+  "title_jaccard": 0.258
+ },
+ {
+  "item_id": "p-b043e5d9",
+  "left": "微米级蒙烯铜粉制备研究取得进展",
+  "right": "大气活性氯来源研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ },
+ {
+  "item_id": "p-b157b86e",
+  "left": "大气活性氯来源研究取得进展",
+  "right": "仿生骨组织工程研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.263
+ },
+ {
+  "item_id": "p-97cc201f",
+  "left": "电催化二氧化碳还原研究取得进展",
+  "right": "新型抗血栓肽研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.25
+ },
+ {
+  "item_id": "p-6ddd6416",
+  "left": "低计数PET成像研究取得进展",
+  "right": "mRNA递送方向研究取得进展",
+  "rule_v2": false,
+  "rule_v3": false,
+  "title_jaccard": 0.238
+ }
+]

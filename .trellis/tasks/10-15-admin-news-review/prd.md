@@ -60,6 +60,6 @@ own account instead of a local adapter + operator PIN + SSH tunnel.
   20 s), then an editor for the hook and hashtags (check / save), and a push that needs two confirmations.
 - Tests: integration `test_admin_human_picks.py` (auth, write guard, review, check, save, push, second push refused,
   reviewer = account, disabled slot mode), frontend `HumanPick.test.tsx`; 239 admin frontend tests pass.
-- Still to do: deploy (API overlay + console swap) after the owner's go-ahead; first real push by the owner.
+- Deployed 2026-10-16 (see runbook). Still to do: first real push by the owner.
 - Open: keep or remove the PIN-based exhibit review.
 
